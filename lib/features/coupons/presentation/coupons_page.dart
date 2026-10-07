@@ -1,20 +1,7 @@
 import 'package:flutter/material.dart';
 
-class CouponsPage extends StatelessWidget {
+class CouponsPage extends StatefulWidget {
   const CouponsPage({super.key});
-
-  static final ValueNotifier<int> newDemoCouponCount = ValueNotifier<int>(3);
-
-  static void markDemoCouponsViewed() {
-    newDemoCouponCount.value = 0;
-  }
-
-  static const _background = Color(0xFFFCFDFC);
-  static const _green = Color(0xFF2C7C65);
-  static const _lightGreen = Color(0xFFEFF8F4);
-  static const _mainText = Color(0xFF202321);
-  static const _secondaryText = Color(0xFF777C79);
-  static const _border = Color(0xFFE7EAE8);
 
   static const _availableCoupons = [
     _DemoCoupon(
@@ -44,6 +31,34 @@ class CouponsPage extends StatelessWidget {
     ),
   ];
 
+  static final ValueNotifier<int> newDemoCouponCount = ValueNotifier<int>(
+    _availableCoupons.length + _offers.length,
+  );
+
+  static void markDemoCouponsViewed() {
+    if (newDemoCouponCount.value != 0) newDemoCouponCount.value = 0;
+  }
+
+  @override
+  State<CouponsPage> createState() => _CouponsPageState();
+}
+
+class _CouponsPageState extends State<CouponsPage> {
+  static const _background = Color(0xFFFCFDFC);
+  static const _green = Color(0xFF2C7C65);
+  static const _lightGreen = Color(0xFFEFF8F4);
+  static const _mainText = Color(0xFF202321);
+  static const _secondaryText = Color(0xFF777C79);
+  static const _border = Color(0xFFE7EAE8);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      CouponsPage.markDemoCouponsViewed();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -62,14 +77,14 @@ class CouponsPage extends StatelessWidget {
         children: [
           _buildSectionHeading('Available Coupons'),
           const SizedBox(height: 11),
-          for (final coupon in _availableCoupons) ...[
+          for (final coupon in CouponsPage._availableCoupons) ...[
             _buildCouponCard(context, coupon),
             const SizedBox(height: 12),
           ],
           const SizedBox(height: 12),
           _buildSectionHeading('Offers'),
           const SizedBox(height: 11),
-          for (final coupon in _offers) ...[
+          for (final coupon in CouponsPage._offers) ...[
             _buildCouponCard(context, coupon),
             const SizedBox(height: 12),
           ],

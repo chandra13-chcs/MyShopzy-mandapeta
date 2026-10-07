@@ -10,6 +10,7 @@ import '../../orders/presentation/orders_page.dart';
 import '../../parcel/presentation/parcel_page.dart';
 import '../../profile/presentation/profile_page.dart';
 import '../../restaurants/presentation/restaurants_page.dart';
+import '../../search/presentation/search_page.dart';
 import '../../vegetables_fruits/presentation/produce_catalog_page.dart';
 import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
 
@@ -71,7 +72,7 @@ class CategoriesPage extends StatelessWidget {
         bottom: false,
         child: CustomScrollView(
           slivers: [
-            SliverToBoxAdapter(child: _buildHeader()),
+            SliverToBoxAdapter(child: _buildHeader(context)),
             SliverToBoxAdapter(child: _buildShopByStore(context)),
             _buildGridSection(context, 'Fresh Items', _freshItems),
             _buildGridSection(context, 'Grocery & Kitchen', _groceryItems),
@@ -141,7 +142,7 @@ class CategoriesPage extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
       child: Row(
@@ -158,7 +159,11 @@ class CategoriesPage extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: () {},
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const SearchPage(),
+              ),
+            ),
             tooltip: 'Search categories',
             icon: const Icon(Icons.search_rounded, color: _ink, size: 25),
             style: IconButton.styleFrom(

@@ -400,7 +400,6 @@ class ProfilePage extends StatelessWidget {
       return InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () {
-          CouponsPage.markDemoCouponsViewed();
           Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (context) => const CouponsPage()),
           );
