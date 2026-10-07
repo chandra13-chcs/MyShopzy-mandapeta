@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
+import '../../wishlist/presentation/save_list_button.dart';
 import 'local_stores_page.dart';
 
 class CommonCategory {
@@ -725,16 +726,13 @@ class _ProductCard extends StatelessWidget {
                 Positioned(
                   top: 4,
                   right: 4,
-                  child: Container(
-                    width: 25,
-                    height: 25,
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.93),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.bookmark_border_rounded,
-                      color: _ink,
+                    child: SaveListButton(
+                      product: _toDetails(product, const []),
                       size: 15,
                     ),
                   ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
+import '../../wishlist/presentation/save_list_button.dart';
 import 'bakery_page.dart';
 
 enum BakeryFoodType { vegetarian, nonVegetarian }
@@ -722,17 +723,27 @@ class _BakeryMenuItemCard extends StatelessWidget {
                 Positioned(
                   top: 5,
                   right: 5,
-                  child: Container(
-                    width: 29,
-                    height: 29,
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.95),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.bookmark_border_rounded,
-                      color: _ink,
-                      size: 17,
+                    child: SaveListButton(
+                      product: ProductDetailsProduct(
+                        id: item.id,
+                        serviceType: 'bakery',
+                        merchantId: item.bakeryId,
+                        merchantName: bakeryName,
+                        categoryId: item.categoryId,
+                        name: item.name,
+                        description: item.description,
+                        imageUrl: item.imageUrl,
+                        priceInPaise: (item.price * 100).round(),
+                        available: item.available,
+                        icon: Icons.bakery_dining_rounded,
+                        isVegetarian:
+                            item.foodType == BakeryFoodType.vegetarian,
+                      ),
                     ),
                   ),
                 ),

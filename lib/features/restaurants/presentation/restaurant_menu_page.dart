@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
+import '../../wishlist/presentation/save_list_button.dart';
 import 'restaurants_page.dart';
 
 enum FoodType { vegetarian, nonVegetarian }
@@ -260,14 +261,6 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
                   icon: Icons.arrow_back_rounded,
                   label: 'Back',
                   onPressed: () => Navigator.of(context).maybePop(),
-                ),
-              ),
-              const Positioned(
-                top: 8,
-                right: 58,
-                child: _HeaderAction(
-                  icon: Icons.bookmark_border_rounded,
-                  label: 'Save restaurant',
                 ),
               ),
               const Positioned(
@@ -760,17 +753,26 @@ class _MenuItemCard extends StatelessWidget {
                 Positioned(
                   top: 5,
                   right: 5,
-                  child: Container(
-                    width: 29,
-                    height: 29,
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.95),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.bookmark_border_rounded,
-                      color: _ink,
-                      size: 17,
+                    child: SaveListButton(
+                      product: ProductDetailsProduct(
+                        id: item.id,
+                        serviceType: 'restaurant',
+                        merchantId: item.restaurantId,
+                        merchantName: restaurantName,
+                        categoryId: item.categoryId,
+                        name: item.name,
+                        description: item.description,
+                        imageUrl: item.imageUrl,
+                        priceInPaise: (item.price * 100).round(),
+                        available: item.available,
+                        icon: Icons.restaurant_rounded,
+                        isVegetarian: item.isVeg,
+                      ),
                     ),
                   ),
                 ),

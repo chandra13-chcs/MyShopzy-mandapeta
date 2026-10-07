@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
+import '../../wishlist/presentation/save_list_button.dart';
 
 enum ProduceType { fruit, vegetable }
 
@@ -680,16 +681,29 @@ class _ProduceProductCard extends StatelessWidget {
                 Positioned(
                   top: 4,
                   right: 4,
-                  child: Container(
-                    width: 25,
-                    height: 25,
+                  child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.93),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
-                      Icons.bookmark_border_rounded,
-                      color: _ink,
+                    child: SaveListButton(
+                      product: ProductDetailsProduct(
+                        id: product.id,
+                        serviceType: 'vegetables_fruits',
+                        categoryId: product.categoryId,
+                        name: product.name,
+                        imageUrl: product.imageUrl,
+                        priceInPaise: (product.price * 100).round(),
+                        mrpInPaise: (product.mrp * 100).round(),
+                        discountPercent: product.discount,
+                        quantityLabel: product.packSize,
+                        rating: product.rating,
+                        available: product.available,
+                        icon: product.type == ProduceType.fruit
+                            ? Icons.eco_rounded
+                            : Icons.grass_rounded,
+                        isVegetarian: true,
+                      ),
                       size: 15,
                     ),
                   ),

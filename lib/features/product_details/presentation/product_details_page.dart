@@ -9,6 +9,7 @@ import '../models/product_review.dart';
 import '../../reviews/presentation/reviews_page.dart';
 import '../../reviews/presentation/review_widgets.dart';
 import '../../reviews/presentation/write_review_page.dart';
+import '../../wishlist/presentation/save_list_button.dart';
 
 export '../models/product_details_product.dart';
 
@@ -28,7 +29,6 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
   static const _page = Color(0xFFF7F8F5);
   static const _border = Color(0xFFE5E9E3);
 
-  bool _isWishlisted = false;
   bool _isDescriptionExpanded = true;
 
   @override
@@ -51,13 +51,10 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         actions: [
-          IconButton(
-            onPressed: () => setState(() => _isWishlisted = !_isWishlisted),
-            tooltip: _isWishlisted ? 'Remove from wishlist' : 'Add to wishlist',
-            icon: Icon(
-              _isWishlisted ? Icons.favorite_rounded : Icons.favorite_border,
-              color: _isWishlisted ? const Color(0xFFB6534B) : _ink,
-            ),
+          SaveListButton(
+            product: product,
+            color: _ink,
+            size: 23,
           ),
           IconButton(
             onPressed: () =>

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
+import '../../wishlist/presentation/save_list_button.dart';
 
 enum MeatType { chicken, mutton }
 
@@ -530,6 +531,20 @@ class _MeatProductCard extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: _buildProductImage(),
+                  ),
+                ),
+                Positioned(
+                  top: 5,
+                  right: 5,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.93),
+                      shape: BoxShape.circle,
+                    ),
+                    child: SaveListButton(
+                      product: _toDetails(product, const []),
+                      size: 15,
+                    ),
                   ),
                 ),
                 Positioned(
