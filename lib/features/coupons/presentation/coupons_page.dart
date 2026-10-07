@@ -1,38 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../models/demo_coupon.dart';
+
 class CouponsPage extends StatefulWidget {
   const CouponsPage({super.key});
 
-  static const _availableCoupons = [
-    _DemoCoupon(
-      code: 'MYSHOPZY50',
-      offer: 'Get ₹50 off',
-      description: 'Save on your next order from selected stores.',
-      minimumOrder: 'On orders above ₹299',
-      validity: 'Demo offer · Valid for a limited time',
-    ),
-    _DemoCoupon(
-      code: 'WELCOME100',
-      offer: 'Get ₹100 off',
-      description: 'A little something for your first MyShopzy order.',
-      minimumOrder: 'On orders above ₹499',
-      validity: 'Demo offer · New customers',
-    ),
-  ];
-
-  static const _offers = [
-    _DemoCoupon(
-      code: 'FIRSTORDER',
-      offer: '15% off your first order',
-      description:
-          'Enjoy a discount on a first order from participating shops.',
-      minimumOrder: 'On orders above ₹199',
-      validity: 'Demo offer · Selected categories',
-    ),
-  ];
-
   static final ValueNotifier<int> newDemoCouponCount = ValueNotifier<int>(
-    _availableCoupons.length + _offers.length,
+    demoCoupons.length,
   );
 
   static void markDemoCouponsViewed() {
@@ -77,14 +51,14 @@ class _CouponsPageState extends State<CouponsPage> {
         children: [
           _buildSectionHeading('Available Coupons'),
           const SizedBox(height: 11),
-          for (final coupon in CouponsPage._availableCoupons) ...[
+          for (final coupon in demoCoupons.take(2)) ...[
             _buildCouponCard(context, coupon),
             const SizedBox(height: 12),
           ],
           const SizedBox(height: 12),
           _buildSectionHeading('Offers'),
           const SizedBox(height: 11),
-          for (final coupon in CouponsPage._offers) ...[
+          for (final coupon in demoCoupons.skip(2)) ...[
             _buildCouponCard(context, coupon),
             const SizedBox(height: 12),
           ],
@@ -104,7 +78,7 @@ class _CouponsPageState extends State<CouponsPage> {
     );
   }
 
-  Widget _buildCouponCard(BuildContext context, _DemoCoupon coupon) {
+  Widget _buildCouponCard(BuildContext context, DemoCoupon coupon) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -172,7 +146,7 @@ class _CouponsPageState extends State<CouponsPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            coupon.minimumOrder,
+            coupon.minimumOrderLabel,
             style: const TextStyle(
               color: _mainText,
               fontSize: 12,
@@ -190,7 +164,12 @@ class _CouponsPageState extends State<CouponsPage> {
             child: FilledButton(
               onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Coupon applied for demo')),
+                  SnackBar(
+                    content: Text(
+                      'Use ${coupon.code} during Checkout to validate it '
+                      'against your cart.',
+                    ),
+                  ),
                 );
               },
               style: FilledButton.styleFrom(
@@ -201,27 +180,11 @@ class _CouponsPageState extends State<CouponsPage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text('Apply'),
+              child: const Text('Use at Checkout'),
             ),
           ),
         ],
       ),
     );
   }
-}
-
-class _DemoCoupon {
-  const _DemoCoupon({
-    required this.code,
-    required this.offer,
-    required this.description,
-    required this.minimumOrder,
-    required this.validity,
-  });
-
-  final String code;
-  final String offer;
-  final String description;
-  final String minimumOrder;
-  final String validity;
 }

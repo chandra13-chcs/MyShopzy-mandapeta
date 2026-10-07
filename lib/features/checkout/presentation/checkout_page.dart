@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../cart/data/cart_store.dart';
+import '../../coupons/models/demo_coupon.dart';
 
 class CheckoutPage extends StatefulWidget {
   const CheckoutPage({super.key});
@@ -21,13 +22,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // never buyer GPS -> destination. No distance check is performed here.
   // Kept isolated as a demo placeholder for future backend pricing.
   static const _demoDeliveryChargeInPaise = 3000;
-  static const List<_DemoCoupon> _demoCoupons = [
-    _DemoCoupon(code: 'MYSHOPZY50', discountInPaise: 5000),
-    _DemoCoupon(code: 'WELCOME100', discountInPaise: 10000),
-    _DemoCoupon(code: 'FIRSTORDER', discountPercent: 15),
-  ];
-
   final _cartStore = CartStore.instance;
+  final _couponCodeController = TextEditingController();
   final _receiverNameController = TextEditingController();
   final _receiverMobileController = TextEditingController();
   final _deliveryAddressController = TextEditingController();
@@ -58,7 +54,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool _someoneElseSelected = false;
   String _newAddressType = 'Other';
   String _selectedPaymentMethod = 'UPI';
-  _DemoCoupon? _selectedCoupon;
+  DemoCoupon? _selectedCoupon;
+  String? _couponMessage;
+  bool _couponMessageIsError = false;
   String? _selectedQuickInstruction;
 
   static const _quickDeliveryInstructions = [
@@ -82,20 +80,28 @@ class _CheckoutPageState extends State<CheckoutPage> {
   int get _discountInPaise {
     final coupon = _selectedCoupon;
     if (coupon == null) return 0;
-    final discount =
-        coupon.discountInPaise ??
-        (_subtotalInPaise * coupon.discountPercent! ~/ 100);
-    return discount.clamp(0, _subtotalInPaise);
+    return coupon.discountFor(_subtotalInPaise);
   }
 
   int get _deliveryChargeInPaise =>
       _cartStore.items.isEmpty ? 0 : _demoDeliveryChargeInPaise;
 
-  int get _totalInPaise =>
-      _subtotalInPaise + _deliveryChargeInPaise - _discountInPaise;
+  int get _totalInPaise => DemoCouponValidator.payableTotal(
+    subtotalInPaise: _subtotalInPaise,
+    deliveryFeeInPaise: _deliveryChargeInPaise,
+    coupon: _selectedCoupon,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _cartStore.addListener(_handleCartChanged);
+  }
 
   @override
   void dispose() {
+    _cartStore.removeListener(_handleCartChanged);
+    _couponCodeController.dispose();
     _receiverNameController.dispose();
     _receiverMobileController.dispose();
     _deliveryAddressController.dispose();
@@ -104,6 +110,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
     _newAddressController.dispose();
     _newAddressLandmarkController.dispose();
     super.dispose();
+  }
+
+  void _handleCartChanged() {
+    final coupon = _selectedCoupon;
+    if (!mounted ||
+        coupon == null ||
+        _subtotalInPaise >= coupon.minimumOrderInPaise) {
+      return;
+    }
+    final shortBy = coupon.minimumOrderInPaise - _subtotalInPaise;
+    setState(() {
+      _selectedCoupon = null;
+      _couponMessage =
+          'Add ${_formatPrice(shortBy)} more to use this coupon.';
+      _couponMessageIsError = true;
+    });
   }
 
   @override
@@ -846,30 +868,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
     return _sectionCard(
       title: 'Apply Coupon',
       icon: Icons.local_offer_outlined,
-      child: _selectedCoupon == null
-          ? SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: _showCouponPicker,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _green,
-                  side: const BorderSide(color: _border),
-                  alignment: Alignment.centerLeft,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.confirmation_number_outlined, size: 19),
-                    SizedBox(width: 8),
-                    Expanded(child: Text('Choose a demo coupon')),
-                    Icon(Icons.chevron_right_rounded),
-                  ],
-                ),
-              ),
-            )
-          : Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_selectedCoupon != null) ...[
+            Row(
               children: [
                 const Icon(Icons.check_circle_outline, color: _green, size: 21),
                 const SizedBox(width: 9),
@@ -879,6 +882,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     children: [
                       Text(
                         _selectedCoupon!.code,
+                        key: const ValueKey('applied-coupon-code'),
                         style: const TextStyle(
                           color: _mainText,
                           fontSize: 13,
@@ -893,17 +897,135 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ),
                 ),
                 TextButton(
-                  onPressed: _showCouponPicker,
-                  child: const Text('Change'),
-                ),
-                IconButton(
-                  onPressed: () => setState(() => _selectedCoupon = null),
-                  tooltip: 'Remove coupon',
-                  icon: const Icon(Icons.close_rounded, size: 19),
+                  onPressed: _removeCoupon,
+                  child: const Text('Remove'),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('coupon-code-field'),
+                  controller: _couponCodeController,
+                  textCapitalization: TextCapitalization.characters,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _applyCoupon(),
+                  decoration: InputDecoration(
+                    hintText: 'Enter coupon code',
+                    isDense: true,
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 13,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: _green),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 9),
+              FilledButton(
+                key: const ValueKey('apply-coupon-button'),
+                onPressed: _applyCoupon,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text('Apply'),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _showCouponPicker,
+              style: TextButton.styleFrom(
+                foregroundColor: _green,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+              ),
+              child: const Text('View demo coupons'),
+            ),
+          ),
+          if (_couponMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                _couponMessage!,
+                key: const ValueKey('coupon-validation-message'),
+                style: TextStyle(
+                  color: _couponMessageIsError
+                      ? const Color(0xFFA85B5B)
+                      : _green,
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
+  }
+
+  void _applyCoupon() {
+    final result = DemoCouponValidator.validate(
+      code: _couponCodeController.text,
+      subtotalInPaise: _subtotalInPaise,
+      hasCartItems: _cartStore.items.isNotEmpty,
+      appliedCouponCode: _selectedCoupon?.code,
+    );
+    if (!result.isValid) {
+      final message = switch (result.status) {
+        CouponValidationStatus.invalidCode => 'Coupon code is not valid.',
+        CouponValidationStatus.expired => 'This coupon has expired.',
+        CouponValidationStatus.minimumOrderNotMet =>
+          'Add ${_formatPrice(result.amountShortInPaise)} more to use this coupon.',
+        CouponValidationStatus.cartNotEligible =>
+          'Add items to your cart to use this coupon.',
+        CouponValidationStatus.alreadyApplied =>
+          'This coupon is already applied.',
+        CouponValidationStatus.anotherCouponAlreadyApplied =>
+          'Remove the applied coupon before using another.',
+        CouponValidationStatus.valid => 'Coupon applied successfully.',
+      };
+      setState(() {
+        _couponMessage = message;
+        _couponMessageIsError = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _selectedCoupon = result.coupon;
+      _couponMessage = 'Coupon applied successfully.';
+      _couponMessageIsError = false;
+    });
+  }
+
+  void _removeCoupon() {
+    setState(() {
+      _selectedCoupon = null;
+      _couponMessage = null;
+      _couponMessageIsError = false;
+      _couponCodeController.clear();
+    });
   }
 
   Widget _buildPaymentSection() {
@@ -1015,9 +1137,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ? '−${_formatPrice(0)}'
                 : '−${_formatPrice(_discountInPaise)}',
             valueColor: _green,
+            valueKey: const ValueKey('coupon-discount-value'),
           ),
           const Divider(height: 24, color: _border),
-          _priceRow('Total', _formatPrice(_totalInPaise), emphasize: true),
+          _priceRow(
+            'Total',
+            _formatPrice(_totalInPaise),
+            emphasize: true,
+            valueKey: const ValueKey('checkout-total-value'),
+          ),
           const SizedBox(height: 8),
           const Align(
             alignment: Alignment.centerLeft,
@@ -1082,6 +1210,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     String value, {
     bool emphasize = false,
     Color? valueColor,
+    Key? valueKey,
   }) {
     return Row(
       children: [
@@ -1097,6 +1226,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         ),
         Text(
           value,
+          key: valueKey,
           style: TextStyle(
             color: valueColor ?? (emphasize ? _mainText : _secondaryText),
             fontSize: emphasize ? 14 : 12,
@@ -1108,7 +1238,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   Future<void> _showCouponPicker() async {
-    final coupon = await showModalBottomSheet<_DemoCoupon>(
+    final coupon = await showModalBottomSheet<DemoCoupon>(
       context: context,
       backgroundColor: _background,
       shape: const RoundedRectangleBorder(
@@ -1130,7 +1260,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
               const SizedBox(height: 12),
-              for (final option in _demoCoupons)
+              for (final option in demoCoupons)
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(
@@ -1155,7 +1285,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ),
     );
     if (coupon != null && mounted) {
-      setState(() => _selectedCoupon = coupon);
+      setState(() {
+        _couponCodeController.text = coupon.code;
+        _couponMessage = null;
+        _couponMessageIsError = false;
+      });
+      _applyCoupon();
     }
   }
 
@@ -1256,16 +1391,4 @@ class CheckoutDeliveryAddress {
   final String? receiverMobile;
   final String addressType;
   final String? landmark;
-}
-
-class _DemoCoupon {
-  const _DemoCoupon({
-    required this.code,
-    this.discountInPaise,
-    this.discountPercent,
-  });
-
-  final String code;
-  final int? discountInPaise;
-  final int? discountPercent;
 }
