@@ -11,7 +11,6 @@ import '../../parcel/presentation/parcel_page.dart';
 import '../../profile/presentation/profile_page.dart';
 import '../../restaurants/presentation/restaurants_page.dart';
 import '../../search/presentation/search_page.dart';
-import '../../vegetables_fruits/presentation/produce_catalog_page.dart';
 import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
 
 class CategoriesPage extends StatelessWidget {
@@ -31,37 +30,97 @@ class CategoriesPage extends StatelessWidget {
     _CategoryTile('Parcel', Icons.local_shipping_rounded, Color(0xFFE5ECFA)),
   ];
 
-  static const _freshItems = [
-    _CategoryTile('Fruits', Icons.apple_rounded, Color(0xFFF2E7D7)),
-    _CategoryTile('Vegetables', Icons.eco_rounded, Color(0xFFE1F0DF)),
-    _CategoryTile('Dairy', Icons.icecream_rounded, Color(0xFFF4E8D9)),
-    _CategoryTile('Herbs', Icons.grass_rounded, Color(0xFFE2F0E3)),
-  ];
-
-  static const _groceryItems = [
-    _CategoryTile('Rice & Dal', Icons.rice_bowl_rounded, Color(0xFFF0E7D8)),
-    _CategoryTile('Atta & Flour', Icons.grain_rounded, Color(0xFFEFE6D9)),
-    _CategoryTile('Cooking Oil', Icons.water_drop_rounded, Color(0xFFF6EDD4)),
-    _CategoryTile('Spices', Icons.soup_kitchen_rounded, Color(0xFFF3E2DD)),
-    _CategoryTile('Pulses', Icons.lunch_dining_rounded, Color(0xFFE9E8D9)),
+  static const _shoppingCategories = [
     _CategoryTile(
-      'Household',
+      'Dairy, Bread & Eggs',
+      Icons.breakfast_dining_rounded,
+      Color(0xFFF4E8D9),
+    ),
+    _CategoryTile(
+      'Fruits & Fresh Vegetables',
+      Icons.eco_rounded,
+      Color(0xFFE1F0DF),
+    ),
+    _CategoryTile(
+      'Cold Drinks & Juices',
+      Icons.local_drink_rounded,
+      Color(0xFFE1EAF1),
+    ),
+    _CategoryTile(
+      'Snacks & Munchies',
+      Icons.fastfood_rounded,
+      Color(0xFFF4E9D3),
+    ),
+    _CategoryTile(
+      'Breakfast & Instant Food',
+      Icons.ramen_dining_rounded,
+      Color(0xFFF1E3D5),
+    ),
+    _CategoryTile(
+      'Sweet Tooth & Chocolates',
+      Icons.cake_rounded,
+      Color(0xFFEBDDD9),
+    ),
+    _CategoryTile(
+      'Bakery & Biscuits',
+      Icons.bakery_dining_rounded,
+      Color(0xFFF2E5D5),
+    ),
+    _CategoryTile(
+      'Tea, Coffee & Milk Drinks',
+      Icons.coffee_rounded,
+      Color(0xFFE9E0D8),
+    ),
+    _CategoryTile(
+      'Atta, Rice & Dal',
+      Icons.rice_bowl_rounded,
+      Color(0xFFF0E7D8),
+    ),
+    _CategoryTile(
+      'Masala, Cooking Oil & Ghee',
+      Icons.water_drop_rounded,
+      Color(0xFFF6EDD4),
+    ),
+    _CategoryTile(
+      'Sauces & Spreads',
+      Icons.lunch_dining_rounded,
+      Color(0xFFF3E2DD),
+    ),
+    _CategoryTile(
+      'Chicken, Meat & Fresh Fish',
+      Icons.set_meal_rounded,
+      Color(0xFFFFE4E2),
+    ),
+    _CategoryTile(
+      'Organic & Healthy Living',
+      Icons.spa_rounded,
+      Color(0xFFE2F0E3),
+    ),
+    _CategoryTile(
+      'Baby Care Essentials',
+      Icons.child_care_rounded,
+      Color(0xFFE6EDF5),
+    ),
+    _CategoryTile(
+      'Pharma & Wellness',
+      Icons.health_and_safety_rounded,
+      Color(0xFFE3EAF2),
+    ),
+    _CategoryTile(
+      'Cleaning Essentials',
       Icons.cleaning_services_rounded,
       Color(0xFFE3EAF2),
     ),
-    _CategoryTile('Personal Care', Icons.spa_rounded, Color(0xFFF1E3EC)),
-    _CategoryTile('Baby Care', Icons.child_care_rounded, Color(0xFFE6EDF5)),
-  ];
-
-  static const _snackItems = [
-    _CategoryTile('Biscuits', Icons.cookie_rounded, Color(0xFFF2E5D5)),
-    _CategoryTile('Chips', Icons.fastfood_rounded, Color(0xFFF4E9D3)),
-    _CategoryTile('Chocolates', Icons.cake_rounded, Color(0xFFEBDDD9)),
-    _CategoryTile('Namkeen', Icons.ramen_dining_rounded, Color(0xFFF1E3D5)),
-    _CategoryTile('Cold Drinks', Icons.local_drink_rounded, Color(0xFFE1EAF1)),
-    _CategoryTile('Juices', Icons.local_cafe_rounded, Color(0xFFF3E7D4)),
-    _CategoryTile('Tea & Coffee', Icons.coffee_rounded, Color(0xFFE9E0D8)),
-    _CategoryTile('Sweets', Icons.icecream_rounded, Color(0xFFF3E2E6)),
+    _CategoryTile(
+      'Home & Office Needs',
+      Icons.home_work_rounded,
+      Color(0xFFECE5FA),
+    ),
+    _CategoryTile(
+      'Personal Care & Hygiene',
+      Icons.spa_rounded,
+      Color(0xFFF1E3EC),
+    ),
   ];
 
   @override
@@ -74,9 +133,7 @@ class CategoriesPage extends StatelessWidget {
           slivers: [
             SliverToBoxAdapter(child: _buildHeader(context)),
             SliverToBoxAdapter(child: _buildShopByStore(context)),
-            _buildGridSection(context, 'Fresh Items', _freshItems),
-            _buildGridSection(context, 'Grocery & Kitchen', _groceryItems),
-            _buildGridSection(context, 'Snacks & Drinks', _snackItems),
+            _buildGridSection(context, 'Shop by Category', _shoppingCategories),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
           ],
         ),
@@ -222,7 +279,7 @@ class CategoriesPage extends StatelessWidget {
               crossAxisCount: 4,
               crossAxisSpacing: 11,
               mainAxisSpacing: 12,
-              mainAxisExtent: 101,
+              mainAxisExtent: 112,
             ),
           ),
         ),
@@ -247,34 +304,35 @@ class CategoriesPage extends StatelessWidget {
   }
 
   VoidCallback? _gridCategoryAction(BuildContext context, String name) {
-    return switch (name) {
-      'Fruits' => () => _pushPage(
+    final action = switch (name) {
+      'Dairy, Bread & Eggs' => () => _openLocalStoreCategory(context, 'dairy'),
+      'Fruits & Fresh Vegetables' => () => _pushPage(
         context,
-        const ProduceCatalogPage(type: ProduceType.fruit),
+        const VegetablesFruitsPage(),
       ),
-      'Vegetables' => () => _pushPage(
-        context,
-        const ProduceCatalogPage(type: ProduceType.vegetable),
-      ),
-      'Dairy' => () => _openLocalStoreCategory(context, 'dairy'),
-      'Rice & Dal' => () => _openLocalStoreCategory(context, 'rice'),
-      'Atta & Flour' => () => _openLocalStoreCategory(context, 'atta'),
-      'Cooking Oil' => () => _openLocalStoreCategory(context, 'cooking-oil'),
-      'Spices' => () => _openLocalStoreCategory(context, 'spices'),
-      'Pulses' => () => _openLocalStoreCategory(context, 'dal'),
-      'Biscuits' => () => _openLocalStoreCategory(context, 'biscuits'),
-      'Chips' || 'Namkeen' => () => _openLocalStoreCategory(context, 'snacks'),
-      'Cold Drinks' ||
-      'Juices' ||
-      'Tea & Coffee' => () => _openLocalStoreCategory(context, 'beverages'),
-      'Household' ||
-      'Personal Care' ||
-      'Baby Care' ||
-      'Chocolates' ||
-      'Sweets' => () => _pushPage(context, const LocalStoresPage()),
-      'Herbs' => null,
+      'Cold Drinks & Juices' || 'Tea, Coffee & Milk Drinks' => () =>
+          _openLocalStoreCategory(context, 'beverages'),
+      'Snacks & Munchies' => () => _openLocalStoreCategory(context, 'snacks'),
+      'Breakfast & Instant Food' => () =>
+          _openLocalStoreCategory(context, 'noodles'),
+      'Sweet Tooth & Chocolates' || 'Bakery & Biscuits' => () =>
+          _pushPage(context, const BakeryPage()),
+      'Atta, Rice & Dal' => () => _openLocalStoreCategory(context, 'rice'),
+      'Masala, Cooking Oil & Ghee' => () =>
+          _openLocalStoreCategory(context, 'cooking-oil'),
+      'Chicken, Meat & Fresh Fish' => () =>
+          _pushPage(context, const MeatPage()),
       _ => null,
     };
+    return action ?? () => _showCategoryUnavailable(context);
+  }
+
+  void _showCategoryUnavailable(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('This category catalogue is not available in the demo.'),
+      ),
+    );
   }
 
   void _openLocalStoreCategory(BuildContext context, String categoryId) {
@@ -389,7 +447,7 @@ class _GridCategory extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             category.name,
-            maxLines: 2,
+            maxLines: 3,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: const TextStyle(
