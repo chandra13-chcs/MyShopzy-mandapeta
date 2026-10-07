@@ -1,0 +1,1143 @@
+import 'package:flutter/material.dart';
+
+import '../../cart/data/cart_store.dart';
+
+class CheckoutPage extends StatefulWidget {
+  const CheckoutPage({super.key});
+
+  @override
+  State<CheckoutPage> createState() => _CheckoutPageState();
+}
+
+class _CheckoutPageState extends State<CheckoutPage> {
+  static const _background = Color(0xFFFCFDFC);
+  static const _green = Color(0xFF2C7C65);
+  static const _lightGreen = Color(0xFFEFF8F4);
+  static const _mainText = Color(0xFF202321);
+  static const _secondaryText = Color(0xFF777C79);
+  static const _border = Color(0xFFE7EAE8);
+
+  // Later serviceability is shop/store -> confirmed delivery destination,
+  // never buyer GPS -> destination. No distance check is performed here.
+  // Kept isolated as a demo placeholder for future backend pricing.
+  static const _demoDeliveryChargeInPaise = 3000;
+  static const List<_DemoCoupon> _demoCoupons = [
+    _DemoCoupon(code: 'MYSHOPZY50', discountInPaise: 5000),
+    _DemoCoupon(code: 'WELCOME100', discountInPaise: 10000),
+    _DemoCoupon(code: 'FIRSTORDER', discountPercent: 15),
+  ];
+
+  final _cartStore = CartStore.instance;
+  final _receiverNameController = TextEditingController();
+  final _receiverMobileController = TextEditingController();
+  final _deliveryAddressController = TextEditingController();
+  final _landmarkController = TextEditingController();
+  final _newAddressController = TextEditingController();
+  final _newAddressLandmarkController = TextEditingController();
+  final List<CheckoutDeliveryAddress> _savedAddresses = [
+    const CheckoutDeliveryAddress(
+      id: 'home',
+      addressType: 'Home',
+      formattedAddress: '12 Green Park Road, Ravulapalem',
+    ),
+    const CheckoutDeliveryAddress(
+      id: 'work',
+      addressType: 'Work',
+      formattedAddress: '24 Market Street, Ravulapalem',
+    ),
+    const CheckoutDeliveryAddress(
+      id: 'other',
+      addressType: 'Other',
+      formattedAddress: '8 River View Lane, Ravulapalem',
+    ),
+  ];
+
+  CheckoutDeliveryAddress? _confirmedDeliveryAddress;
+  bool _currentLocationSuggested = false;
+  bool _someoneElseSelected = false;
+  String _newAddressType = 'Other';
+  String _selectedPaymentMethod = 'UPI';
+  _DemoCoupon? _selectedCoupon;
+
+  int get _subtotalInPaise => _cartStore.subtotalInPaise;
+
+  int get _discountInPaise {
+    final coupon = _selectedCoupon;
+    if (coupon == null) return 0;
+    final discount =
+        coupon.discountInPaise ??
+        (_subtotalInPaise * coupon.discountPercent! ~/ 100);
+    return discount.clamp(0, _subtotalInPaise);
+  }
+
+  int get _deliveryChargeInPaise =>
+      _cartStore.items.isEmpty ? 0 : _demoDeliveryChargeInPaise;
+
+  int get _totalInPaise =>
+      _subtotalInPaise + _deliveryChargeInPaise - _discountInPaise;
+
+  @override
+  void dispose() {
+    _receiverNameController.dispose();
+    _receiverMobileController.dispose();
+    _deliveryAddressController.dispose();
+    _landmarkController.dispose();
+    _newAddressController.dispose();
+    _newAddressLandmarkController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _background,
+      appBar: AppBar(
+        backgroundColor: _background,
+        foregroundColor: _mainText,
+        surfaceTintColor: _background,
+        title: const Text(
+          'Checkout',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: _cartStore,
+          builder: (context, child) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDeliverySection(),
+                  const SizedBox(height: 16),
+                  _buildOrderSummary(),
+                  const SizedBox(height: 16),
+                  _buildCouponSection(),
+                  const SizedBox(height: 16),
+                  _buildPaymentSection(),
+                  const SizedBox(height: 16),
+                  _buildPriceDetails(),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Demo checkout · delivery and discounts are illustrative.',
+                    style: TextStyle(color: _secondaryText, fontSize: 11),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      bottomNavigationBar: AnimatedBuilder(
+        animation: _cartStore,
+        builder: (context, child) {
+          final canPlaceOrder =
+              _cartStore.items.isNotEmpty && _confirmedDeliveryAddress != null;
+          return SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(top: BorderSide(color: _border)),
+              ),
+              child: SizedBox(
+                height: 52,
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: canPlaceOrder ? _showOrderFlowMessage : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _green,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: _border,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: const Text(
+                    'Place Order',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDeliverySection() {
+    return _sectionCard(
+      title: 'Delivery Location',
+      icon: Icons.location_on_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: _lightGreen,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _border),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.location_on_outlined, color: _green, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _confirmedDeliveryAddress == null
+                      ? const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Select delivery location',
+                              style: TextStyle(
+                                color: _mainText,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Choose where this order should be delivered.',
+                              style: TextStyle(
+                                color: _secondaryText,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Delivering to',
+                              style: TextStyle(
+                                color: _secondaryText,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              _confirmedDeliveryAddress!.addressType,
+                              style: const TextStyle(
+                                color: _mainText,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              _confirmedDeliveryAddress!.formattedAddress,
+                              style: const TextStyle(
+                                color: _secondaryText,
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
+                            ),
+                            if (_confirmedDeliveryAddress!.receiverName !=
+                                null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Receiver: '
+                                '${_confirmedDeliveryAddress!.receiverName}',
+                                style: const TextStyle(
+                                  color: _secondaryText,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                ),
+                TextButton(
+                  onPressed: _showDeliveryOptions,
+                  child: const Text('Change'),
+                ),
+              ],
+            ),
+          ),
+          if (_currentLocationSuggested) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: _border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.my_location_outlined, color: _green, size: 19),
+                      SizedBox(width: 8),
+                      Text(
+                        'Suggested Current Location',
+                        style: TextStyle(
+                          color: _mainText,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 27, top: 4),
+                    child: Text(
+                      'Demo suggestion only · no GPS accessed. Confirm it '
+                      'before it becomes the delivery destination.',
+                      style: TextStyle(
+                        color: _secondaryText,
+                        fontSize: 11,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.tonal(
+                      onPressed: _confirmSuggestedCurrentLocation,
+                      style: FilledButton.styleFrom(
+                        foregroundColor: _green,
+                        backgroundColor: _lightGreen,
+                      ),
+                      child: const Text('Confirm this location'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_someoneElseSelected) ...[
+            const SizedBox(height: 12),
+            _buildAddressForm(
+              nameController: _receiverNameController,
+              mobileController: _receiverMobileController,
+              addressController: _deliveryAddressController,
+              landmarkController: _landmarkController,
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _deliveryAddressController.text.trim().isEmpty
+                    ? null
+                    : _confirmSomeoneElseAddress,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _green,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Confirm Delivery Address'),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _showNewAddressForm,
+              icon: const Icon(Icons.add_rounded, size: 19),
+              label: const Text('+ Add New Address'),
+              style: TextButton.styleFrom(foregroundColor: _green),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showDeliveryOptions() {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _background,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Choose Delivery Location',
+                style: TextStyle(
+                  color: _mainText,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _deliveryOptionTile(
+                icon: Icons.my_location_outlined,
+                title: 'Use Current Location',
+                subtitle: 'Use my current location · Demo suggestion only',
+                onTap: () {
+                  setState(() {
+                    _currentLocationSuggested = true;
+                    _someoneElseSelected = false;
+                    _confirmedDeliveryAddress = null;
+                  });
+                  Navigator.of(sheetContext).pop();
+                },
+              ),
+              const Padding(
+                padding: EdgeInsets.only(left: 48, bottom: 8),
+                child: Text(
+                  'It will not become the delivery destination until you '
+                  'confirm it.',
+                  style: TextStyle(
+                    color: _secondaryText,
+                    fontSize: 11,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 6, bottom: 5),
+                child: Text(
+                  'Saved Addresses',
+                  style: TextStyle(
+                    color: _mainText,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              for (final address in _savedAddresses)
+                _deliveryOptionTile(
+                  icon: _addressIcon(address.addressType),
+                  title: address.addressType,
+                  subtitle: address.formattedAddress,
+                  onTap: () {
+                    setState(() {
+                      _confirmedDeliveryAddress = address;
+                      _currentLocationSuggested = false;
+                      _someoneElseSelected = false;
+                    });
+                    Navigator.of(sheetContext).pop();
+                  },
+                ),
+              _deliveryOptionTile(
+                icon: Icons.person_add_alt_1_outlined,
+                title: 'Deliver to Someone Else',
+                subtitle: 'Enter receiver and delivery details',
+                onTap: () {
+                  setState(() {
+                    _confirmedDeliveryAddress = null;
+                    _currentLocationSuggested = false;
+                    _someoneElseSelected = true;
+                  });
+                  Navigator.of(sheetContext).pop();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _deliveryOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return Card(
+      color: Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: _border),
+      ),
+      child: ListTile(
+        onTap: onTap,
+        leading: Icon(icon, color: _green),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: _mainText,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: const TextStyle(color: _secondaryText, fontSize: 11),
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded, color: _green),
+      ),
+    );
+  }
+
+  Widget _buildAddressForm({
+    required TextEditingController nameController,
+    required TextEditingController mobileController,
+    required TextEditingController addressController,
+    required TextEditingController landmarkController,
+  }) {
+    return Column(
+      children: [
+        _addressField(nameController, 'Receiver Name'),
+        const SizedBox(height: 9),
+        _addressField(
+          mobileController,
+          'Receiver Mobile Number',
+          keyboardType: TextInputType.phone,
+        ),
+        const SizedBox(height: 9),
+        _addressField(addressController, 'Delivery Address', maxLines: 2),
+        const SizedBox(height: 9),
+        _addressField(landmarkController, 'Landmark (optional)'),
+      ],
+    );
+  }
+
+  Future<void> _showNewAddressForm() {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _background,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              20,
+              20,
+              20 + MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Add New Address',
+                    style: TextStyle(
+                      color: _mainText,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: _newAddressType,
+                    decoration: InputDecoration(
+                      labelText: 'Address Type',
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'Home', child: Text('Home')),
+                      DropdownMenuItem(value: 'Work', child: Text('Work')),
+                      DropdownMenuItem(value: 'Other', child: Text('Other')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setSheetState(() => _newAddressType = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  _addressField(
+                    _newAddressController,
+                    'Full Address',
+                    maxLines: 2,
+                    onChanged: () => setSheetState(() {}),
+                  ),
+                  const SizedBox(height: 10),
+                  _addressField(
+                    _newAddressLandmarkController,
+                    'Landmark (optional)',
+                    onChanged: () => setSheetState(() {}),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _newAddressController.text.trim().isEmpty
+                          ? null
+                          : () {
+                              _saveNewAddress();
+                              Navigator.of(sheetContext).pop();
+                            },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _green,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Save and Deliver Here'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ).whenComplete(() {
+      _newAddressController.clear();
+      _newAddressLandmarkController.clear();
+      _newAddressType = 'Other';
+    });
+  }
+
+  Widget _addressField(
+    TextEditingController controller,
+    String label, {
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    VoidCallback? onChanged,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      onChanged: (_) {
+        setState(() {});
+        onChanged?.call();
+      },
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _green),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrderSummary() {
+    final items = _cartStore.items;
+    return _sectionCard(
+      title: 'Order Summary',
+      icon: Icons.shopping_bag_outlined,
+      trailing: Text(
+        '${items.length} ${items.length == 1 ? 'item' : 'items'}',
+        style: const TextStyle(color: _secondaryText, fontSize: 12),
+      ),
+      child: items.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Your cart is empty.',
+                style: TextStyle(color: _secondaryText, fontSize: 13),
+              ),
+            )
+          : Column(
+              children: [
+                for (var index = 0; index < items.length; index++) ...[
+                  _buildCartItem(items[index]),
+                  if (index < items.length - 1)
+                    const Divider(height: 20, color: _border),
+                ],
+                const Divider(height: 22, color: _border),
+                _priceRow('Subtotal', _formatPrice(_subtotalInPaise)),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildCartItem(CartItem item) {
+    return Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: _lightGreen,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(item.icon, color: _green, size: 22),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _mainText,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Qty ${item.quantity} · ${_formatPrice(item.priceInPaise)} each',
+                style: const TextStyle(color: _secondaryText, fontSize: 11),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          _formatPrice(item.priceInPaise * item.quantity),
+          style: const TextStyle(
+            color: _mainText,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCouponSection() {
+    return _sectionCard(
+      title: 'Apply Coupon',
+      icon: Icons.local_offer_outlined,
+      child: _selectedCoupon == null
+          ? SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _showCouponPicker,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _green,
+                  side: const BorderSide(color: _border),
+                  alignment: Alignment.centerLeft,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.confirmation_number_outlined, size: 19),
+                    SizedBox(width: 8),
+                    Expanded(child: Text('Choose a demo coupon')),
+                    Icon(Icons.chevron_right_rounded),
+                  ],
+                ),
+              ),
+            )
+          : Row(
+              children: [
+                const Icon(Icons.check_circle_outline, color: _green, size: 21),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedCoupon!.code,
+                        style: const TextStyle(
+                          color: _mainText,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        'Discount ${_formatPrice(_discountInPaise)} · demo',
+                        style: const TextStyle(color: _green, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: _showCouponPicker,
+                  child: const Text('Change'),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => _selectedCoupon = null),
+                  tooltip: 'Remove coupon',
+                  icon: const Icon(Icons.close_rounded, size: 19),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildPaymentSection() {
+    return _sectionCard(
+      title: 'Payment Method',
+      icon: Icons.account_balance_wallet_outlined,
+      child: Column(
+        children: [
+          _paymentOption(
+            title: 'UPI',
+            status: 'Available',
+            icon: Icons.account_balance_wallet_outlined,
+            selected: _selectedPaymentMethod == 'UPI',
+            onTap: () => setState(() => _selectedPaymentMethod = 'UPI'),
+          ),
+          const SizedBox(height: 8),
+          _paymentOption(
+            title: 'Cash on Delivery',
+            status: 'Available',
+            icon: Icons.payments_outlined,
+            selected: _selectedPaymentMethod == 'Cash on Delivery',
+            onTap: () =>
+                setState(() => _selectedPaymentMethod = 'Cash on Delivery'),
+          ),
+          const SizedBox(height: 8),
+          _paymentOption(
+            title: 'Credit/Debit Card',
+            status: 'Coming soon',
+            icon: Icons.credit_card_outlined,
+            selected: false,
+            enabled: false,
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _paymentOption({
+    required String title,
+    required String status,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+    bool enabled = true,
+  }) {
+    final textColor = enabled ? _mainText : _secondaryText;
+    return Material(
+      color: selected ? _lightGreen : Colors.white,
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(13),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: selected ? _green : _border),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: enabled ? _green : _secondaryText, size: 21),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                status,
+                style: TextStyle(
+                  color: enabled ? _green : _secondaryText,
+                  fontSize: 11,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                color: selected ? _green : _secondaryText,
+                size: 19,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPriceDetails() {
+    return _sectionCard(
+      title: 'Price Details',
+      icon: Icons.receipt_long_outlined,
+      child: Column(
+        children: [
+          _priceRow('Subtotal', _formatPrice(_subtotalInPaise)),
+          const SizedBox(height: 10),
+          _priceRow('Delivery Charge', _formatPrice(_deliveryChargeInPaise)),
+          const SizedBox(height: 10),
+          _priceRow(
+            'Discount',
+            _discountInPaise == 0
+                ? '−${_formatPrice(0)}'
+                : '−${_formatPrice(_discountInPaise)}',
+            valueColor: _green,
+          ),
+          const Divider(height: 24, color: _border),
+          _priceRow('Total', _formatPrice(_totalInPaise), emphasize: true),
+          const SizedBox(height: 8),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Delivery charge is a demo value; serviceability and final '
+              'pricing are not checked here.',
+              style: TextStyle(
+                color: _secondaryText,
+                fontSize: 11,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+    Widget? trailing,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: _green, size: 21),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: _mainText,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              ?trailing,
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _priceRow(
+    String label,
+    String value, {
+    bool emphasize = false,
+    Color? valueColor,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: emphasize ? _mainText : _secondaryText,
+              fontSize: emphasize ? 14 : 12,
+              fontWeight: emphasize ? FontWeight.w700 : FontWeight.w400,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: valueColor ?? (emphasize ? _mainText : _secondaryText),
+            fontSize: emphasize ? 14 : 12,
+            fontWeight: emphasize ? FontWeight.w700 : FontWeight.w400,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showCouponPicker() async {
+    final coupon = await showModalBottomSheet<_DemoCoupon>(
+      context: context,
+      backgroundColor: _background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Available Coupons',
+                style: TextStyle(
+                  color: _mainText,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              for (final option in _demoCoupons)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.local_offer_outlined,
+                    color: _green,
+                  ),
+                  title: Text(
+                    option.code,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Text(
+                    option.discountInPaise != null
+                        ? 'Save ${_formatPrice(option.discountInPaise!)} · demo'
+                        : 'Save ${option.discountPercent}% · demo',
+                  ),
+                  trailing: const Icon(Icons.add_circle_outline, color: _green),
+                  onTap: () => Navigator.of(context).pop(option),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (coupon != null && mounted) {
+      setState(() => _selectedCoupon = coupon);
+    }
+  }
+
+  void _confirmSuggestedCurrentLocation() {
+    setState(() {
+      _confirmedDeliveryAddress = const CheckoutDeliveryAddress(
+        id: 'current-location-demo',
+        addressType: 'Current location',
+        formattedAddress: 'Demo suggested location',
+      );
+      _currentLocationSuggested = false;
+      _someoneElseSelected = false;
+    });
+  }
+
+  void _confirmSomeoneElseAddress() {
+    final formattedAddress = _deliveryAddressController.text.trim();
+    if (formattedAddress.isEmpty) return;
+    setState(() {
+      _confirmedDeliveryAddress = CheckoutDeliveryAddress(
+        id: 'someone-else',
+        addressType: 'Someone else',
+        formattedAddress: formattedAddress,
+        receiverName: _receiverNameController.text.trim(),
+        receiverMobile: _receiverMobileController.text.trim(),
+        landmark: _landmarkController.text.trim(),
+      );
+      _someoneElseSelected = false;
+      _currentLocationSuggested = false;
+    });
+  }
+
+  void _saveNewAddress() {
+    final address = CheckoutDeliveryAddress(
+      id: 'new-${DateTime.now().microsecondsSinceEpoch}',
+      addressType: _newAddressType,
+      formattedAddress: _newAddressController.text.trim(),
+      landmark: _newAddressLandmarkController.text.trim(),
+    );
+    setState(() {
+      _savedAddresses.add(address);
+      _confirmedDeliveryAddress = address;
+      _currentLocationSuggested = false;
+      _someoneElseSelected = false;
+    });
+  }
+
+  void _showOrderFlowMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Order flow will be connected next.')),
+    );
+  }
+
+  IconData _addressIcon(String addressType) {
+    return switch (addressType) {
+      'Home' => Icons.home_outlined,
+      'Work' => Icons.business_outlined,
+      _ => Icons.location_on_outlined,
+    };
+  }
+
+  String _formatPrice(int priceInPaise) {
+    final rupees = priceInPaise ~/ 100;
+    final paise = priceInPaise % 100;
+    if (paise == 0) return '₹$rupees';
+    return '₹$rupees.${paise.toString().padLeft(2, '0')}';
+  }
+}
+
+// Future backend validation: shop/store location -> confirmed delivery
+// destination. Never use buyer GPS as the destination; no distance is checked.
+const int serviceRadiusKm = 18;
+const serviceRadiusCategories = [
+  'Restaurants',
+  'Bakery',
+  'Local Stores',
+  'Meat',
+  'Vegetables & Fruits',
+];
+
+class CheckoutDeliveryAddress {
+  const CheckoutDeliveryAddress({
+    required this.id,
+    required this.addressType,
+    required this.formattedAddress,
+    this.latitude,
+    this.longitude,
+    this.receiverName,
+    this.receiverMobile,
+    this.landmark,
+  });
+
+  final String id;
+  final double? latitude;
+  final double? longitude;
+  final String formattedAddress;
+  final String? receiverName;
+  final String? receiverMobile;
+  final String addressType;
+  final String? landmark;
+}
+
+class _DemoCoupon {
+  const _DemoCoupon({
+    required this.code,
+    this.discountInPaise,
+    this.discountPercent,
+  });
+
+  final String code;
+  final int? discountInPaise;
+  final int? discountPercent;
+}
