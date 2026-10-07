@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myshopzy/features/orders/data/demo_refund_store.dart';
 import 'package:myshopzy/features/orders/models/order_record.dart';
 import 'package:myshopzy/features/orders/presentation/order_details_page.dart';
 import 'package:myshopzy/features/orders/presentation/order_tracking_page.dart';
@@ -97,6 +98,7 @@ void main() {
       await tester.tap(find.text('Confirm cancellation'));
       await tester.pumpAndSettle();
 
+      expect(DemoRefundStore.refundForOrderId('MSZ-DEMO-1043'), isNotNull);
       expect(find.text('Cancelled'), findsWidgets);
       expect(find.text('Order ID: MSZ-DEMO-1043'), findsOneWidget);
 

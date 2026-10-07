@@ -32,6 +32,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _receiverMobileController = TextEditingController();
   final _deliveryAddressController = TextEditingController();
   final _landmarkController = TextEditingController();
+  final _customDeliveryInstructionController = TextEditingController();
   final _newAddressController = TextEditingController();
   final _newAddressLandmarkController = TextEditingController();
   final List<CheckoutDeliveryAddress> _savedAddresses = [
@@ -58,6 +59,23 @@ class _CheckoutPageState extends State<CheckoutPage> {
   String _newAddressType = 'Other';
   String _selectedPaymentMethod = 'UPI';
   _DemoCoupon? _selectedCoupon;
+  String? _selectedQuickInstruction;
+
+  static const _quickDeliveryInstructions = [
+    'Leave at the door',
+    'Call me on arrival',
+    'Hand it to me',
+  ];
+
+  String? get _deliveryInstruction {
+    final customInstruction =
+        _customDeliveryInstructionController.text.trim();
+    final parts = [
+      ?_selectedQuickInstruction,
+      if (customInstruction.isNotEmpty) customInstruction,
+    ];
+    return parts.isEmpty ? null : parts.join('\n');
+  }
 
   int get _subtotalInPaise => _cartStore.subtotalInPaise;
 
@@ -82,6 +100,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     _receiverMobileController.dispose();
     _deliveryAddressController.dispose();
     _landmarkController.dispose();
+    _customDeliveryInstructionController.dispose();
     _newAddressController.dispose();
     _newAddressLandmarkController.dispose();
     super.dispose();
@@ -110,6 +129,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildDeliverySection(),
+                  const SizedBox(height: 16),
+                  _buildDeliveryInstructionsSection(),
                   const SizedBox(height: 16),
                   _buildOrderSummary(),
                   const SizedBox(height: 16),
@@ -352,6 +373,113 @@ class _CheckoutPageState extends State<CheckoutPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildDeliveryInstructionsSection() {
+    final hasInstructions =
+        _selectedQuickInstruction != null ||
+        _customDeliveryInstructionController.text.trim().isNotEmpty;
+    final instruction = _deliveryInstruction;
+    return _sectionCard(
+      title: 'Delivery Instructions',
+      icon: Icons.edit_note_rounded,
+      trailing: hasInstructions
+          ? TextButton(
+              onPressed: _clearDeliveryInstructions,
+              child: const Text('Clear'),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Choose one optional instruction',
+            style: TextStyle(color: _secondaryText, fontSize: 12),
+          ),
+          const SizedBox(height: 9),
+          Wrap(
+            spacing: 7,
+            runSpacing: 4,
+            children: [
+              for (final option in _quickDeliveryInstructions)
+                ChoiceChip(
+                  label: Text(option),
+                  selected: _selectedQuickInstruction == option,
+                  onSelected: (selected) {
+                    setState(() {
+                      _selectedQuickInstruction = selected ? option : null;
+                    });
+                  },
+                  selectedColor: _lightGreen,
+                  labelStyle: TextStyle(
+                    color: _selectedQuickInstruction == option
+                        ? _green
+                        : _mainText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  side: BorderSide(
+                    color: _selectedQuickInstruction == option
+                        ? _green
+                        : _border,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          TextField(
+            key: const ValueKey('custom-delivery-instructions'),
+            controller: _customDeliveryInstructionController,
+            maxLength: 200,
+            maxLines: 2,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: 'Custom instructions (optional)',
+              hintStyle: const TextStyle(
+                color: _secondaryText,
+                fontSize: 12,
+              ),
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.all(12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: _green),
+              ),
+            ),
+          ),
+          if (instruction != null)
+            Text(
+              instruction,
+              key: const ValueKey('delivery-instruction-preview'),
+              style: const TextStyle(
+                color: _secondaryText,
+                fontSize: 11,
+                height: 1.35,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _clearDeliveryInstructions() {
+    setState(() {
+      _selectedQuickInstruction = null;
+      _customDeliveryInstructionController.clear();
+    });
   }
 
   Future<void> _showDeliveryOptions() {

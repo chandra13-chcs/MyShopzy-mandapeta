@@ -51,6 +51,7 @@ class OrderRecord {
     this.trackingStatus,
     this.deliveryOtp,
     this.cancellationReason,
+    this.deliveryInstruction,
   });
 
   final String storeName;
@@ -72,6 +73,7 @@ class OrderRecord {
   OrderTrackingStatus? trackingStatus;
   final String? deliveryOtp;
   String? cancellationReason;
+  final String? deliveryInstruction;
 
   bool get canCustomerCancel =>
       orderTab == OrdersTab.ongoing &&

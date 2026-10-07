@@ -5,7 +5,9 @@ import '../../cart/presentation/cart_page.dart';
 import '../../product_details/data/product_availability_store.dart';
 import '../../product_details/models/product_details_product.dart';
 import '../../reviews/presentation/write_review_page.dart';
+import '../data/demo_refund_store.dart';
 import '../models/order_record.dart';
+import '../models/refund_record.dart';
 import 'order_tracking_page.dart';
 
 class OrderDetailsPage extends StatelessWidget {
@@ -33,6 +35,11 @@ class OrderDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final refund = DemoRefundStore.refundForCancelledOrder(order);
+    final noRefundRequired =
+        order.orderTab == OrdersTab.cancelled &&
+        DemoRefundStore.isCashOnDelivery(order.paymentMethod);
+
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
@@ -60,8 +67,16 @@ class OrderDetailsPage extends StatelessWidget {
               _buildPriceCard(),
               const SizedBox(height: 14),
               _buildPaymentCard(),
+              if (refund != null || noRefundRequired) ...[
+                const SizedBox(height: 14),
+                _buildRefundSection(refund, noRefundRequired),
+              ],
               const SizedBox(height: 14),
               _buildAddressCard(),
+              if (order.deliveryInstruction?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: 14),
+                _buildDeliveryInstructionsCard(),
+              ],
               if (_canShowOtp) ...[const SizedBox(height: 14), _buildOtpCard()],
               const SizedBox(height: 18),
               if (_canTrack) ...[
@@ -307,6 +322,130 @@ class OrderDetailsPage extends StatelessWidget {
     );
   }
 
+  Widget _buildRefundSection(
+    DemoRefundRecord? refund,
+    bool noRefundRequired,
+  ) {
+    if (noRefundRequired) {
+      return _SectionCard(
+        title: 'Refund Status',
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'No refund required',
+              style: TextStyle(
+                color: _mainText,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 5),
+            Text(
+              'Payment was not collected online.',
+              style: TextStyle(
+                color: _secondaryText,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (refund == null) return const SizedBox.shrink();
+    final failed = refund.status == DemoRefundStatus.refundFailed;
+    final statusColor = failed ? const Color(0xFFA85B5B) : _green;
+    final timeline = [
+      ('Cancelled Order', true),
+      ('Refund Initiated', true),
+      (
+        'Refund Processing',
+        refund.status != DemoRefundStatus.refundInitiated,
+      ),
+      (
+        failed ? 'Refund Failed' : 'Refund Completed',
+        refund.status == DemoRefundStatus.refundCompleted || failed,
+      ),
+    ];
+
+    return _SectionCard(
+      title: 'Refund Status',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _InfoRow(
+            label: 'Refund amount',
+            value: _formatPrice(refund.refundAmountInPaise),
+          ),
+          const SizedBox(height: 9),
+          _InfoRow(label: 'Payment method', value: refund.paymentMethod),
+          const SizedBox(height: 9),
+          _InfoRow(label: 'Refund ID · demo', value: refund.refundId),
+          const SizedBox(height: 12),
+          Text(
+            _refundStatusLabel(refund.status),
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (refund.status == DemoRefundStatus.refundFailed) ...[
+            const SizedBox(height: 5),
+            Text(
+              refund.failureReason ??
+                  'This is a local demo status. No refund was completed.',
+              style: const TextStyle(
+                color: _secondaryText,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ] else if (refund.status == DemoRefundStatus.refundProcessing &&
+              refund.expectedDate != null) ...[
+            const SizedBox(height: 5),
+            Text(
+              'Demo estimate: ${refund.expectedDate}',
+              style: const TextStyle(
+                color: _secondaryText,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ],
+          const SizedBox(height: 13),
+          const Divider(height: 1, color: _border),
+          const SizedBox(height: 12),
+          for (var index = 0; index < timeline.length; index++) ...[
+            _RefundTimelineStep(
+              title: timeline[index].$1,
+              isComplete: timeline[index].$2,
+              isLast: index == timeline.length - 1,
+            ),
+          ],
+          const SizedBox(height: 4),
+          const Text(
+            'Local demo status only. This does not confirm that a real refund was processed.',
+            style: TextStyle(
+              color: _secondaryText,
+              fontSize: 10,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _refundStatusLabel(DemoRefundStatus status) => switch (status) {
+    DemoRefundStatus.refundInitiated => 'Refund Initiated',
+    DemoRefundStatus.refundProcessing => 'Refund Processing',
+    DemoRefundStatus.refundCompleted => 'Refund Completed · Demo',
+    DemoRefundStatus.refundFailed => 'Refund Failed',
+  };
+
   Widget _buildAddressCard() {
     return _SectionCard(
       title: 'Delivery address',
@@ -326,6 +465,23 @@ class OrderDetailsPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDeliveryInstructionsCard() {
+    return _SectionCard(
+      title: 'Delivery Instructions',
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          order.deliveryInstruction!.trim(),
+          style: const TextStyle(
+            color: _mainText,
+            fontSize: 13,
+            height: 1.45,
+          ),
+        ),
       ),
     );
   }
@@ -458,6 +614,7 @@ class OrderDetailsPage extends StatelessWidget {
       );
       return;
     }
+    DemoRefundStore.recordCancellation(order);
     Navigator.of(context).pop(true);
   }
 
@@ -647,6 +804,68 @@ class OrderDetailsPage extends StatelessWidget {
     'Found better option',
     'Other',
   ];
+}
+
+class _RefundTimelineStep extends StatelessWidget {
+  const _RefundTimelineStep({
+    required this.title,
+    required this.isComplete,
+    required this.isLast,
+  });
+
+  final String title;
+  final bool isComplete;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isComplete
+        ? const Color(0xFF2C7C65)
+        : const Color(0xFFB8C0BB);
+    return SizedBox(
+      height: isLast ? 29 : 39,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 18,
+            child: Column(
+              children: [
+                Icon(
+                  isComplete
+                      ? Icons.check_circle_rounded
+                      : Icons.circle_outlined,
+                  color: color,
+                  size: 16,
+                ),
+                if (!isLast)
+                  Expanded(
+                    child: Container(
+                      width: 1.5,
+                      color: const Color(0xFFE1E6E2),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Text(
+              title,
+              style: TextStyle(
+                color: isComplete
+                    ? const Color(0xFF202321)
+                    : const Color(0xFF777C79),
+                fontSize: 12,
+                fontWeight: isComplete ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class OrderReceiptPage extends StatelessWidget {
