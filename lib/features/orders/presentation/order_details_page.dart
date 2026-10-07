@@ -23,6 +23,8 @@ class OrderDetailsPage extends StatelessWidget {
   bool get _canTrack =>
       order.orderTab == OrdersTab.ongoing && order.trackingStatus != null;
 
+  bool get _canCancel => order.canCustomerCancel;
+
   bool get _canReview =>
       order.orderTab == OrdersTab.delivered && order.items.isNotEmpty;
 
@@ -73,6 +75,26 @@ class OrderDetailsPage extends StatelessWidget {
                     style: FilledButton.styleFrom(
                       backgroundColor: _green,
                       foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (_canCancel) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _confirmCancellation(context),
+                    icon: const Icon(Icons.cancel_outlined),
+                    label: const Text('Cancel Order'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFA85B5B),
+                      side: const BorderSide(color: Color(0xFFA85B5B)),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -209,6 +231,13 @@ class OrderDetailsPage extends StatelessWidget {
           _InfoRow(label: 'Merchant', value: order.storeName),
           const SizedBox(height: 10),
           _InfoRow(label: 'Service', value: order.serviceType),
+          if (order.cancellationReason != null) ...[
+            const SizedBox(height: 10),
+            _InfoRow(
+              label: 'Cancellation reason',
+              value: order.cancellationReason!,
+            ),
+          ],
         ],
       ),
     );
@@ -355,6 +384,81 @@ class OrderDetailsPage extends StatelessWidget {
         builder: (context) => OrderReceiptPage(order: order),
       ),
     );
+  }
+
+  Future<void> _confirmCancellation(BuildContext context) async {
+    final reasonController = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        String? selectedReason;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final otherReason = reasonController.text.trim();
+            final canConfirm =
+                selectedReason != null &&
+                (selectedReason != 'Other' || otherReason.isNotEmpty);
+            return AlertDialog(
+              title: const Text('Cancel order?'),
+              content: SingleChildScrollView(
+                child: RadioGroup<String>(
+                  groupValue: selectedReason,
+                  onChanged: (value) =>
+                      setDialogState(() => selectedReason = value),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final option in _cancellationReasons)
+                        RadioListTile<String>(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(option),
+                          value: option,
+                        ),
+                      if (selectedReason == 'Other')
+                        TextField(
+                          controller: reasonController,
+                          onChanged: (_) => setDialogState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Please specify',
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Keep Order'),
+                ),
+                FilledButton(
+                  onPressed: canConfirm
+                      ? () {
+                          final value = selectedReason == 'Other'
+                              ? 'Other: ${reasonController.text.trim()}'
+                              : selectedReason!;
+                          Navigator.of(dialogContext).pop(value);
+                        }
+                      : null,
+                  child: const Text('Confirm cancellation'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    reasonController.dispose();
+    if (reason == null || !context.mounted) return;
+    if (!order.cancelByCustomer(reason)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('This order can no longer be cancelled.'),
+        ),
+      );
+      return;
+    }
+    Navigator.of(context).pop(true);
   }
 
   Future<void> _reviewProducts(BuildContext context) async {
@@ -535,6 +639,14 @@ class OrderDetailsPage extends StatelessWidget {
         ? '₹$rupees'
         : '₹$rupees.${paise.toString().padLeft(2, '0')}';
   }
+
+  static const _cancellationReasons = [
+    'Changed my mind',
+    'Ordered by mistake',
+    'Delivery taking too long',
+    'Found better option',
+    'Other',
+  ];
 }
 
 class OrderReceiptPage extends StatelessWidget {
@@ -606,6 +718,12 @@ class OrderReceiptPage extends StatelessWidget {
                 _ReceiptRow(label: 'Order ID', value: order.orderId),
                 _ReceiptRow(label: 'Date', value: order.dateTime),
                 _ReceiptRow(label: 'Merchant', value: order.storeName),
+                _ReceiptRow(label: 'Order Status', value: order.status),
+                if (order.cancellationReason != null)
+                  _ReceiptRow(
+                    label: 'Cancellation Reason',
+                    value: order.cancellationReason!,
+                  ),
                 const Divider(height: 23),
                 for (final item in order.items)
                   _ReceiptRow(

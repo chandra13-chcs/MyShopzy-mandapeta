@@ -9,7 +9,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
 
-    await tester.tap(find.text('View Details'));
+    await tester.tap(find.text('View Details').first);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Track Order'));
     await tester.tap(find.text('Track Order'));

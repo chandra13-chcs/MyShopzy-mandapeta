@@ -55,6 +55,38 @@ class OrdersPage extends StatelessWidget {
       deliveryOtp: '4821',
     ),
     OrderRecord(
+      storeName: 'Sunrise Dairy & Grocery',
+      icon: Icons.storefront_outlined,
+      orderId: 'MSZ-DEMO-1043',
+      dateTime: 'Today, 7:35 PM',
+      itemSummary: '2 items · Milk, Brown Bread',
+      totalInPaise: 17500,
+      status: 'Order Placed',
+      statusMessage: 'We have received your demo order',
+      orderTab: OrdersTab.ongoing,
+      serviceType: 'Local Store',
+      items: const [
+        OrderLineItem(
+          name: 'Farm Fresh Milk',
+          quantity: 1,
+          unitPriceInPaise: 9000,
+          icon: Icons.local_drink_rounded,
+        ),
+        OrderLineItem(
+          name: 'Brown Bread',
+          quantity: 1,
+          unitPriceInPaise: 5500,
+          icon: Icons.bakery_dining_rounded,
+        ),
+      ],
+      deliveryAddress: 'Home · 12 Green Park Road, Ravulapalem · demo address',
+      paymentMethod: 'UPI',
+      paymentStatus: 'Demo · not processed',
+      deliveryChargeInPaise: 3000,
+      discountInPaise: 0,
+      trackingStatus: OrderTrackingStatus.orderPlaced,
+    ),
+    OrderRecord(
       storeName: 'The Daily Bakery',
       icon: Icons.bakery_dining_outlined,
       orderId: 'MSZ-DEMO-0981',
@@ -161,15 +193,21 @@ class OrdersPage extends StatelessWidget {
         order.status = 'On the way';
         order.statusMessage = 'Your demo order is on its way';
         order.trackingStatus = OrderTrackingStatus.onTheWay;
+        order.cancellationReason = null;
       case OrdersTab.delivered:
         order.status = 'Delivered';
         order.statusMessage = 'Demo order completed successfully';
         order.trackingStatus = OrderTrackingStatus.delivered;
+        order.cancellationReason = null;
       case OrdersTab.cancelled:
         order.status = 'Cancelled';
         order.statusMessage = 'This demo order was cancelled';
         order.trackingStatus = null;
     }
+    refreshOrderCounts();
+  }
+
+  static void refreshOrderCounts() {
     ongoingOrderCount.value = _countOrdersForTab(OrdersTab.ongoing);
   }
 
@@ -348,11 +386,7 @@ class OrdersPage extends StatelessWidget {
                 ),
               ),
               TextButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (context) => OrderDetailsPage(order: order),
-                  ),
-                ),
+                onPressed: () => _openOrderDetails(context, order),
                 style: TextButton.styleFrom(foregroundColor: _green),
                 child: const Text(
                   'View Details',
@@ -364,6 +398,20 @@ class OrdersPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _openOrderDetails(
+    BuildContext context,
+    OrderRecord order,
+  ) async {
+    final cancelled = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (context) => OrderDetailsPage(order: order),
+      ),
+    );
+    if (cancelled != true || !context.mounted) return;
+    refreshOrderCounts();
+    DefaultTabController.of(context).animateTo(OrdersTab.cancelled.index);
   }
 }
 

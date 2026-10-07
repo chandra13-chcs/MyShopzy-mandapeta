@@ -94,7 +94,7 @@ void main() {
   testWidgets('OrdersPage View Details opens OrderDetailsPage', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
 
-    await tester.tap(find.text('View Details'));
+    await tester.tap(find.text('View Details').first);
     await tester.pumpAndSettle();
 
     expect(find.byType(OrderDetailsPage), findsOneWidget);
@@ -109,7 +109,7 @@ void main() {
 
     await tester.tap(find.text('Delivered'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('View Details'));
+    await tester.tap(find.text('View Details').first);
     await tester.pumpAndSettle();
     expect(find.text('Delivered'), findsWidgets);
     expect(find.text('Track Order'), findsNothing);
@@ -118,7 +118,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancelled'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('View Details'));
+    await tester.tap(find.text('View Details').first);
     await tester.pumpAndSettle();
     expect(find.text('Cancelled'), findsWidgets);
     expect(find.text('Track Order'), findsNothing);

@@ -50,6 +50,7 @@ class OrderRecord {
     required this.discountInPaise,
     this.trackingStatus,
     this.deliveryOtp,
+    this.cancellationReason,
   });
 
   final String storeName;
@@ -70,6 +71,28 @@ class OrderRecord {
   OrdersTab orderTab;
   OrderTrackingStatus? trackingStatus;
   final String? deliveryOtp;
+  String? cancellationReason;
+
+  bool get canCustomerCancel =>
+      orderTab == OrdersTab.ongoing &&
+      switch (trackingStatus) {
+        OrderTrackingStatus.orderPlaced ||
+        OrderTrackingStatus.orderConfirmed ||
+        OrderTrackingStatus.preparing => true,
+        _ => false,
+      };
+
+  bool cancelByCustomer(String reason) {
+    final normalizedReason = reason.trim();
+    if (!canCustomerCancel || normalizedReason.isEmpty) return false;
+
+    status = 'Cancelled';
+    statusMessage = 'This order was cancelled';
+    orderTab = OrdersTab.cancelled;
+    trackingStatus = null;
+    cancellationReason = normalizedReason;
+    return true;
+  }
 
   int get itemTotalInPaise =>
       items.fold(0, (total, item) => total + item.lineTotalInPaise);
