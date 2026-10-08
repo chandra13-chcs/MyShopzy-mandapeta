@@ -5,6 +5,7 @@ import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
+import '../../local_stores/data/local_store_session.dart';
 import '../../meat/presentation/meat_page.dart';
 import '../../parcel/presentation/parcel_page.dart';
 import '../../restaurants/presentation/restaurants_page.dart';
@@ -985,6 +986,7 @@ class HomePage extends StatelessWidget {
   ProductDetailsProduct _groceryDiscoveryProductDetails(
     _GroceryDiscoveryProduct product,
   ) {
+    LocalStoreSession.instance.select(product.store);
     return ProductDetailsProduct(
       id: product.productId,
       serviceType: 'local_store',

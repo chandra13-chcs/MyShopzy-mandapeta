@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../models/cart_order_context.dart';
+
 class CartStore extends ChangeNotifier {
   CartStore._();
 
@@ -21,15 +23,22 @@ class CartStore extends ChangeNotifier {
     required String productId,
     required String serviceType,
     String? merchantId,
+    String? serviceVariant,
   }) {
-    final key = '$serviceType:${merchantId ?? ''}:$productId';
+    final key = CartItem.keyFor(
+      serviceType: serviceType,
+      merchantId: merchantId,
+      serviceVariant: serviceVariant,
+      productId: productId,
+    );
     return _findItem(key)?.quantity ?? 0;
   }
 
-  void addItem({
+  bool addItem({
     required String productId,
     required String serviceType,
     String? merchantId,
+    String? serviceVariant,
     String? categoryId,
     required String name,
     required String description,
@@ -37,12 +46,24 @@ class CartStore extends ChangeNotifier {
     String? imageUrl,
     required IconData icon,
   }) {
-    final key = '$serviceType:${merchantId ?? ''}:$productId';
+    final incomingContext = CartOrderContext(
+      serviceType: serviceType,
+      merchantId: merchantId,
+      serviceVariant: serviceVariant,
+    );
+    if (!canAddContext(incomingContext)) return false;
+
+    final key = CartItem.keyFor(
+      serviceType: serviceType,
+      merchantId: merchantId,
+      serviceVariant: serviceVariant,
+      productId: productId,
+    );
     for (final item in _items) {
       if (item.key == key) {
         item.quantity++;
         notifyListeners();
-        return;
+        return true;
       }
     }
 
@@ -52,6 +73,7 @@ class CartStore extends ChangeNotifier {
         productId: productId,
         serviceType: serviceType,
         merchantId: merchantId,
+        serviceVariant: serviceVariant,
         categoryId: categoryId,
         name: name,
         description: description,
@@ -61,13 +83,51 @@ class CartStore extends ChangeNotifier {
       ),
     );
     notifyListeners();
+    return true;
   }
 
-  void increaseQuantity(String key) {
+  bool canAddItem({
+    required String serviceType,
+    String? merchantId,
+    String? serviceVariant,
+  }) {
+    return canAddContext(
+      CartOrderContext(
+        serviceType: serviceType,
+        merchantId: merchantId,
+        serviceVariant: serviceVariant,
+      ),
+    );
+  }
+
+  bool canAddContext(CartOrderContext context) {
+    return _items.every((item) => item.orderContext.isCompatibleWith(context));
+  }
+
+  String? incompatibilityMessage({
+    required String serviceType,
+    String? merchantId,
+    String? serviceVariant,
+  }) {
+    final incomingContext = CartOrderContext(
+      serviceType: serviceType,
+      merchantId: merchantId,
+      serviceVariant: serviceVariant,
+    );
+    for (final item in _items) {
+      if (!item.orderContext.isCompatibleWith(incomingContext)) {
+        return incomingContext.incompatibilityMessageWith(item.orderContext);
+      }
+    }
+    return null;
+  }
+
+  bool increaseQuantity(String key) {
     final item = _findItem(key);
-    if (item == null) return;
+    if (item == null || !canAddContext(item.orderContext)) return false;
     item.quantity++;
     notifyListeners();
+    return true;
   }
 
   void decreaseQuantity(String key) {
@@ -107,6 +167,7 @@ class CartItem {
     required this.priceInPaise,
     required this.icon,
     this.merchantId,
+    this.serviceVariant,
     this.categoryId,
     this.imageUrl,
     this.quantity = 1,
@@ -116,6 +177,7 @@ class CartItem {
   final String productId;
   final String serviceType;
   final String? merchantId;
+  final String? serviceVariant;
   final String? categoryId;
   final String name;
   final String description;
@@ -123,4 +185,23 @@ class CartItem {
   final String? imageUrl;
   final IconData icon;
   int quantity;
+
+  CartOrderContext get orderContext => CartOrderContext(
+    serviceType: serviceType,
+    merchantId: merchantId,
+    serviceVariant: serviceVariant,
+  );
+
+  static String keyFor({
+    required String serviceType,
+    required String productId,
+    String? merchantId,
+    String? serviceVariant,
+  }) {
+    final merchant = merchantId ?? '';
+    final variant = serviceVariant;
+    return variant == null
+        ? '$serviceType:$merchant:$productId'
+        : '$serviceType:$merchant:$variant:$productId';
+  }
 }

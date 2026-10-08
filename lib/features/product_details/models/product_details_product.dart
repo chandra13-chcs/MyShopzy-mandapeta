@@ -9,6 +9,7 @@ class ProductDetailsProduct {
     required this.available,
     this.merchantId,
     this.merchantName,
+    this.serviceVariant,
     this.categoryId,
     this.brand,
     this.description,
@@ -29,6 +30,7 @@ class ProductDetailsProduct {
   final bool available;
   final String? merchantId;
   final String? merchantName;
+  final String? serviceVariant;
   final String? categoryId;
   final String? brand;
   final String? description;

@@ -216,6 +216,7 @@ class CartProductControl extends StatelessWidget {
     required this.available,
     super.key,
     this.merchantId,
+    this.serviceVariant,
     this.categoryId,
     this.imageUrl,
     this.width = 88,
@@ -226,6 +227,7 @@ class CartProductControl extends StatelessWidget {
   final String productId;
   final String serviceType;
   final String? merchantId;
+  final String? serviceVariant;
   final String? categoryId;
   final String name;
   final String description;
@@ -259,12 +261,13 @@ class CartProductControl extends StatelessWidget {
               productId: productId,
               serviceType: serviceType,
               merchantId: merchantId,
+              serviceVariant: serviceVariant,
             );
             return SizedBox(
               width: width,
               height: height,
               child: quantity == 0
-                  ? _buildAddButton(store, isAvailable)
+              ? _buildAddButton(context, store, isAvailable)
                   : _buildQuantityControl(
                       context,
                       store,
@@ -278,21 +281,43 @@ class CartProductControl extends StatelessWidget {
     );
   }
 
-  Widget _buildAddButton(CartStore store, bool isAvailable) {
+  Widget _buildAddButton(
+    BuildContext context,
+    CartStore store,
+    bool isAvailable,
+  ) {
     return _controlSurface(
       isAvailable: isAvailable,
       onTap: isAvailable
-          ? () => store.addItem(
-              productId: productId,
-              serviceType: serviceType,
-              merchantId: merchantId,
-              categoryId: categoryId,
-              name: name,
-              description: description,
-              priceInPaise: priceInPaise,
-              imageUrl: imageUrl,
-              icon: icon,
-            )
+          ? () {
+              final added = store.addItem(
+                productId: productId,
+                serviceType: serviceType,
+                merchantId: merchantId,
+                serviceVariant: serviceVariant,
+                categoryId: categoryId,
+                name: name,
+                description: description,
+                priceInPaise: priceInPaise,
+                imageUrl: imageUrl,
+                icon: icon,
+              );
+              if (!added) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      store.incompatibilityMessage(
+                            serviceType: serviceType,
+                            merchantId: merchantId,
+                            serviceVariant: serviceVariant,
+                          ) ??
+                          'Please complete or clear your current order before '
+                              'adding these items.',
+                    ),
+                  ),
+                );
+              }
+            }
           : null,
       child: Text(
         isAvailable ? 'ADD' : unavailableLabel,
@@ -365,7 +390,21 @@ class CartProductControl extends StatelessWidget {
                 );
                 return;
               }
-              store.increaseQuantity(_cartKey);
+              if (!store.increaseQuantity(_cartKey)) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      store.incompatibilityMessage(
+                            serviceType: serviceType,
+                            merchantId: merchantId,
+                            serviceVariant: serviceVariant,
+                          ) ??
+                          'Please complete or clear your current order before '
+                              'adding these items.',
+                    ),
+                  ),
+                );
+              }
             },
           ),
         ],
@@ -421,5 +460,10 @@ class CartProductControl extends StatelessWidget {
     );
   }
 
-  String get _cartKey => '$serviceType:${merchantId ?? ''}:$productId';
+  String get _cartKey => CartItem.keyFor(
+    serviceType: serviceType,
+    merchantId: merchantId,
+    serviceVariant: serviceVariant,
+    productId: productId,
+  );
 }

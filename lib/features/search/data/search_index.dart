@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../../bakery/presentation/bakery_menu_page.dart';
 import '../../bakery/presentation/bakery_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
-import '../../local_stores/presentation/local_stores_page.dart';
+import '../../local_stores/data/local_store_session.dart';
+import '../../local_stores/models/local_store.dart';
 import '../../meat/presentation/chicken_page.dart';
 import '../../meat/presentation/meat_catalog_page.dart';
 import '../../meat/presentation/mutton_page.dart';
@@ -174,6 +175,7 @@ class SearchIndex {
         final store = sampleLocalStores.firstWhere(
           (store) => store.id == item.storeId,
         );
+        LocalStoreSession.instance.select(store);
         return ProductDetailsProduct(
           id: item.id,
           serviceType: 'local_store',
@@ -222,6 +224,7 @@ class SearchIndex {
         return ProductDetailsProduct(
           id: item.id,
           serviceType: 'vegetables_fruits',
+          serviceVariant: item.type.name,
           categoryId: item.categoryId,
           name: item.name,
           imageUrl: item.imageUrl,

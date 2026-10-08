@@ -690,6 +690,7 @@ class _ProduceProductCard extends StatelessWidget {
                       product: ProductDetailsProduct(
                         id: product.id,
                         serviceType: 'vegetables_fruits',
+                        serviceVariant: product.type.name,
                         categoryId: product.categoryId,
                         name: product.name,
                         imageUrl: product.imageUrl,
@@ -715,6 +716,7 @@ class _ProduceProductCard extends StatelessWidget {
                     available: product.available,
                     productId: product.id,
                     serviceType: 'vegetables_fruits',
+                    serviceVariant: product.type.name,
                     categoryId: product.categoryId,
                     name: product.name,
                     description: '${product.packSize} · ${product.type.name}',
@@ -860,6 +862,7 @@ class _ProduceProductCard extends StatelessWidget {
           product: ProductDetailsProduct(
             id: product.id,
             serviceType: 'vegetables_fruits',
+            serviceVariant: product.type.name,
             categoryId: product.categoryId,
             name: product.name,
             imageUrl: product.imageUrl,
@@ -878,6 +881,7 @@ class _ProduceProductCard extends StatelessWidget {
                   (related) => ProductDetailsProduct(
                     id: related.id,
                     serviceType: 'vegetables_fruits',
+                    serviceVariant: related.type.name,
                     categoryId: related.categoryId,
                     name: related.name,
                     imageUrl: related.imageUrl,

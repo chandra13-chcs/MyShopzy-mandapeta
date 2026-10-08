@@ -138,6 +138,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                       productId: product.id,
                       serviceType: product.serviceType,
                       merchantId: product.merchantId,
+                      serviceVariant: product.serviceVariant,
                       categoryId: product.categoryId,
                       name: product.name,
                       description: _cartDescription(product),

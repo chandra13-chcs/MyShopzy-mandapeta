@@ -1,78 +1,20 @@
 import 'package:flutter/material.dart';
 
+export '../models/local_store.dart';
+
+import '../data/local_store_session.dart';
+import '../models/local_store.dart';
 import 'local_store_catalog_page.dart';
 
-enum LocalStoreStatus { open, closed }
-
-class LocalStore {
-  const LocalStore({
-    required this.id,
-    required this.name,
-    required this.rating,
-    required this.deliveryTime,
-    required this.distance,
-    required this.locality,
-    required this.isOpen,
-    this.imageUrl,
-    this.offer,
+class LocalStoresPage extends StatelessWidget {
+  const LocalStoresPage({
+    super.key,
+    this.stores = sampleLocalStores,
+    this.initialCategoryId,
   });
 
-  final String id;
-  final String name;
-  final String? imageUrl;
-  final double rating;
-  final String deliveryTime;
-  final String distance;
-  final String locality;
-  final String? offer;
-  final bool isOpen;
-}
-
-const sampleLocalStores = [
-  LocalStore(
-    id: 'sri-lakshmi-general-store',
-    name: 'Sri Lakshmi General Store',
-    rating: 4.6,
-    deliveryTime: '15–20 min',
-    distance: '1.2 km',
-    locality: 'Mandapeta',
-    offer: '10% OFF',
-    isOpen: true,
-  ),
-  LocalStore(
-    id: 'venkateswara-stores',
-    name: 'Venkateswara Stores',
-    rating: 4.4,
-    deliveryTime: '20–25 min',
-    distance: '2.4 km',
-    locality: 'Mandapeta',
-    isOpen: true,
-  ),
-  LocalStore(
-    id: 'sai-balaji-supermarket',
-    name: 'Sai Balaji Supermarket',
-    rating: 4.7,
-    deliveryTime: '20–30 min',
-    distance: '3.1 km',
-    locality: 'Mandapeta',
-    offer: 'FREE DELIVERY',
-    isOpen: true,
-  ),
-  LocalStore(
-    id: 'sri-durga-general-stores',
-    name: 'Sri Durga General Stores',
-    rating: 4.3,
-    deliveryTime: '25–30 min',
-    distance: '4.8 km',
-    locality: 'Mandapeta',
-    isOpen: false,
-  ),
-];
-
-class LocalStoresPage extends StatelessWidget {
-  const LocalStoresPage({super.key, this.stores = sampleLocalStores});
-
   final List<LocalStore> stores;
+  final String? initialCategoryId;
 
   static const _ink = Color(0xFF17251F);
   static const _muted = Color(0xFF727A74);
@@ -87,6 +29,7 @@ class LocalStoresPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final nearbyStores = eligibleLocalStores(stores);
     return Scaffold(
       backgroundColor: _page,
       body: SafeArea(
@@ -111,7 +54,7 @@ class LocalStoresPage extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '${stores.length} places',
+                        '${nearbyStores.length} places',
                         style: const TextStyle(
                           color: _muted,
                           fontSize: 12,
@@ -121,19 +64,26 @@ class LocalStoresPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 13),
-                  for (var index = 0; index < stores.length; index++) ...[
+                  for (var index = 0; index < nearbyStores.length; index++) ...[
                     _StoreCard(
-                      store: stores[index],
+                      store: nearbyStores[index],
+                      recommended: index == 0,
                       placeholderColor:
                           _coverColors[index % _coverColors.length],
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (context) =>
-                              LocalStoreCatalogPage(store: stores[index]),
-                        ),
-                      ),
+                      onTap: () {
+                        final store = nearbyStores[index];
+                        LocalStoreSession.instance.select(store);
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (context) => LocalStoreCatalogPage(
+                              store: store,
+                              initialCategoryId: initialCategoryId,
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                    if (index < stores.length - 1)
+                    if (index < nearbyStores.length - 1)
                       const SizedBox(height: 14),
                   ],
                 ],
@@ -243,11 +193,13 @@ class LocalStoresPage extends StatelessWidget {
 class _StoreCard extends StatelessWidget {
   const _StoreCard({
     required this.store,
+    required this.recommended,
     required this.placeholderColor,
     required this.onTap,
   });
 
   final LocalStore store;
+  final bool recommended;
   final Color placeholderColor;
   final VoidCallback onTap;
 
@@ -295,6 +247,29 @@ class _StoreCard extends StatelessWidget {
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (recommended)
+                    Positioned(
+                      bottom: 11,
+                      left: 11,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: const Text(
+                          'Recommended',
+                          style: TextStyle(
+                            color: _green,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
@@ -426,9 +401,7 @@ class _StoreCard extends StatelessWidget {
                       const SizedBox(width: 5),
                       Icon(
                         Icons.circle,
-                        color: store.isOpen
-                            ? _green
-                            : const Color(0xFF929892),
+                        color: store.isOpen ? _green : const Color(0xFF929892),
                         size: 7,
                       ),
                       const SizedBox(width: 4),

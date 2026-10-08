@@ -280,10 +280,12 @@ class _WishlistProductCard extends StatelessWidget {
       );
       return;
     }
-    CartStore.instance.addItem(
+    final cart = CartStore.instance;
+    final added = cart.addItem(
       productId: product.id,
       serviceType: product.serviceType,
       merchantId: product.merchantId,
+      serviceVariant: product.serviceVariant,
       categoryId: product.categoryId,
       name: product.name,
       description: [
@@ -295,6 +297,22 @@ class _WishlistProductCard extends StatelessWidget {
       imageUrl: product.imageUrl,
       icon: product.icon,
     );
+    if (!added) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            cart.incompatibilityMessage(
+                  serviceType: product.serviceType,
+                  merchantId: product.merchantId,
+                  serviceVariant: product.serviceVariant,
+                ) ??
+                'Please complete or clear your current order before adding '
+                    'these items.',
+          ),
+        ),
+      );
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${product.name} added to cart.')),
     );

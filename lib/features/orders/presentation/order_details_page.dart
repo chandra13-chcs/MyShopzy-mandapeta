@@ -322,10 +322,7 @@ class OrderDetailsPage extends StatelessWidget {
     );
   }
 
-  Widget _buildRefundSection(
-    DemoRefundRecord? refund,
-    bool noRefundRequired,
-  ) {
+  Widget _buildRefundSection(DemoRefundRecord? refund, bool noRefundRequired) {
     if (noRefundRequired) {
       return _SectionCard(
         title: 'Refund Status',
@@ -360,10 +357,7 @@ class OrderDetailsPage extends StatelessWidget {
     final timeline = [
       ('Cancelled Order', true),
       ('Refund Initiated', true),
-      (
-        'Refund Processing',
-        refund.status != DemoRefundStatus.refundInitiated,
-      ),
+      ('Refund Processing', refund.status != DemoRefundStatus.refundInitiated),
       (
         failed ? 'Refund Failed' : 'Refund Completed',
         refund.status == DemoRefundStatus.refundCompleted || failed,
@@ -428,11 +422,7 @@ class OrderDetailsPage extends StatelessWidget {
           const SizedBox(height: 4),
           const Text(
             'Local demo status only. This does not confirm that a real refund was processed.',
-            style: TextStyle(
-              color: _secondaryText,
-              fontSize: 10,
-              height: 1.4,
-            ),
+            style: TextStyle(color: _secondaryText, fontSize: 10, height: 1.4),
           ),
         ],
       ),
@@ -476,11 +466,7 @@ class OrderDetailsPage extends StatelessWidget {
         alignment: Alignment.centerLeft,
         child: Text(
           order.deliveryInstruction!.trim(),
-          style: const TextStyle(
-            color: _mainText,
-            fontSize: 13,
-            height: 1.45,
-          ),
+          style: const TextStyle(color: _mainText, fontSize: 13, height: 1.45),
         ),
       ),
     );
@@ -608,9 +594,7 @@ class OrderDetailsPage extends StatelessWidget {
     if (reason == null || !context.mounted) return;
     if (!order.cancelByCustomer(reason)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This order can no longer be cancelled.'),
-        ),
+        const SnackBar(content: Text('This order can no longer be cancelled.')),
       );
       return;
     }
@@ -691,19 +675,29 @@ class OrderDetailsPage extends StatelessWidget {
       (item) => item.merchantId != null,
       orElse: () => order.items.first,
     );
+    final variantIdentifiedItem = order.items.firstWhere(
+      (item) => item.serviceVariant != null,
+      orElse: () => order.items.first,
+    );
     final targetService = serviceIdentifiedItem.serviceType ?? fallbackService;
     final targetMerchant =
         merchantIdentifiedItem.merchantId ?? fallbackMerchant;
+    final targetVariant = variantIdentifiedItem.serviceVariant;
 
-    final hasIncompatibleCartItems = cart.items.any(
-      (item) =>
-          item.serviceType != targetService ||
-          item.merchantId != targetMerchant,
+    final hasIncompatibleCartItems = !cart.canAddItem(
+      serviceType: targetService,
+      merchantId: targetMerchant,
+      serviceVariant: targetVariant,
     );
     if (hasIncompatibleCartItems) {
       _showReorderMessage(
         context,
-        'Your cart contains items from another store. Empty your cart before buying again.',
+        cart.incompatibilityMessage(
+              serviceType: targetService,
+              merchantId: targetMerchant,
+              serviceVariant: targetVariant,
+            ) ??
+            'Please complete or clear your current order before buying again.',
       );
       return;
     }
@@ -715,7 +709,10 @@ class OrderDetailsPage extends StatelessWidget {
       final productId = item.productId ?? _productIdFromName(item.name);
       final serviceType = item.serviceType ?? targetService;
       final merchantId = item.merchantId ?? targetMerchant;
-      if (serviceType != targetService || merchantId != targetMerchant) {
+      final serviceVariant = item.serviceVariant ?? targetVariant;
+      if (serviceType != targetService ||
+          merchantId != targetMerchant ||
+          serviceVariant != targetVariant) {
         incompatibleNames.add(item.name);
         continue;
       }
@@ -734,6 +731,7 @@ class OrderDetailsPage extends StatelessWidget {
           productId: productId,
           serviceType: serviceType,
           merchantId: merchantId,
+          serviceVariant: serviceVariant,
           name: item.name,
           description: item.description ?? '',
           priceInPaise: item.unitPriceInPaise,

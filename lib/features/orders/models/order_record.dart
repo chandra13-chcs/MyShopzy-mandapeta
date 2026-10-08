@@ -15,6 +15,7 @@ class OrderLineItem {
     this.productId,
     this.serviceType,
     this.merchantId,
+    this.serviceVariant,
   });
 
   final String name;
@@ -26,6 +27,7 @@ class OrderLineItem {
   final String? productId;
   final String? serviceType;
   final String? merchantId;
+  final String? serviceVariant;
 
   int get lineTotalInPaise => quantity * unitPriceInPaise;
 }

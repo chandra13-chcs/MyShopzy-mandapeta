@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
-import 'local_stores_page.dart';
+import '../data/local_store_session.dart';
+import '../models/local_store.dart';
 
 class CommonCategory {
   const CommonCategory({
@@ -372,11 +373,13 @@ class LocalStoreCatalogPage extends StatefulWidget {
     super.key,
     this.categories = commonLocalStoreCategories,
     this.products = sampleLocalStoreProducts,
+    this.initialCategoryId,
   });
 
   final LocalStore store;
   final List<CommonCategory> categories;
   final List<StoreProduct> products;
+  final String? initialCategoryId;
 
   @override
   State<LocalStoreCatalogPage> createState() => _LocalStoreCatalogPageState();
@@ -393,7 +396,13 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
   @override
   void initState() {
     super.initState();
-    _selectedCategoryId = widget.categories.isEmpty
+    LocalStoreSession.instance.select(widget.store);
+    final initialCategoryIndex = widget.categories.indexWhere(
+      (category) => category.id == widget.initialCategoryId,
+    );
+    _selectedCategoryId = initialCategoryIndex >= 0
+        ? widget.categories[initialCategoryIndex].id
+        : widget.categories.isEmpty
         ? ''
         : widget.categories.first.id;
   }

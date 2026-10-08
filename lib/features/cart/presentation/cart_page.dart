@@ -223,7 +223,22 @@ class _CartPageState extends State<CartPage> {
                         );
                         return;
                       }
-                      _cartStore.increaseQuantity(item.key);
+                      if (!_cartStore.increaseQuantity(item.key)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _cartStore.incompatibilityMessage(
+                                    serviceType: item.serviceType,
+                                    merchantId: item.merchantId,
+                                    serviceVariant: item.serviceVariant,
+                                  ) ??
+                                  'Please complete or clear your current '
+                                      'order before adding items from another '
+                                      'service.',
+                            ),
+                          ),
+                        );
+                      }
                     },
                   ),
                 ],
