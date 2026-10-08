@@ -24,12 +24,14 @@ class CartStore extends ChangeNotifier {
     required String serviceType,
     String? merchantId,
     String? serviceVariant,
+    String? productVariantId,
   }) {
     final key = CartItem.keyFor(
       serviceType: serviceType,
       merchantId: merchantId,
       serviceVariant: serviceVariant,
       productId: productId,
+      productVariantId: productVariantId,
     );
     return _findItem(key)?.quantity ?? 0;
   }
@@ -39,7 +41,9 @@ class CartStore extends ChangeNotifier {
     required String serviceType,
     String? merchantId,
     String? serviceVariant,
+    String? productVariantId,
     String? categoryId,
+    String? variantLabel,
     required String name,
     required String description,
     required int priceInPaise,
@@ -58,6 +62,7 @@ class CartStore extends ChangeNotifier {
       merchantId: merchantId,
       serviceVariant: serviceVariant,
       productId: productId,
+      productVariantId: productVariantId,
     );
     for (final item in _items) {
       if (item.key == key) {
@@ -74,7 +79,9 @@ class CartStore extends ChangeNotifier {
         serviceType: serviceType,
         merchantId: merchantId,
         serviceVariant: serviceVariant,
+        productVariantId: productVariantId,
         categoryId: categoryId,
+        variantLabel: variantLabel,
         name: name,
         description: description,
         priceInPaise: priceInPaise,
@@ -168,8 +175,10 @@ class CartItem {
     required this.icon,
     this.merchantId,
     this.serviceVariant,
+    this.productVariantId,
     this.categoryId,
     this.imageUrl,
+    this.variantLabel,
     this.quantity = 1,
   });
 
@@ -178,11 +187,13 @@ class CartItem {
   final String serviceType;
   final String? merchantId;
   final String? serviceVariant;
+  final String? productVariantId;
   final String? categoryId;
   final String name;
   final String description;
   final int priceInPaise;
   final String? imageUrl;
+  final String? variantLabel;
   final IconData icon;
   int quantity;
 
@@ -197,11 +208,14 @@ class CartItem {
     required String productId,
     String? merchantId,
     String? serviceVariant,
+    String? productVariantId,
   }) {
     final merchant = merchantId ?? '';
     final variant = serviceVariant;
-    return variant == null
+    final productVariant = productVariantId;
+    final baseKey = variant == null
         ? '$serviceType:$merchant:$productId'
         : '$serviceType:$merchant:$variant:$productId';
+    return productVariant == null ? baseKey : '$baseKey:$productVariant';
   }
 }

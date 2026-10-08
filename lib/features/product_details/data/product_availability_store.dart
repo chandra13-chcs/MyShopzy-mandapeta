@@ -12,13 +12,23 @@ class ProductAvailabilityStore extends ChangeNotifier {
     required String serviceType,
     required bool defaultAvailable,
     String? merchantId,
+    String? variantId,
   }) {
-    return _availabilityOverrides[_key(
+    final variantOverride = variantId == null
+        ? null
+        : _availabilityOverrides[_key(
+            productId: productId,
+            serviceType: serviceType,
+            merchantId: merchantId,
+            variantId: variantId,
+          )];
+    final productOverride = _availabilityOverrides[_key(
           productId: productId,
           serviceType: serviceType,
           merchantId: merchantId,
-        )] ??
-        defaultAvailable;
+        )];
+    return variantOverride ??
+        (productOverride == false ? false : defaultAvailable);
   }
 
   void setAvailability({
@@ -26,11 +36,13 @@ class ProductAvailabilityStore extends ChangeNotifier {
     required String serviceType,
     required bool isAvailable,
     String? merchantId,
+    String? variantId,
   }) {
     final key = _key(
       productId: productId,
       serviceType: serviceType,
       merchantId: merchantId,
+      variantId: variantId,
     );
     if (_availabilityOverrides[key] == isAvailable) return;
     _availabilityOverrides[key] = isAvailable;
@@ -47,7 +59,9 @@ class ProductAvailabilityStore extends ChangeNotifier {
     required String productId,
     required String serviceType,
     String? merchantId,
+    String? variantId,
   }) {
-    return '$serviceType:${merchantId ?? ''}:$productId';
+    final productKey = '$serviceType:${merchantId ?? ''}:$productId';
+    return variantId == null ? productKey : '$productKey:$variantId';
   }
 }

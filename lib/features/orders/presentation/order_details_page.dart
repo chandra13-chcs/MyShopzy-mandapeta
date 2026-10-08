@@ -630,7 +630,12 @@ class OrderDetailsPage extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(item.icon, color: _green),
                   title: Text(item.name),
-                  subtitle: Text('Quantity: ${item.quantity}'),
+                  subtitle: Text(
+                    [
+                      if (item.variantLabel != null) item.variantLabel!,
+                      'Quantity: ${item.quantity}',
+                    ].join(' · '),
+                  ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).pop(item),
                 ),
@@ -650,6 +655,7 @@ class OrderDetailsPage extends StatelessWidget {
       name: item.name,
       icon: item.icon,
       available: true,
+      quantityLabel: item.variantLabel,
     );
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -710,6 +716,7 @@ class OrderDetailsPage extends StatelessWidget {
       final serviceType = item.serviceType ?? targetService;
       final merchantId = item.merchantId ?? targetMerchant;
       final serviceVariant = item.serviceVariant ?? targetVariant;
+      final productVariantId = item.productVariantId;
       if (serviceType != targetService ||
           merchantId != targetMerchant ||
           serviceVariant != targetVariant) {
@@ -720,6 +727,7 @@ class OrderDetailsPage extends StatelessWidget {
         productId: productId,
         serviceType: serviceType,
         merchantId: merchantId,
+        variantId: productVariantId,
         defaultAvailable: true,
       )) {
         unavailableNames.add(item.name);
@@ -732,11 +740,13 @@ class OrderDetailsPage extends StatelessWidget {
           serviceType: serviceType,
           merchantId: merchantId,
           serviceVariant: serviceVariant,
+          productVariantId: productVariantId,
           name: item.name,
           description: item.description ?? '',
           priceInPaise: item.unitPriceInPaise,
           imageUrl: item.imageUrl,
           icon: item.icon,
+          variantLabel: item.variantLabel,
         );
         addedQuantity++;
       }
@@ -944,7 +954,10 @@ class OrderReceiptPage extends StatelessWidget {
                 const Divider(height: 23),
                 for (final item in order.items)
                   _ReceiptRow(
-                    label: '${item.name} × ${item.quantity}',
+                    label:
+                        '${item.name}'
+                        '${item.variantLabel == null ? '' : ' · ${item.variantLabel}'}'
+                        ' × ${item.quantity}',
                     value: _formatPrice(item.lineTotalInPaise),
                   ),
                 const Divider(height: 23),
@@ -1091,6 +1104,17 @@ class _OrderItemRow extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (item.variantLabel != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  item.variantLabel!,
+                  style: const TextStyle(
+                    color: Color(0xFF777C79),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               if (description != null && description.isNotEmpty) ...[
                 const SizedBox(height: 3),
                 Text(

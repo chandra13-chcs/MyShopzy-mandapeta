@@ -119,6 +119,17 @@ class _CartPageState extends State<CartPage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (item.variantLabel != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    item.variantLabel!,
+                    style: const TextStyle(
+                      color: _secondaryText,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 4),
                 Text(
                   item.description,
@@ -166,6 +177,7 @@ class _CartPageState extends State<CartPage> {
           productId: item.productId,
           serviceType: item.serviceType,
           merchantId: item.merchantId,
+          variantId: item.productVariantId,
           defaultAvailable: true,
         );
         return Column(

@@ -233,6 +233,10 @@ void main() {
       priceInPaise: 1000,
       icon: Icons.bakery_dining_rounded,
     );
+    expect(
+      cart.canAddItem(serviceType: 'bakery', merchantId: 'demo-bakery'),
+      isFalse,
+    );
 
     await tester.pumpWidget(
       MaterialApp(home: OrderDetailsPage(order: _deliveredOrder())),
@@ -243,9 +247,10 @@ void main() {
 
     expect(find.byType(CartPage), findsNothing);
     expect(cart.items, hasLength(1));
+    expect(cart.items.single.productId, 'other-store-item');
     expect(
       find.text(
-        'Your cart contains items from another store. Empty your cart before buying again.',
+        'You can only order from one bakery at a time.',
       ),
       findsOneWidget,
     );
@@ -302,6 +307,64 @@ void main() {
       findsOneWidget,
     );
     cart.clear();
+  });
+
+  testWidgets('Buy Again restores the recorded product variant', (
+    tester,
+  ) async {
+    final cart = CartStore.instance;
+    cart.clear();
+    ProductAvailabilityStore.instance.clearOverrides();
+
+    await tester.pumpWidget(
+      MaterialApp(home: OrderDetailsPage(order: _variantDeliveredOrder())),
+    );
+    await tester.ensureVisible(find.text('Buy Again'));
+    await tester.tap(find.text('Buy Again'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CartPage), findsOneWidget);
+    expect(cart.items, hasLength(1));
+    expect(cart.items.single.productVariantId, '5-kg');
+    expect(cart.items.single.variantLabel, '5 KG');
+    expect(cart.items.single.priceInPaise, 31000);
+    expect(
+      cart.quantityFor(
+        productId: 'slgs-ashirvad-atta',
+        serviceType: 'local_store',
+        merchantId: 'sri-lakshmi-general-store',
+        productVariantId: '5-kg',
+      ),
+      1,
+    );
+    cart.clear();
+  });
+
+  testWidgets('Buy Again does not replace an unavailable recorded size', (
+    tester,
+  ) async {
+    final cart = CartStore.instance;
+    cart.clear();
+    ProductAvailabilityStore.instance.clearOverrides();
+    ProductAvailabilityStore.instance.setAvailability(
+      productId: 'slgs-ashirvad-atta',
+      serviceType: 'local_store',
+      merchantId: 'sri-lakshmi-general-store',
+      variantId: '5-kg',
+      isAvailable: false,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: OrderDetailsPage(order: _variantDeliveredOrder())),
+    );
+    await tester.ensureVisible(find.text('Buy Again'));
+    await tester.tap(find.text('Buy Again'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CartPage), findsNothing);
+    expect(cart.items, isEmpty);
+    expect(find.text('Out of stock: Ashirvad Atta.'), findsOneWidget);
+    ProductAvailabilityStore.instance.clearOverrides();
   });
 }
 
@@ -459,6 +522,37 @@ OrderRecord _mixedMerchantOrder() => OrderRecord(
       productId: 'other-store-bread',
       serviceType: 'bakery',
       merchantId: 'another-bakery',
+    ),
+  ],
+  deliveryAddress: 'Home · Demo Address',
+  paymentMethod: 'UPI',
+  paymentStatus: 'Demo · not processed',
+  deliveryChargeInPaise: 0,
+  discountInPaise: 0,
+);
+
+OrderRecord _variantDeliveredOrder() => OrderRecord(
+  storeName: 'Sri Lakshmi General Store',
+  icon: Icons.storefront_outlined,
+  orderId: 'MSZ-TEST-VARIANT',
+  dateTime: 'Yesterday',
+  itemSummary: '1 item · Ashirvad Atta',
+  totalInPaise: 31000,
+  status: 'Delivered',
+  statusMessage: 'Demo order completed successfully',
+  orderTab: OrdersTab.delivered,
+  serviceType: 'Local Store',
+  items: const [
+    OrderLineItem(
+      name: 'Ashirvad Atta',
+      quantity: 1,
+      unitPriceInPaise: 31000,
+      icon: Icons.inventory_2_rounded,
+      productId: 'slgs-ashirvad-atta',
+      serviceType: 'local_store',
+      merchantId: 'sri-lakshmi-general-store',
+      productVariantId: '5-kg',
+      variantLabel: '5 KG',
     ),
   ],
   deliveryAddress: 'Home · Demo Address',

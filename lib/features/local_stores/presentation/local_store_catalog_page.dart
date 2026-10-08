@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
+import '../../product_details/models/product_variant.dart';
 import '../../wishlist/presentation/save_list_button.dart';
 import '../data/local_store_session.dart';
 import '../models/local_store.dart';
@@ -34,6 +35,7 @@ class StoreProduct {
     required this.available,
     this.imageUrl,
     this.badge,
+    this.variants = const [],
   });
 
   final String id;
@@ -50,6 +52,7 @@ class StoreProduct {
   final bool available;
   final String? imageUrl;
   final String? badge;
+  final List<ProductVariant> variants;
 }
 
 const commonLocalStoreCategories = [
@@ -82,6 +85,52 @@ const commonLocalStoreCategories = [
 ];
 
 const sampleLocalStoreProducts = [
+  StoreProduct(
+    id: 'slgs-ashirvad-atta',
+    storeId: 'sri-lakshmi-general-store',
+    categoryId: 'atta',
+    name: 'Ashirvad Atta',
+    brand: 'Aashirvaad',
+    description: 'Whole wheat flour for everyday meals',
+    packSize: '',
+    price: 70,
+    mrp: 80,
+    discount: 13,
+    rating: 4.6,
+    available: true,
+    variants: [
+      ProductVariant(
+        id: '1-kg',
+        productId: 'slgs-ashirvad-atta',
+        label: '1 KG',
+        priceInPaise: 7000,
+        mrpInPaise: 8000,
+        discountPercent: 13,
+        available: true,
+        sku: 'DEMO-ATTA-1KG',
+      ),
+      ProductVariant(
+        id: '2-kg',
+        productId: 'slgs-ashirvad-atta',
+        label: '2 KG',
+        priceInPaise: 13500,
+        mrpInPaise: 15000,
+        discountPercent: 10,
+        available: false,
+        sku: 'DEMO-ATTA-2KG',
+      ),
+      ProductVariant(
+        id: '5-kg',
+        productId: 'slgs-ashirvad-atta',
+        label: '5 KG',
+        priceInPaise: 31000,
+        mrpInPaise: 34000,
+        discountPercent: 9,
+        available: true,
+        sku: 'DEMO-ATTA-5KG',
+      ),
+    ],
+  ),
   StoreProduct(
     id: 'slgs-maggi',
     storeId: 'sri-lakshmi-general-store',
@@ -749,23 +798,25 @@ class _ProductCard extends StatelessWidget {
                 Positioned(
                   bottom: 6,
                   right: 6,
-                  child: CartProductControl(
-                    available: product.available,
-                    productId: product.id,
-                    serviceType: 'local_store',
-                    merchantId: product.storeId,
-                    categoryId: product.categoryId,
-                    name: product.name,
-                    description:
-                        '${product.brand} · ${product.packSize} · '
-                        '${product.description}',
-                    priceInPaise: (product.price * 100).round(),
-                    imageUrl: product.imageUrl,
-                    icon: Icons.inventory_2_rounded,
-                    width: 96,
-                    height: 31,
-                    unavailableLabel: 'OUT OF STOCK',
-                  ),
+                  child: product.variants.isNotEmpty
+                      ? _variantOptionsButton(context)
+                      : CartProductControl(
+                          available: product.available,
+                          productId: product.id,
+                          serviceType: 'local_store',
+                          merchantId: product.storeId,
+                          categoryId: product.categoryId,
+                          name: product.name,
+                          description:
+                              '${product.brand} · ${product.packSize} · '
+                              '${product.description}',
+                          priceInPaise: (product.price * 100).round(),
+                          imageUrl: product.imageUrl,
+                          icon: Icons.inventory_2_rounded,
+                          width: 96,
+                          height: 31,
+                          unavailableLabel: 'OUT OF STOCK',
+                        ),
                 ),
               ],
             ),
@@ -780,7 +831,7 @@ class _ProductCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(5),
           ),
           child: Text(
-            product.packSize,
+            product.variants.isNotEmpty ? 'From' : product.packSize,
             style: const TextStyle(
               color: _ink,
               fontSize: 9,
@@ -792,7 +843,9 @@ class _ProductCard extends StatelessWidget {
         Row(
           children: [
             Text(
-              '₹${product.price.toStringAsFixed(0)}',
+              product.variants.isNotEmpty
+                  ? 'From ₹${product.price.toStringAsFixed(0)}'
+                  : '₹${product.price.toStringAsFixed(0)}',
               style: const TextStyle(
                 color: _ink,
                 fontSize: 14,
@@ -866,6 +919,26 @@ class _ProductCard extends StatelessWidget {
     );
   }
 
+  Widget _variantOptionsButton(BuildContext context) {
+    return SizedBox(
+      width: 96,
+      height: 31,
+      child: FilledButton(
+        onPressed: () => _openDetails(context),
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF16834A),
+          padding: EdgeInsets.zero,
+          side: const BorderSide(color: Color(0xFF16834A)),
+        ),
+        child: const Text(
+          'OPTIONS',
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
+        ),
+      ),
+    );
+  }
+
   Widget _buildProductImage() {
     final imageUrl = product.imageUrl;
     if (imageUrl != null && imageUrl.isNotEmpty) {
@@ -929,6 +1002,7 @@ class _ProductCard extends StatelessWidget {
       rating: item.rating,
       available: item.available,
       icon: Icons.inventory_2_rounded,
+      variants: item.variants,
       relatedProducts: related.map((relatedItem) {
         return ProductDetailsProduct(
           id: relatedItem.id,
@@ -947,6 +1021,7 @@ class _ProductCard extends StatelessWidget {
           rating: relatedItem.rating,
           available: relatedItem.available,
           icon: Icons.inventory_2_rounded,
+          variants: relatedItem.variants,
         );
       }).toList(),
     );

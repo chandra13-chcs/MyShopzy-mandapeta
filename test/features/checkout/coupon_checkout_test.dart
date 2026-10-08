@@ -145,6 +145,48 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'Place Order enables and remains tappable after address confirm',
+    (tester) async {
+      _addCartItem(priceInPaise: 100000);
+      await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+
+      final placeOrder = find.widgetWithText(FilledButton, 'Place Order');
+      expect(tester.widget<FilledButton>(placeOrder).onPressed, isNull);
+
+      await tester.ensureVisible(find.text('Change'));
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Home').last);
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<FilledButton>(placeOrder).onPressed, isNotNull);
+      await tester.ensureVisible(placeOrder);
+      await tester.tap(placeOrder);
+      await tester.pumpAndSettle();
+      expect(find.text('Order flow will be connected next.'), findsOneWidget);
+    },
+  );
+
+  testWidgets('current location suggestion remains disabled until confirmed', (
+    tester,
+  ) async {
+    _addCartItem(priceInPaise: 100000);
+    await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+
+    final placeOrder = find.widgetWithText(FilledButton, 'Place Order');
+    await tester.ensureVisible(find.text('Change'));
+    await tester.tap(find.text('Change'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Use Current Location'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<FilledButton>(placeOrder).onPressed, isNull);
+    await tester.tap(find.text('Confirm this location'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(placeOrder).onPressed, isNotNull);
+  });
 }
 
 void _addCartItem({required int priceInPaise, int quantity = 1}) {

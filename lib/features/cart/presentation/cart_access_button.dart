@@ -217,6 +217,8 @@ class CartProductControl extends StatelessWidget {
     super.key,
     this.merchantId,
     this.serviceVariant,
+    this.productVariantId,
+    this.variantLabel,
     this.categoryId,
     this.imageUrl,
     this.width = 88,
@@ -228,6 +230,8 @@ class CartProductControl extends StatelessWidget {
   final String serviceType;
   final String? merchantId;
   final String? serviceVariant;
+  final String? productVariantId;
+  final String? variantLabel;
   final String? categoryId;
   final String name;
   final String description;
@@ -252,6 +256,7 @@ class CartProductControl extends StatelessWidget {
           productId: productId,
           serviceType: serviceType,
           merchantId: merchantId,
+          variantId: productVariantId,
           defaultAvailable: available,
         );
         return AnimatedBuilder(
@@ -262,6 +267,7 @@ class CartProductControl extends StatelessWidget {
               serviceType: serviceType,
               merchantId: merchantId,
               serviceVariant: serviceVariant,
+              productVariantId: productVariantId,
             );
             return SizedBox(
               width: width,
@@ -295,7 +301,9 @@ class CartProductControl extends StatelessWidget {
                 serviceType: serviceType,
                 merchantId: merchantId,
                 serviceVariant: serviceVariant,
+                productVariantId: productVariantId,
                 categoryId: categoryId,
+                variantLabel: variantLabel,
                 name: name,
                 description: description,
                 priceInPaise: priceInPaise,
@@ -465,5 +473,6 @@ class CartProductControl extends StatelessWidget {
     merchantId: merchantId,
     serviceVariant: serviceVariant,
     productId: productId,
+    productVariantId: productVariantId,
   );
 }

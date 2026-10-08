@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'product_variant.dart';
+
 class ProductDetailsProduct {
   const ProductDetailsProduct({
     required this.id,
@@ -20,6 +22,7 @@ class ProductDetailsProduct {
     this.quantityLabel,
     this.rating,
     this.isVegetarian,
+    this.variants = const [],
     this.relatedProducts = const [],
   });
 
@@ -41,5 +44,6 @@ class ProductDetailsProduct {
   final String? quantityLabel;
   final double? rating;
   final bool? isVegetarian;
+  final List<ProductVariant> variants;
   final List<ProductDetailsProduct> relatedProducts;
 }

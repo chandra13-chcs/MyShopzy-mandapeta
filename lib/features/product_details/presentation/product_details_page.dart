@@ -6,6 +6,7 @@ import '../data/product_availability_store.dart';
 import '../data/recently_viewed_store.dart';
 import '../models/product_details_product.dart';
 import '../models/product_review.dart';
+import '../models/product_variant.dart';
 import '../../reviews/presentation/reviews_page.dart';
 import '../../reviews/presentation/review_widgets.dart';
 import '../../reviews/presentation/write_review_page.dart';
@@ -30,16 +31,29 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
   static const _border = Color(0xFFE5E9E3);
 
   bool _isDescriptionExpanded = true;
+  String? _selectedVariantId;
 
   @override
   void initState() {
     super.initState();
+    final variants = widget.product.variants;
+    if (variants.isNotEmpty) {
+      var selectedVariant = variants.first;
+      for (final variant in variants) {
+        if (variant.available) {
+          selectedVariant = variant;
+          break;
+        }
+      }
+      _selectedVariantId = selectedVariant.id;
+    }
     RecentlyViewedStore.instance.addViewedProduct(widget.product);
   }
 
   @override
   Widget build(BuildContext context) {
     final product = widget.product;
+    final selectedVariant = _selectedVariant(product);
     return Scaffold(
       backgroundColor: _page,
       appBar: AppBar(
@@ -71,11 +85,15 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildProductImage(product),
+              _buildProductImage(product, selectedVariant),
               const SizedBox(height: 18),
-              _buildProductInformation(product),
+              _buildProductInformation(product, selectedVariant),
+              if (product.variants.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _buildVariantSelector(product, selectedVariant),
+              ],
               const SizedBox(height: 16),
-              _buildPrice(product),
+              _buildPrice(product, selectedVariant),
               const SizedBox(height: 16),
               if (product.description?.isNotEmpty ?? false) ...[
                 _buildDescription(product.description!),
@@ -109,8 +127,12 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                     productId: product.id,
                     serviceType: product.serviceType,
                     merchantId: product.merchantId,
-                    defaultAvailable: product.available,
+                    variantId: selectedVariant?.id,
+                    defaultAvailable:
+                        selectedVariant?.available ?? product.available,
                   );
+              final selectedPrice =
+                  selectedVariant?.priceInPaise ?? product.priceInPaise;
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -130,20 +152,22 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                       ),
                     ),
                   ],
-                  if (product.priceInPaise == null)
+                  if (selectedPrice == null)
                     _unavailablePriceAction()
                   else
                     CartProductControl(
-                      available: product.available,
+                      available: isAvailable,
                       productId: product.id,
                       serviceType: product.serviceType,
                       merchantId: product.merchantId,
                       serviceVariant: product.serviceVariant,
+                      productVariantId: selectedVariant?.id,
+                      variantLabel: selectedVariant?.label,
                       categoryId: product.categoryId,
                       name: product.name,
-                      description: _cartDescription(product),
-                      priceInPaise: product.priceInPaise!,
-                      imageUrl: product.imageUrl,
+                      description: _cartDescription(product, selectedVariant),
+                      priceInPaise: selectedPrice,
+                      imageUrl: selectedVariant?.imageUrl ?? product.imageUrl,
                       icon: product.icon,
                       width: double.infinity,
                       height: 48,
@@ -158,7 +182,11 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
-  Widget _buildProductImage(ProductDetailsProduct product) {
+  Widget _buildProductImage(
+    ProductDetailsProduct product,
+    ProductVariant? selectedVariant,
+  ) {
+    final imageUrl = selectedVariant?.imageUrl ?? product.imageUrl;
     return Container(
       height: 270,
       width: double.infinity,
@@ -167,9 +195,9 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
         color: const Color(0xFFEAF1E8),
         borderRadius: BorderRadius.circular(22),
       ),
-      child: product.imageUrl != null && product.imageUrl!.isNotEmpty
+      child: imageUrl != null && imageUrl.isNotEmpty
           ? Image.network(
-              product.imageUrl!,
+              imageUrl,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) =>
                   _buildImagePlaceholder(product),
@@ -201,7 +229,17 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
-  Widget _buildProductInformation(ProductDetailsProduct product) {
+  ProductVariant? _selectedVariant(ProductDetailsProduct product) {
+    for (final variant in product.variants) {
+      if (variant.id == _selectedVariantId) return variant;
+    }
+    return null;
+  }
+
+  Widget _buildProductInformation(
+    ProductDetailsProduct product,
+    ProductVariant? selectedVariant,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -229,8 +267,9 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
             ),
           ),
         ],
-        if (product.quantityLabel != null &&
-            product.quantityLabel!.isNotEmpty) ...[
+        if (selectedVariant != null ||
+            (product.quantityLabel != null &&
+                product.quantityLabel!.isNotEmpty)) ...[
           const SizedBox(height: 9),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
@@ -240,7 +279,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
               border: Border.all(color: _border),
             ),
             child: Text(
-              product.quantityLabel!,
+              selectedVariant?.label ?? product.quantityLabel!,
               style: const TextStyle(
                 color: _ink,
                 fontSize: 12,
@@ -253,8 +292,43 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
-  Widget _buildPrice(ProductDetailsProduct product) {
-    if (product.priceInPaise == null) return const SizedBox.shrink();
+  Widget _buildVariantSelector(
+    ProductDetailsProduct product,
+    ProductVariant? selectedVariant,
+  ) {
+    return _DetailsCard(
+      title: 'Select Size',
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final variant in product.variants)
+            ChoiceChip(
+              label: Text(variant.label),
+              selected: variant.id == selectedVariant?.id,
+              onSelected: (_) =>
+                  setState(() => _selectedVariantId = variant.id),
+              selectedColor: const Color(0xFFE8F3E9),
+              side: BorderSide(
+                color: variant.id == selectedVariant?.id
+                    ? _green
+                    : _border,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPrice(
+    ProductDetailsProduct product,
+    ProductVariant? selectedVariant,
+  ) {
+    final priceInPaise = selectedVariant?.priceInPaise ?? product.priceInPaise;
+    if (priceInPaise == null) return const SizedBox.shrink();
+    final mrpInPaise = selectedVariant?.mrpInPaise ?? product.mrpInPaise;
+    final discountPercent =
+        selectedVariant?.discountPercent ?? product.discountPercent;
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
@@ -265,18 +339,17 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
       child: Row(
         children: [
           Text(
-            _formatPrice(product.priceInPaise!),
+            _formatPrice(priceInPaise),
             style: const TextStyle(
               color: _ink,
               fontSize: 21,
               fontWeight: FontWeight.w800,
             ),
           ),
-          if (product.mrpInPaise != null &&
-              product.mrpInPaise! > product.priceInPaise!) ...[
+          if (mrpInPaise != null && mrpInPaise > priceInPaise) ...[
             const SizedBox(width: 9),
             Text(
-              _formatPrice(product.mrpInPaise!),
+              _formatPrice(mrpInPaise),
               style: const TextStyle(
                 color: _muted,
                 fontSize: 14,
@@ -285,7 +358,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
             ),
           ],
           const Spacer(),
-          if (product.discountPercent != null && product.discountPercent! > 0)
+          if (discountPercent != null && discountPercent > 0)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
               decoration: BoxDecoration(
@@ -293,7 +366,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${product.discountPercent}% OFF',
+                '$discountPercent% OFF',
                 style: const TextStyle(
                   color: _green,
                   fontSize: 11,
@@ -553,10 +626,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     );
   }
 
-  String _cartDescription(ProductDetailsProduct product) {
+  String _cartDescription(
+    ProductDetailsProduct product,
+    ProductVariant? selectedVariant,
+  ) {
     return [
       product.brand,
-      product.quantityLabel,
+      if (selectedVariant == null) product.quantityLabel,
       product.description,
     ].whereType<String>().where((value) => value.isNotEmpty).join(' · ');
   }

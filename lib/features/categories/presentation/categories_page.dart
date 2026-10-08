@@ -316,8 +316,9 @@ class CategoriesPage extends StatelessWidget {
       'Snacks & Munchies' => () => _openLocalStoreCategory(context, 'snacks'),
       'Breakfast & Instant Food' => () =>
           _openLocalStoreCategory(context, 'noodles'),
-      'Sweet Tooth & Chocolates' || 'Bakery & Biscuits' => () =>
+      'Sweet Tooth & Chocolates' => () =>
           _pushPage(context, const BakeryPage()),
+      'Bakery & Biscuits' => () => _openLocalStoreCategory(context, 'biscuits'),
       'Atta, Rice & Dal' => () => _openLocalStoreCategory(context, 'rice'),
       'Masala, Cooking Oil & Ghee' => () =>
           _openLocalStoreCategory(context, 'cooking-oil'),

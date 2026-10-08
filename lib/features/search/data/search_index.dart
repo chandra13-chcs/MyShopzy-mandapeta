@@ -193,6 +193,7 @@ class SearchIndex {
           rating: item.rating,
           available: item.available,
           icon: Icons.inventory_2_rounded,
+          variants: item.variants,
         );
       case SearchResultType.meatProduct:
         final item = [

@@ -84,6 +84,91 @@ void main() {
     expect(session.selectedStoreId, 'sri-lakshmi-general-store');
   });
 
+  testWidgets('category flow selects store products then allows switching', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
+
+    await tester.ensureVisible(find.text('Breakfast & Instant Food'));
+    await tester.tap(find.text('Breakfast & Instant Food'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LocalStoresPage), findsOneWidget);
+
+    await tester.tap(find.text('Sri Lakshmi General Store'));
+    await tester.pumpAndSettle();
+    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
+    expect(find.text('2-Minute Noodles'), findsOneWidget);
+    expect(find.text('Marie Gold'), findsNothing);
+
+    await tester.tap(find.text('Biscuits'));
+    await tester.pumpAndSettle();
+    expect(find.text('Marie Gold'), findsOneWidget);
+    expect(find.text('2-Minute Noodles'), findsNothing);
+    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
+  });
+
+  testWidgets('biscuits category selects common Local Store category', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
+
+    await tester.ensureVisible(find.text('Bakery & Biscuits'));
+    await tester.tap(find.text('Bakery & Biscuits'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LocalStoresPage), findsOneWidget);
+
+    await tester.tap(find.text('Sri Lakshmi General Store'));
+    await tester.pumpAndSettle();
+    expect(find.text('Marie Gold'), findsOneWidget);
+    expect(find.text('2-Minute Noodles'), findsNothing);
+    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
+  });
+
+  testWidgets('rice category selects its common Local Store category', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
+
+    await tester.scrollUntilVisible(
+      find.text('Atta, Rice & Dal'),
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Atta, Rice & Dal'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sri Lakshmi General Store'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Classic Basmati Rice'), findsOneWidget);
+    expect(find.text('2-Minute Noodles'), findsNothing);
+    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
+  });
+
+  testWidgets('cooking oil category context survives store selection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
+
+    await tester.scrollUntilVisible(
+      find.text('Masala, Cooking Oil & Ghee'),
+      260,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Masala, Cooking Oil & Ghee'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LocalStoresPage), findsOneWidget);
+
+    await tester.tap(find.text('Sri Lakshmi General Store'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('No Cooking Oil available at this store yet.'),
+      findsOneWidget,
+    );
+    expect(find.text('Marie Gold'), findsNothing);
+    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
+  });
+
   testWidgets('catalogue only shows products belonging to its selected store', (
     tester,
   ) async {
@@ -148,27 +233,39 @@ void main() {
       await tester.pump();
 
       expect(
-        find.text(
-          'You can only order from one store at a time.',
-        ),
+        find.text('You can only order from one store at a time.'),
         findsOneWidget,
       );
       expect(cart.items, hasLength(1));
     },
   );
 
-  test('allows same-context non-Local-Store products and rejects other services', () {
-    expect(
-      _addProduct('restaurant', 'restaurant-product-a', merchantId: 'restaurant-a'),
-      isTrue,
-    );
-    expect(
-      _addProduct('restaurant', 'restaurant-product-b', merchantId: 'restaurant-a'),
-      isTrue,
-    );
-    expect(_addProduct('bakery', 'bakery-a', merchantId: 'bakery-a'), isFalse);
-    expect(cart.items, hasLength(2));
-  });
+  test(
+    'allows same-context non-Local-Store products and rejects other services',
+    () {
+      expect(
+        _addProduct(
+          'restaurant',
+          'restaurant-product-a',
+          merchantId: 'restaurant-a',
+        ),
+        isTrue,
+      );
+      expect(
+        _addProduct(
+          'restaurant',
+          'restaurant-product-b',
+          merchantId: 'restaurant-a',
+        ),
+        isTrue,
+      );
+      expect(
+        _addProduct('bakery', 'bakery-a', merchantId: 'bakery-a'),
+        isFalse,
+      );
+      expect(cart.items, hasLength(2));
+    },
+  );
 }
 
 LocalStore _store({

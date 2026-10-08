@@ -37,9 +37,8 @@ class WishlistPage extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
             itemCount: products.length,
             separatorBuilder: (context, index) => const SizedBox(height: 12),
-            itemBuilder: (context, index) => _WishlistProductCard(
-              product: products[index],
-            ),
+            itemBuilder: (context, index) =>
+                _WishlistProductCard(product: products[index]),
           );
         },
       ),
@@ -53,11 +52,7 @@ class WishlistPage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.favorite_border_rounded,
-              color: _green,
-              size: 52,
-            ),
+            Icon(Icons.favorite_border_rounded, color: _green, size: 52),
             SizedBox(height: 14),
             Text(
               'Your Wishlist is empty',
@@ -186,7 +181,7 @@ class _WishlistProductCard extends StatelessWidget {
                   children: [
                     if (product.priceInPaise != null)
                       Text(
-                        _formatPrice(product.priceInPaise!),
+                        '${product.variants.isEmpty ? '' : 'From '}${_formatPrice(product.priceInPaise!)}',
                         style: const TextStyle(
                           color: _mainText,
                           fontSize: 14,
@@ -215,9 +210,11 @@ class _WishlistProductCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
-                      'Add to Cart',
-                      style: TextStyle(
+                    child: Text(
+                      product.variants.isEmpty
+                          ? 'Add to Cart'
+                          : 'Select Options',
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -240,8 +237,7 @@ class _WishlistProductCard extends StatelessWidget {
     return Image.network(
       imageUrl,
       fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) =>
-          _imagePlaceholder(product),
+      errorBuilder: (context, error, stackTrace) => _imagePlaceholder(product),
     );
   }
 
@@ -261,6 +257,10 @@ class _WishlistProductCard extends StatelessWidget {
   }
 
   void _addToCart(BuildContext context) {
+    if (product.variants.isNotEmpty) {
+      _openDetails(context);
+      return;
+    }
     final isAvailable = ProductAvailabilityStore.instance.isAvailable(
       productId: product.id,
       serviceType: product.serviceType,
@@ -313,9 +313,9 @@ class _WishlistProductCard extends StatelessWidget {
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${product.name} added to cart.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('${product.name} added to cart.')));
   }
 
   String _serviceLabel(String serviceType) {

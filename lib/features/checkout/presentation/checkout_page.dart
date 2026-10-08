@@ -843,6 +843,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (item.variantLabel != null) ...[
+                const SizedBox(height: 3),
+                Text(
+                  item.variantLabel!,
+                  style: const TextStyle(
+                    color: _secondaryText,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
               const SizedBox(height: 3),
               Text(
                 'Qty ${item.quantity} · ${_formatPrice(item.priceInPaise)} each',
