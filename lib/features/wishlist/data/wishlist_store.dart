@@ -46,6 +46,6 @@ class WishlistStore extends ChangeNotifier {
 
   String _identityOf(ProductDetailsProduct product) {
     return '${product.serviceType}:${product.merchantId ?? ''}:'
-        '${product.serviceVariant ?? ''}:${product.id}';
+        '${product.id}';
   }
 }
