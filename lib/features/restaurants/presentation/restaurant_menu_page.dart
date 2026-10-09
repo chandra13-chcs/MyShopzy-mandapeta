@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
@@ -183,9 +184,9 @@ class RestaurantMenuPage extends StatefulWidget {
 enum _DietaryFilter { all, veg, nonVeg }
 
 class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _page = AppTheme.lightBackground;
 
   _DietaryFilter _selectedFilter = _DietaryFilter.all;
 
@@ -443,7 +444,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
           _dietaryFilterChip(
             'Veg',
             _DietaryFilter.veg,
-            dotColor: const Color(0xFF16834A),
+            dotColor: AppTheme.primaryGreen,
           ),
           const SizedBox(width: 8),
           _dietaryFilterChip(
@@ -634,14 +635,14 @@ class _OpenStatus extends StatelessWidget {
       children: [
         Icon(
           Icons.circle,
-          color: isOpen ? const Color(0xFF16834A) : const Color(0xFF929892),
+          color: isOpen ? AppTheme.primaryGreen : const Color(0xFF929892),
           size: 7,
         ),
         const SizedBox(width: 4),
         Text(
           label,
           style: TextStyle(
-            color: isOpen ? const Color(0xFF16834A) : const Color(0xFF727A74),
+            color: isOpen ? AppTheme.primaryGreen : AppTheme.secondaryText,
             fontSize: 10,
             fontWeight: FontWeight.w600,
           ),
@@ -662,8 +663,8 @@ class _MenuItemCard extends StatelessWidget {
   final String restaurantName;
   final List<MenuItem> relatedItems;
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
 
   @override
   Widget build(BuildContext context) {
@@ -691,7 +692,7 @@ class _MenuItemCard extends StatelessWidget {
                             height: 8,
                             decoration: BoxDecoration(
                               color: item.isVeg
-                                  ? const Color(0xFF16834A)
+                                  ? AppTheme.primaryGreen
                                   : const Color(0xFFB63E32),
                               shape: BoxShape.circle,
                             ),

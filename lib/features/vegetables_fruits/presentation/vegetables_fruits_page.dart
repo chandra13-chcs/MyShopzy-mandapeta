@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import 'produce_catalog_page.dart';
 
 class VegetablesFruitsPage extends StatelessWidget {
   const VegetablesFruitsPage({super.key});
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8F5),
+      backgroundColor: AppTheme.lightBackground,
       body: SafeArea(
         child: Column(
           children: [

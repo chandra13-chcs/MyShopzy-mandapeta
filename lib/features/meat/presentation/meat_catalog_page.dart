@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
@@ -101,10 +102,10 @@ class MeatCatalogPage extends StatelessWidget {
   final List<MeatProduct> products;
   final List<MeatPartner> partners;
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
+  static const _page = AppTheme.lightBackground;
 
   @override
   Widget build(BuildContext context) {
@@ -394,8 +395,8 @@ class _MeatProductCard extends StatelessWidget {
   final MeatPartner? partner;
   final List<MeatProduct> relatedProducts;
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
 
   @override
   Widget build(BuildContext context) {

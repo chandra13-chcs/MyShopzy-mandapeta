@@ -1,5 +1,6 @@
  import 'package:flutter/material.dart';
 
+ import '../../../app/theme/app_theme.dart';
 import '../data/cart_store.dart';
  import '../../product_details/data/product_availability_store.dart';
  import 'cart_page.dart';
@@ -7,7 +8,7 @@ import '../data/cart_store.dart';
 class CartAccessButton extends StatelessWidget {
   const CartAccessButton({super.key});
 
-  static const _green = Color(0xFF2C7C65);
+  static const _green = AppTheme.primaryGreen;
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +80,7 @@ class CartAccessButton extends StatelessWidget {
 class CartSummaryBar extends StatelessWidget {
   const CartSummaryBar({super.key});
 
-  static const _green = Color(0xFF2C7C65);
+  static const _green = AppTheme.primaryGreen;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +156,7 @@ class CartSummaryBar extends StatelessWidget {
 class CartNavigationIcon extends StatelessWidget {
   const CartNavigationIcon({super.key});
 
-  static const _green = Color(0xFF2C7C65);
+  static const _green = AppTheme.primaryGreen;
 
   @override
   Widget build(BuildContext context) {
@@ -243,7 +244,7 @@ class CartProductControl extends StatelessWidget {
   final double height;
   final String unavailableLabel;
 
-  static const _green = Color(0xFF16834A);
+  static const _green = AppTheme.primaryGreen;
 
   @override
   Widget build(BuildContext context) {
@@ -349,7 +350,7 @@ class CartProductControl extends StatelessWidget {
   ) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF8F4),
+        color: AppTheme.lightBackground,
         borderRadius: BorderRadius.circular(9),
         border: Border.all(color: _green),
         boxShadow: [

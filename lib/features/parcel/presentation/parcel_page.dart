@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import 'parcel_summary_page.dart';
 
 class ParcelPage extends StatefulWidget {
@@ -10,10 +11,10 @@ class ParcelPage extends StatefulWidget {
 }
 
 class _ParcelPageState extends State<ParcelPage> {
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
+  static const _page = AppTheme.lightBackground;
   static const _parcelTypes = [
     'Documents',
     'Food',

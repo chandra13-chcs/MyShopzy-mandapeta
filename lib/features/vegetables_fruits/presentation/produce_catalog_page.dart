@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
@@ -437,9 +438,9 @@ class ProduceCatalogPage extends StatefulWidget {
 }
 
 class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
 
   late String _selectedCategoryId;
 
@@ -473,7 +474,7 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
     final title = widget.type == ProduceType.fruit ? 'Fruits' : 'Vegetables';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8F5),
+      backgroundColor: AppTheme.lightBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -653,8 +654,8 @@ class _ProduceProductCard extends StatelessWidget {
   final int placeholderIndex;
   final List<ProduceProduct> relatedProducts;
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
   static const _imageColors = [
     [Color(0xFFE9D6B5), Color(0xFFD1B58A)],
     [Color(0xFFE1EAD8), Color(0xFFB9C8A8)],
@@ -779,7 +780,7 @@ class _ProduceProductCard extends StatelessWidget {
           Text(
             '${product.discount}% OFF',
             style: const TextStyle(
-              color: Color(0xFF16834A),
+              color: AppTheme.primaryGreen,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),

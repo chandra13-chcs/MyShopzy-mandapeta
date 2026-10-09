@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
+
 class PaymentsPage extends StatelessWidget {
   const PaymentsPage({super.key});
 
-  static const _background = Color(0xFFFCFDFC);
-  static const _green = Color(0xFF2C7C65);
-  static const _lightGreen = Color(0xFFEFF8F4);
-  static const _mainText = Color(0xFF202321);
-  static const _secondaryText = Color(0xFF777C79);
+  static const _background = AppTheme.lightBackground;
+  static const _green = AppTheme.primaryGreen;
+  static const _lightGreen = AppTheme.lightBackground;
+  static const _mainText = AppTheme.primaryText;
+  static const _secondaryText = AppTheme.secondaryText;
   static const _border = Color(0xFFE7EAE8);
 
   static const _methods = [
@@ -36,9 +38,9 @@ class PaymentsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-        backgroundColor: _background,
-        foregroundColor: _mainText,
-        surfaceTintColor: _background,
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.white,
+        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Payments',
           style: TextStyle(fontWeight: FontWeight.w600),

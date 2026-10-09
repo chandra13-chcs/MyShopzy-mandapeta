@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../product_details/data/demo_product_reviews.dart';
 import '../../product_details/models/product_details_product.dart';
 
@@ -13,9 +14,9 @@ class WriteReviewPage extends StatefulWidget {
 }
 
 class _WriteReviewPageState extends State<WriteReviewPage> {
-  static const _background = Color(0xFFF7F8F5);
-  static const _ink = Color(0xFF17251F);
-  static const _green = Color(0xFF16834A);
+  static const _background = AppTheme.lightBackground;
+  static const _ink = AppTheme.primaryText;
+  static const _green = AppTheme.primaryGreen;
   static const _border = Color(0xFFE5E9E3);
 
   final _reviewController = TextEditingController();
@@ -33,9 +34,9 @@ class _WriteReviewPageState extends State<WriteReviewPage> {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-        backgroundColor: _background,
-        foregroundColor: _ink,
-        surfaceTintColor: _background,
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.white,
+        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Write a Review',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),

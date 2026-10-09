@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../categories/presentation/categories_page.dart';
@@ -18,14 +19,14 @@ import 'saved_addresses_page.dart';
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
-  static const _background = Color(0xFFFCFDFC);
-  static const _green = Color(0xFF2C7C65);
-  static const _lightGreen = Color(0xFFEFF8F4);
-  static const _mainText = Color(0xFF202321);
-  static const _secondaryText = Color(0xFF777C79);
+  static const _background = AppTheme.lightBackground;
+  static const _green = AppTheme.primaryGreen;
+  static const _lightGreen = AppTheme.lightBackground;
+  static const _mainText = AppTheme.primaryText;
+  static const _secondaryText = AppTheme.secondaryText;
   static const _border = Color(0xFFE7EAE8);
-  static const _yellow = Color(0xFFFFC928);
-  static const _yellowText = Color(0xFF4D4000);
+  static const _yellow = AppTheme.brandYellow;
+  static const _yellowText = AppTheme.darkGreen;
   static const _logoutBackground = Color(0xFFFFF2F1);
   static const _logoutColor = Color(0xFFA85B5B);
 
@@ -505,9 +506,9 @@ class ProfilePage extends StatelessWidget {
       child: BottomNavigationBar(
         currentIndex: 4,
         type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: _green,
-        unselectedItemColor: _secondaryText,
+        backgroundColor: AppTheme.darkGreen,
+        selectedItemColor: AppTheme.brandYellow,
+        unselectedItemColor: AppTheme.white,
         selectedFontSize: 11,
         unselectedFontSize: 11,
         elevation: 10,

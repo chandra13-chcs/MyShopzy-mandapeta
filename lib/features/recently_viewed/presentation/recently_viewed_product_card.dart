@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../product_details/presentation/product_availability_badge.dart';
 import '../../product_details/presentation/product_details_page.dart';
 
@@ -13,8 +14,8 @@ class RecentlyViewedProductCard extends StatelessWidget {
   final ProductDetailsProduct product;
   final double? width;
 
-  static const _ink = Color(0xFF17251F);
-  static const _green = Color(0xFF16834A);
+  static const _ink = AppTheme.primaryText;
+  static const _green = AppTheme.primaryGreen;
 
   @override
   Widget build(BuildContext context) {

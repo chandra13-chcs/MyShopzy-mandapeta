@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../product_details/models/product_review.dart';
 
 class ReviewStars extends StatelessWidget {
@@ -57,7 +58,9 @@ class RatingBreakdownRow extends StatelessWidget {
                 value: total == 0 ? 0 : count / total,
                 minHeight: 6,
                 backgroundColor: const Color(0xFFE9ECE8),
-                valueColor: const AlwaysStoppedAnimation(Color(0xFF16834A)),
+                valueColor: const AlwaysStoppedAnimation(
+                  AppTheme.primaryGreen,
+                ),
               ),
             ),
           ),
@@ -126,7 +129,7 @@ class CustomerReviewCard extends StatelessWidget {
                 child: const Text(
                   'Verified Purchase',
                   style: TextStyle(
-                    color: Color(0xFF16834A),
+                    color: AppTheme.primaryGreen,
                     fontSize: 9,
                     fontWeight: FontWeight.w700,
                   ),

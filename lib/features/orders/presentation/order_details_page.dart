@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/data/cart_store.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../product_details/data/product_availability_store.dart';
@@ -15,11 +16,12 @@ class OrderDetailsPage extends StatelessWidget {
 
   final OrderRecord order;
 
-  static const _background = Color(0xFFFCFDFC);
-  static const _green = Color(0xFF2C7C65);
-  static const _lightGreen = Color(0xFFEFF8F4);
-  static const _mainText = Color(0xFF202321);
-  static const _secondaryText = Color(0xFF777C79);
+  static const _background = AppTheme.lightBackground;
+  static const _green = AppTheme.primaryGreen;
+  static const _lightGreen = AppTheme.lightBackground;
+  static const _mainText = AppTheme.primaryText;
+  static const _secondaryText = Color(0xFF59615C);
+  static const _cancelledStatus = Color(0xFF914747);
   static const _border = Color(0xFFE7EAE8);
 
   bool get _canTrack =>
@@ -43,9 +45,9 @@ class OrderDetailsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-        backgroundColor: _background,
-        foregroundColor: _mainText,
-        surfaceTintColor: _background,
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.white,
+        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Order Details',
           style: TextStyle(fontWeight: FontWeight.w600),
@@ -108,8 +110,8 @@ class OrderDetailsPage extends StatelessWidget {
                     icon: const Icon(Icons.cancel_outlined),
                     label: const Text('Cancel Order'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFA85B5B),
-                      side: const BorderSide(color: Color(0xFFA85B5B)),
+                      foregroundColor: _cancelledStatus,
+                      side: const BorderSide(color: _cancelledStatus),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -188,7 +190,7 @@ class OrderDetailsPage extends StatelessWidget {
 
   Widget _buildStatusCard() {
     final cancelled = order.orderTab == OrdersTab.cancelled;
-    final color = cancelled ? const Color(0xFFA85B5B) : _green;
+    final color = cancelled ? _cancelledStatus : _green;
     final background = cancelled ? const Color(0xFFFFF2F1) : _lightGreen;
     return Container(
       width: double.infinity,
@@ -353,7 +355,7 @@ class OrderDetailsPage extends StatelessWidget {
 
     if (refund == null) return const SizedBox.shrink();
     final failed = refund.status == DemoRefundStatus.refundFailed;
-    final statusColor = failed ? const Color(0xFFA85B5B) : _green;
+    final statusColor = failed ? _cancelledStatus : _green;
     final timeline = [
       ('Cancelled Order', true),
       ('Refund Initiated', true),
@@ -827,9 +829,7 @@ class _RefundTimelineStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = isComplete
-        ? const Color(0xFF2C7C65)
-        : const Color(0xFFB8C0BB);
+    final color = isComplete ? AppTheme.primaryGreen : const Color(0xFFB8C0BB);
     return SizedBox(
       height: isLast ? 29 : 39,
       child: Row(
@@ -864,7 +864,7 @@ class _RefundTimelineStep extends StatelessWidget {
               style: TextStyle(
                 color: isComplete
                     ? const Color(0xFF202321)
-                    : const Color(0xFF777C79),
+                    : const Color(0xFF59615C),
                 fontSize: 12,
                 fontWeight: isComplete ? FontWeight.w600 : FontWeight.w400,
               ),
@@ -881,19 +881,19 @@ class OrderReceiptPage extends StatelessWidget {
 
   final OrderRecord order;
 
-  static const _background = Color(0xFFFCFDFC);
-  static const _green = Color(0xFF2C7C65);
-  static const _mainText = Color(0xFF202321);
-  static const _secondaryText = Color(0xFF777C79);
+  static const _background = AppTheme.lightBackground;
+  static const _green = AppTheme.primaryGreen;
+  static const _mainText = AppTheme.primaryText;
+  static const _secondaryText = Color(0xFF59615C);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-        backgroundColor: _background,
-        foregroundColor: _mainText,
-        surfaceTintColor: _background,
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.white,
+        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Receipt',
           style: TextStyle(fontWeight: FontWeight.w600),
@@ -1076,18 +1076,18 @@ class _OrderItemRow extends StatelessWidget {
           height: 42,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: const Color(0xFFEFF8F4),
+            color: AppTheme.lightBackground,
             borderRadius: BorderRadius.circular(11),
           ),
           child: item.imageUrl == null || item.imageUrl!.isEmpty
-              ? Icon(item.icon, color: const Color(0xFF2C7C65), size: 22)
+              ? Icon(item.icon, color: AppTheme.primaryGreen, size: 22)
               : ClipRRect(
                   borderRadius: BorderRadius.circular(11),
                   child: Image.network(
                     item.imageUrl!,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) =>
-                        Icon(item.icon, color: const Color(0xFF2C7C65)),
+                        Icon(item.icon, color: AppTheme.primaryGreen),
                   ),
                 ),
         ),
@@ -1109,7 +1109,7 @@ class _OrderItemRow extends StatelessWidget {
                 Text(
                   item.variantLabel!,
                   style: const TextStyle(
-                    color: Color(0xFF777C79),
+                    color: Color(0xFF59615C),
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1120,7 +1120,7 @@ class _OrderItemRow extends StatelessWidget {
                 Text(
                   description,
                   style: const TextStyle(
-                    color: Color(0xFF777C79),
+                    color: Color(0xFF59615C),
                     fontSize: 10,
                   ),
                 ),
@@ -1128,7 +1128,7 @@ class _OrderItemRow extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 '${item.quantity} × ${_formatPrice(item.unitPriceInPaise)}',
-                style: const TextStyle(color: Color(0xFF777C79), fontSize: 11),
+                style: const TextStyle(color: Color(0xFF59615C), fontSize: 11),
               ),
             ],
           ),
@@ -1205,7 +1205,7 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = emphasized
         ? const Color(0xFF202321)
-        : const Color(0xFF777C79);
+        : const Color(0xFF59615C);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1226,7 +1226,7 @@ class _InfoRow extends StatelessWidget {
             textAlign: TextAlign.end,
             style: TextStyle(
               color: emphasized
-                  ? const Color(0xFF2C7C65)
+                  ? AppTheme.primaryGreen
                   : const Color(0xFF202321),
               fontSize: emphasized ? 15 : 12,
               fontWeight: emphasized ? FontWeight.w800 : FontWeight.w500,
@@ -1262,7 +1262,7 @@ class _ReceiptRow extends StatelessWidget {
               style: TextStyle(
                 color: emphasized
                     ? const Color(0xFF202321)
-                    : const Color(0xFF777C79),
+                    : const Color(0xFF59615C),
                 fontSize: emphasized ? 14 : 11,
                 fontWeight: emphasized ? FontWeight.w700 : FontWeight.w400,
               ),
@@ -1274,7 +1274,7 @@ class _ReceiptRow extends StatelessWidget {
             textAlign: TextAlign.end,
             style: TextStyle(
               color: emphasized
-                  ? const Color(0xFF2C7C65)
+                  ? AppTheme.primaryGreen
                   : const Color(0xFF202321),
               fontSize: emphasized ? 14 : 11,
               fontWeight: emphasized ? FontWeight.w800 : FontWeight.w500,

@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import 'chicken_page.dart';
 import 'mutton_page.dart';
 
 class MeatPage extends StatelessWidget {
   const MeatPage({super.key});
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8F5),
+      backgroundColor: AppTheme.lightBackground,
       body: SafeArea(
         child: Column(
           children: [

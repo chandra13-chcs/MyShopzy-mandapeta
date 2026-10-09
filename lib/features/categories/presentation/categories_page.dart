@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../bakery/presentation/bakery_page.dart';
@@ -17,10 +18,8 @@ import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
 class CategoriesPage extends StatelessWidget {
   const CategoriesPage({super.key});
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _page = AppTheme.lightBackground;
 
   static const _shopCategories = [
     _CategoryTile('Restaurants', Icons.restaurant_rounded, Color(0xFFFFE8D9)),
@@ -144,9 +143,9 @@ class CategoriesPage extends StatelessWidget {
         child: BottomNavigationBar(
           currentIndex: 1,
           type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: _green,
-          unselectedItemColor: _muted,
+          backgroundColor: AppTheme.darkGreen,
+          selectedItemColor: AppTheme.brandYellow,
+          unselectedItemColor: AppTheme.white,
           selectedFontSize: 11,
           unselectedFontSize: 11,
           elevation: 10,
@@ -218,9 +217,7 @@ class CategoriesPage extends StatelessWidget {
           ),
           IconButton(
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const SearchPage(),
-              ),
+              MaterialPageRoute<void>(builder: (context) => const SearchPage()),
             ),
             tooltip: 'Search categories',
             icon: const Icon(Icons.search_rounded, color: _ink, size: 25),
@@ -311,19 +308,27 @@ class CategoriesPage extends StatelessWidget {
         context,
         const VegetablesFruitsPage(),
       ),
-      'Cold Drinks & Juices' || 'Tea, Coffee & Milk Drinks' => () =>
-          _openLocalStoreCategory(context, 'beverages'),
+      'Cold Drinks & Juices' || 'Tea, Coffee & Milk Drinks' =>
+        () => _openLocalStoreCategory(context, 'beverages'),
       'Snacks & Munchies' => () => _openLocalStoreCategory(context, 'snacks'),
-      'Breakfast & Instant Food' => () =>
-          _openLocalStoreCategory(context, 'noodles'),
-      'Sweet Tooth & Chocolates' => () =>
-          _pushPage(context, const BakeryPage()),
+      'Breakfast & Instant Food' => () => _openLocalStoreCategory(
+        context,
+        'noodles',
+      ),
+      'Sweet Tooth & Chocolates' => () => _pushPage(
+        context,
+        const BakeryPage(),
+      ),
       'Bakery & Biscuits' => () => _openLocalStoreCategory(context, 'biscuits'),
       'Atta, Rice & Dal' => () => _openLocalStoreCategory(context, 'rice'),
-      'Masala, Cooking Oil & Ghee' => () =>
-          _openLocalStoreCategory(context, 'cooking-oil'),
-      'Chicken, Meat & Fresh Fish' => () =>
-          _pushPage(context, const MeatPage()),
+      'Masala, Cooking Oil & Ghee' => () => _openLocalStoreCategory(
+        context,
+        'cooking-oil',
+      ),
+      'Chicken, Meat & Fresh Fish' => () => _pushPage(
+        context,
+        const MeatPage(),
+      ),
       _ => null,
     };
     return action ?? () => _showCategoryUnavailable(context);

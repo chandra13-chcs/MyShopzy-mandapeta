@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../models/order_record.dart';
 import 'order_details_page.dart';
 import 'order_tracking_page.dart';
@@ -11,11 +12,12 @@ class OrdersPage extends StatelessWidget {
 
   final OrdersTab initialTab;
 
-  static const _background = Color(0xFFFCFDFC);
-  static const _green = Color(0xFF2C7C65);
-  static const _lightGreen = Color(0xFFEFF8F4);
-  static const _mainText = Color(0xFF202321);
-  static const _secondaryText = Color(0xFF777C79);
+  static const _background = AppTheme.lightBackground;
+  static const _green = AppTheme.primaryGreen;
+  static const _lightGreen = AppTheme.lightBackground;
+  static const _mainText = AppTheme.primaryText;
+  static const _secondaryText = Color(0xFF59615C);
+  static const _cancelledStatus = Color(0xFF914747);
   static const _border = Color(0xFFE7EAE8);
 
   static final List<OrderRecord> _demoOrders = [
@@ -219,17 +221,17 @@ class OrdersPage extends StatelessWidget {
       child: Scaffold(
         backgroundColor: _background,
         appBar: AppBar(
-          backgroundColor: _background,
-          foregroundColor: _mainText,
-          surfaceTintColor: _background,
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.white,
+          surfaceTintColor: Colors.transparent,
           title: const Text(
             'My Orders',
             style: TextStyle(fontWeight: FontWeight.w600),
           ),
           bottom: TabBar(
-            labelColor: _green,
-            unselectedLabelColor: _secondaryText,
-            indicatorColor: _green,
+            labelColor: AppTheme.brandYellow,
+            unselectedLabelColor: AppTheme.white,
+            indicatorColor: AppTheme.brandYellow,
             indicatorSize: TabBarIndicatorSize.label,
             labelStyle: const TextStyle(fontWeight: FontWeight.w600),
             tabs: [for (final tab in _tabs) Tab(text: tab)],
@@ -292,7 +294,7 @@ class OrdersPage extends StatelessWidget {
 
   Widget _buildOrderCard(BuildContext context, OrderRecord order) {
     final isCancelled = order.status == 'Cancelled';
-    final statusColor = isCancelled ? const Color(0xFFA85B5B) : _green;
+    final statusColor = isCancelled ? _cancelledStatus : _green;
     final statusBackground = isCancelled
         ? const Color(0xFFFFF2F1)
         : _lightGreen;

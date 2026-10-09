@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
@@ -246,9 +247,9 @@ class BakeryMenuPage extends StatelessWidget {
   final List<BakeryMenuCategory> categories;
   final List<BakeryMenuItem> items;
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _page = AppTheme.lightBackground;
 
   @override
   Widget build(BuildContext context) {
@@ -622,14 +623,14 @@ class _OpenStatus extends StatelessWidget {
       children: [
         Icon(
           Icons.circle,
-          color: isOpen ? const Color(0xFF16834A) : const Color(0xFF929892),
+          color: isOpen ? AppTheme.primaryGreen : const Color(0xFF929892),
           size: 7,
         ),
         const SizedBox(width: 4),
         Text(
           isOpen ? 'Open' : 'Closed',
           style: TextStyle(
-            color: isOpen ? const Color(0xFF16834A) : const Color(0xFF727A74),
+            color: isOpen ? AppTheme.primaryGreen : AppTheme.secondaryText,
             fontSize: 10,
             fontWeight: FontWeight.w600,
           ),
@@ -650,8 +651,8 @@ class _BakeryMenuItemCard extends StatelessWidget {
   final String bakeryName;
   final List<BakeryMenuItem> relatedItems;
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
 
   @override
   Widget build(BuildContext context) {
@@ -857,7 +858,7 @@ class _FoodTypeMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = type == BakeryFoodType.vegetarian
-        ? const Color(0xFF16834A)
+        ? AppTheme.primaryGreen
         : const Color(0xFFB63E32);
     return Container(
       width: 14,

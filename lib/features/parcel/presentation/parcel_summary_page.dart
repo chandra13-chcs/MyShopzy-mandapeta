@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
+
 class ParcelSummaryPage extends StatelessWidget {
   const ParcelSummaryPage({
     required this.pickupLocation,
@@ -16,9 +18,9 @@ class ParcelSummaryPage extends StatelessWidget {
   final String weight;
   final String instructions;
 
-  static const _ink = Color(0xFF17251F);
-  static const _green = Color(0xFF16834A);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _green = AppTheme.primaryGreen;
+  static const _page = AppTheme.lightBackground;
 
   @override
   Widget build(BuildContext context) {

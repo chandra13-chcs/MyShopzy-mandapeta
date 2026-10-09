@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import 'restaurant_menu_page.dart';
 
 enum RestaurantStatus { open, closed, unavailable }
@@ -96,10 +97,10 @@ class RestaurantsPage extends StatelessWidget {
   final List<Restaurant> restaurants;
   final ValueChanged<Restaurant>? onRestaurantTap;
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
+  static const _page = AppTheme.lightBackground;
   static const _coverColors = [
     Color(0xFF7A4934),
     Color(0xFF45674C),

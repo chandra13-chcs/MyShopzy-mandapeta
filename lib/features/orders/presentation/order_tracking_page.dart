@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
+
 enum OrderTrackingStatus {
   orderPlaced,
   orderConfirmed,
@@ -34,11 +36,11 @@ class OrderTrackingPage extends StatelessWidget {
 
   final OrderTrackingData order;
 
-  static const _background = Color(0xFFFCFDFC);
-  static const _green = Color(0xFF2C7C65);
-  static const _lightGreen = Color(0xFFEFF8F4);
-  static const _mainText = Color(0xFF202321);
-  static const _secondaryText = Color(0xFF777C79);
+  static const _background = AppTheme.lightBackground;
+  static const _green = AppTheme.primaryGreen;
+  static const _lightGreen = AppTheme.lightBackground;
+  static const _mainText = AppTheme.primaryText;
+  static const _secondaryText = Color(0xFF59615C);
   static const _border = Color(0xFFE7EAE8);
 
   static const _timelineStatuses = [
@@ -87,11 +89,9 @@ class OrderTrackingPage extends StatelessWidget {
     OrderTrackingStatus.packed => 'Your order has been packed',
     OrderTrackingStatus.findingDeliveryPartner =>
       'We are finding a delivery partner',
-    OrderTrackingStatus.riderAssigned =>
-      'A delivery partner has been assigned',
+    OrderTrackingStatus.riderAssigned => 'A delivery partner has been assigned',
     OrderTrackingStatus.pickedUp => 'Your order has been picked up',
-    OrderTrackingStatus.onTheWay =>
-      'Your delivery partner is on the way',
+    OrderTrackingStatus.onTheWay => 'Your delivery partner is on the way',
     OrderTrackingStatus.arriving => 'Your delivery partner is arriving',
     OrderTrackingStatus.delivered => 'Your order has been delivered',
   };
@@ -103,9 +103,9 @@ class OrderTrackingPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-        backgroundColor: _background,
-        foregroundColor: _mainText,
-        surfaceTintColor: _background,
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.white,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
           onPressed: () => Navigator.of(context).maybePop(),
           tooltip: 'Back',
@@ -233,9 +233,7 @@ class OrderTrackingPage extends StatelessWidget {
       ),
       child: Stack(
         children: [
-          Positioned.fill(
-            child: CustomPaint(painter: _DemoMapPainter()),
-          ),
+          Positioned.fill(child: CustomPaint(painter: _DemoMapPainter())),
           Positioned(
             left: 15,
             top: 15,
@@ -316,11 +314,7 @@ class OrderTrackingPage extends StatelessWidget {
               color: _lightGreen,
               borderRadius: BorderRadius.circular(17),
             ),
-            child: const Icon(
-              Icons.person_rounded,
-              color: _green,
-              size: 32,
-            ),
+            child: const Icon(Icons.person_rounded, color: _green, size: 32),
           ),
           const SizedBox(width: 12),
           const Expanded(
@@ -460,9 +454,7 @@ class OrderTrackingPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _isDelivered
-                ? 'This demo delivery has been completed.'
-                : 'Share this OTP with your delivery partner only when your order arrives.',
+            _isDelivered ? 'This demo delivery has been completed.' : 'Share this OTP with your delivery partner only when your order arrives.',
             style: const TextStyle(
               color: _secondaryText,
               fontSize: 12,
@@ -525,7 +517,7 @@ class _InfoCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF2C7C65), size: 21),
+          Icon(icon, color: AppTheme.primaryGreen, size: 21),
           const SizedBox(width: 9),
           Expanded(
             child: Column(
@@ -534,7 +526,7 @@ class _InfoCard extends StatelessWidget {
                 Text(
                   label,
                   style: const TextStyle(
-                    color: Color(0xFF777C79),
+                    color: Color(0xFF59615C),
                     fontSize: 11,
                   ),
                 ),
@@ -607,7 +599,7 @@ class _TimelineStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isComplete || isCurrent
-        ? const Color(0xFF2C7C65)
+        ? AppTheme.primaryGreen
         : const Color(0xFFB8BFBA);
     return SizedBox(
       height: isLast ? 28 : 36,
@@ -635,7 +627,7 @@ class _TimelineStep extends StatelessWidget {
               style: TextStyle(
                 color: isComplete || isCurrent
                     ? const Color(0xFF202321)
-                    : const Color(0xFF777C79),
+                    : const Color(0xFF59615C),
                 fontSize: 13,
                 fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
               ),
@@ -645,7 +637,7 @@ class _TimelineStep extends StatelessWidget {
             const Text(
               'CURRENT',
               style: TextStyle(
-                color: Color(0xFF2C7C65),
+                color: AppTheme.primaryGreen,
                 fontSize: 9,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.5,
@@ -672,7 +664,7 @@ class _DetailRow extends StatelessWidget {
           width: 92,
           child: Text(
             label,
-            style: const TextStyle(color: Color(0xFF777C79), fontSize: 12),
+            style: const TextStyle(color: Color(0xFF59615C), fontSize: 12),
           ),
         ),
         Expanded(
@@ -709,7 +701,7 @@ class _PartnerAction extends StatelessWidget {
       icon: Icon(icon, size: 14),
       label: Text(label),
       style: OutlinedButton.styleFrom(
-        foregroundColor: const Color(0xFF2C7C65),
+        foregroundColor: AppTheme.primaryGreen,
         side: const BorderSide(color: Color(0xFFDCE9E2)),
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         minimumSize: Size.zero,

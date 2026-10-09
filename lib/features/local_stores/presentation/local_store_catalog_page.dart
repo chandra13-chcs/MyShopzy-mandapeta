@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../product_details/models/product_variant.dart';
@@ -435,10 +436,10 @@ class LocalStoreCatalogPage extends StatefulWidget {
 }
 
 class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
+  static const _page = AppTheme.lightBackground;
 
   late String _selectedCategoryId;
 
@@ -728,8 +729,8 @@ class _ProductCard extends StatelessWidget {
   final String storeName;
   final List<StoreProduct> relatedProducts;
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
   static const _imageColors = [
     [Color(0xFFE9D6B5), Color(0xFFD1B58A)],
     [Color(0xFFE1EAD8), Color(0xFFB9C8A8)],
@@ -869,7 +870,7 @@ class _ProductCard extends StatelessWidget {
           Text(
             '${product.discount}% OFF',
             style: const TextStyle(
-              color: Color(0xFF16834A),
+              color: AppTheme.primaryGreen,
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -927,9 +928,9 @@ class _ProductCard extends StatelessWidget {
         onPressed: () => _openDetails(context),
         style: FilledButton.styleFrom(
           backgroundColor: Colors.white,
-          foregroundColor: const Color(0xFF16834A),
+          foregroundColor: AppTheme.primaryGreen,
           padding: EdgeInsets.zero,
-          side: const BorderSide(color: Color(0xFF16834A)),
+          side: BorderSide(color: AppTheme.primaryGreen),
         ),
         child: const Text(
           'OPTIONS',

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../bakery/presentation/bakery_page.dart';
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
@@ -25,10 +26,10 @@ import '../../search/presentation/search_page.dart';
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
+  static const _page = AppTheme.lightBackground;
   static const _recentlyViewedViewAllThreshold = 4;
 
   static final _discoverySearchResults = _buildSearchDiscoveryResults();
@@ -336,98 +337,90 @@ class HomePage extends StatelessWidget {
 
   Widget _buildServiceGrid() {
     const services = [
-      _Service('Restaurants', Icons.restaurant_rounded, Color(0xFFFFE8D9)),
-      _Service('Bakery', Icons.bakery_dining_rounded, Color(0xFFE1F2E4)),
-      _Service('Fruits & Vegetables', Icons.eco_rounded, Color(0xFFF0F3D9)),
-      _Service('Parcel', Icons.local_shipping_rounded, Color(0xFFE5ECFA)),
-      _Service('Meat', Icons.set_meal_rounded, Color(0xFFFFE4E2)),
-      _Service('Local Stores', Icons.storefront_rounded, Color(0xFFECE5FA)),
+      _Service(
+        'Meat Only Chicken',
+        'meat_only_chicken',
+        'assets/category_tiles/meat_only_chicken.jpg',
+      ),
+      _Service('Bakery', 'bakery', 'assets/category_tiles/bakery.jpg'),
+      _Service('Parcel', 'parcel', 'assets/category_tiles/parcel.jpg'),
+      _Service(
+        'Local Stores',
+        'local_stores',
+        'assets/category_tiles/local_stores.jpg',
+      ),
+      _Service(
+        'Fruits & Vegetables',
+        'fruits_vegetables',
+        'assets/category_tiles/fruits_vegetables.jpg',
+      ),
+      _Service(
+        'Restaurants',
+        'restaurants',
+        'assets/category_tiles/restaurants.jpg',
+      ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: services.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 11,
-        mainAxisSpacing: 11,
-        childAspectRatio: 1.04,
-      ),
-      itemBuilder: (context, index) {
-        final service = services[index];
-        return Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(15),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(15),
-            onTap: switch (service.name) {
-              'Restaurants' => () => Navigator.of(context).push(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: services.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            childAspectRatio: 1,
+          ),
+          itemBuilder: (context, index) {
+            final service = services[index];
+            final onTap = switch (service.key) {
+              'restaurants' => () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (context) => const RestaurantsPage(),
                 ),
               ),
-              'Bakery' => () => Navigator.of(context).push(
+              'bakery' => () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (context) => const BakeryPage(),
                 ),
               ),
-              'Meat' => () => Navigator.of(context).push(
+              'meat_only_chicken' => () => Navigator.of(context).push(
                 MaterialPageRoute<void>(builder: (context) => const MeatPage()),
               ),
-              'Parcel' => () => Navigator.of(context).push(
+              'parcel' => () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (context) => const ParcelPage(),
                 ),
               ),
-              'Local Stores' => () => Navigator.of(context).push(
+              'local_stores' => () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (context) => const LocalStoresPage(),
                 ),
               ),
-              'Fruits & Vegetables' => () => Navigator.of(context).push(
+              'fruits_vegetables' => () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (context) => const VegetablesFruitsPage(),
                 ),
               ),
               _ => null,
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: const Color(0xFFEBEEE9)),
+            };
+            return Material(
+              color: AppTheme.white,
+              borderRadius: BorderRadius.circular(12),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                key: ValueKey('home-category-${service.key}'),
+                onTap: onTap,
+                child: Image.asset(
+                  service.assetPath,
+                  fit: BoxFit.cover,
+                  semanticLabel: service.name,
+                ),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: service.color,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(service.icon, color: _ink, size: 25),
-                  ),
-                  const SizedBox(height: 9),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    child: Text(
-                      service.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: _ink,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -674,7 +667,7 @@ class HomePage extends StatelessWidget {
                             height: 9,
                             decoration: BoxDecoration(
                               color: product.isVeg
-                                  ? const Color(0xFF16834A)
+                                  ? _green
                                   : const Color(0xFFB63E32),
                               shape: BoxShape.circle,
                             ),
@@ -1069,9 +1062,9 @@ class HomePage extends StatelessWidget {
           }
         },
         type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        selectedItemColor: _green,
-        unselectedItemColor: _muted,
+        backgroundColor: AppTheme.darkGreen,
+        selectedItemColor: AppTheme.brandYellow,
+        unselectedItemColor: AppTheme.white,
         selectedFontSize: 11,
         unselectedFontSize: 11,
         elevation: 10,
@@ -2094,11 +2087,11 @@ const _groceryDiscoverySections = [
 ];
 
 class _Service {
-  const _Service(this.name, this.icon, this.color);
+  const _Service(this.name, this.key, this.assetPath);
 
   final String name;
-  final IconData icon;
-  final Color color;
+  final String key;
+  final String assetPath;
 }
 
 class _RestaurantDiscoverySection {

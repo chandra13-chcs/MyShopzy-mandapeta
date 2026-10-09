@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../data/demo_product_reviews.dart';
 import '../data/product_availability_store.dart';
@@ -24,10 +25,10 @@ class ProductDetailsPage extends StatefulWidget {
 }
 
 class _ProductDetailsPageState extends State<ProductDetailsPage> {
-  static const _ink = Color(0xFF17251F);
-  static const _muted = Color(0xFF727A74);
-  static const _green = Color(0xFF16834A);
-  static const _page = Color(0xFFF7F8F5);
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
+  static const _page = AppTheme.lightBackground;
   static const _border = Color(0xFFE5E9E3);
 
   bool _isDescriptionExpanded = true;
@@ -57,9 +58,9 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
     return Scaffold(
       backgroundColor: _page,
       appBar: AppBar(
-        backgroundColor: _page,
-        foregroundColor: _ink,
-        surfaceTintColor: _page,
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.white,
+        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Product Details',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
@@ -857,7 +858,7 @@ class _FoodTypeIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isVegetarian
-        ? const Color(0xFF16834A)
+        ? AppTheme.primaryGreen
         : const Color(0xFFB63E32);
     return Container(
       width: 16,
