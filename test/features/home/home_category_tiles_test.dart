@@ -34,6 +34,11 @@ void main() {
       await tester.tap(tile);
       await tester.pumpAndSettle();
       expect(find.byType(entry.value), findsOneWidget);
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'Opening ${entry.value} should not produce layout errors.',
+      );
       await tester.pageBack();
       await tester.pumpAndSettle();
     }

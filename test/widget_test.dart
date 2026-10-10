@@ -10,10 +10,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/app/myshopzy_app.dart';
 
 void main() {
-  testWidgets('shows the MyShopzy home screen', (WidgetTester tester) async {
+  testWidgets('shows customer home delivery and search content', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const MyShopzyApp());
 
-    expect(find.text('MyShopzy'), findsOneWidget);
-    expect(find.text('Welcome to MyShopzy'), findsOneWidget);
+    expect(find.text('30 mins'), findsOneWidget);
+    expect(find.text('Mandapeta, Andhra Pradesh'), findsOneWidget);
+    expect(
+      find.text('Search restaurants, groceries, products...'),
+      findsOneWidget,
+    );
   });
 }

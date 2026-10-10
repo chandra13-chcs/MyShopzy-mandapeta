@@ -65,6 +65,11 @@ void main() {
 
       expect(find.byType(ProductDetailsPage), findsOneWidget);
       expect(find.text('Sunflower Oil'), findsOneWidget);
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'Opening product details should not produce widget errors.',
+      );
     },
   );
 }

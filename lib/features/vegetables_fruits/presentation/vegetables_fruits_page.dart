@@ -159,7 +159,7 @@ class _ProduceTypeCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: SizedBox(
-          height: 148,
+          height: 160,
           child: Stack(
             children: [
               Positioned(

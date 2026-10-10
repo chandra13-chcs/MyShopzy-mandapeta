@@ -1,0 +1,21 @@
+{
+  "name": "myshopzy-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Initial backend skeleton for the MyShopzy Mandapeta delivery platform",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.11"
+  },
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}

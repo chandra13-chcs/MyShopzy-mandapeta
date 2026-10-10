@@ -22,13 +22,16 @@ class ProductAvailabilityStore extends ChangeNotifier {
             merchantId: merchantId,
             variantId: variantId,
           )];
-    final productOverride = _availabilityOverrides[_key(
+    final productOverride =
+        _availabilityOverrides[_key(
           productId: productId,
           serviceType: serviceType,
           merchantId: merchantId,
         )];
-    return variantOverride ??
-        (productOverride == false ? false : defaultAvailable);
+    if (variantOverride != null) return variantOverride;
+    if (productOverride == false) return false;
+    if (variantId != null) return defaultAvailable;
+    return productOverride ?? defaultAvailable;
   }
 
   void setAvailability({

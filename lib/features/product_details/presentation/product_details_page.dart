@@ -381,12 +381,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
   }
 
   Widget _buildDescription(String description) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _border),
+        side: const BorderSide(color: _border),
       ),
+      clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
         initiallyExpanded: true,
         onExpansionChanged: (expanded) =>

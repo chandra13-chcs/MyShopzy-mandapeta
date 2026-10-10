@@ -452,13 +452,14 @@ class _RestaurantCard extends StatelessWidget {
                         size: 15,
                       ),
                       const SizedBox(width: 3),
-                      Text(
-                        '${restaurant.distance} · ${restaurant.location}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: _muted, fontSize: 11),
+                      Expanded(
+                        child: Text(
+                          '${restaurant.distance} · ${restaurant.location}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: _muted, fontSize: 11),
+                        ),
                       ),
-                      const Spacer(),
                       _buildStatus(restaurant.status),
                     ],
                   ),
