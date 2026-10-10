@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+
 class HelpSupportPage extends StatefulWidget {
   const HelpSupportPage({super.key});
 
@@ -216,12 +217,13 @@ class _HelpSupportPageState extends State<HelpSupportPage> {
   }
 
   Widget _buildCategoryCard(_HelpCategory category) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _border),
+        side: const BorderSide(color: _border),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           Padding(
@@ -289,44 +291,47 @@ class _HelpSupportPageState extends State<HelpSupportPage> {
   }
 
   Widget _buildContactSupport(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _border),
+        side: const BorderSide(color: _border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Contact Support',
-            style: TextStyle(
-              color: _mainText,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Contact Support',
+              style: TextStyle(
+                color: _mainText,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-          const SizedBox(height: 7),
-          _buildContactAction(
-            context,
-            icon: Icons.chat_bubble_outline_rounded,
-            title: 'Chat with Support',
-            message: 'Support chat will be available soon',
-          ),
-          _buildContactAction(
-            context,
-            icon: Icons.call_outlined,
-            title: 'Call Support',
-            message: 'Call support will be available soon',
-          ),
-          _buildContactAction(
-            context,
-            icon: Icons.email_outlined,
-            title: 'Email Support',
-            message: 'Email support will be available soon',
-          ),
-        ],
+            const SizedBox(height: 7),
+            _buildContactAction(
+              context,
+              icon: Icons.chat_bubble_outline_rounded,
+              title: 'Chat with Support',
+              message: 'Support chat will be available soon',
+            ),
+            _buildContactAction(
+              context,
+              icon: Icons.call_outlined,
+              title: 'Call Support',
+              message: 'Call support will be available soon',
+            ),
+            _buildContactAction(
+              context,
+              icon: Icons.email_outlined,
+              title: 'Email Support',
+              message: 'Email support will be available soon',
+            ),
+          ],
+        ),
       ),
     );
   }

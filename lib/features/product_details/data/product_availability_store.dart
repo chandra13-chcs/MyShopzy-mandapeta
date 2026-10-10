@@ -29,7 +29,6 @@ class ProductAvailabilityStore extends ChangeNotifier {
           merchantId: merchantId,
         )];
     if (variantOverride != null) return variantOverride;
-    if (productOverride == false) return false;
     if (variantId != null) return defaultAvailable;
     return productOverride ?? defaultAvailable;
   }

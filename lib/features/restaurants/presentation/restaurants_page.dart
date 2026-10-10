@@ -429,39 +429,37 @@ class _RestaurantCard extends StatelessWidget {
                     style: const TextStyle(color: _muted, fontSize: 12),
                   ),
                   const SizedBox(height: 9),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.schedule_rounded,
-                        color: _muted,
-                        size: 15,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        restaurant.deliveryTime,
-                        style: const TextStyle(
-                          color: _ink,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 9),
-                      const Icon(
-                        Icons.location_on_outlined,
-                        color: _muted,
-                        size: 15,
-                      ),
-                      const SizedBox(width: 3),
-                      Expanded(
-                        child: Text(
-                          '${restaurant.distance} · ${restaurant.location}',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: _muted, fontSize: 11),
-                        ),
-                      ),
-                      _buildStatus(restaurant.status),
-                    ],
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (constraints.maxWidth < 300) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                _buildDeliveryTime(),
+                                const Spacer(),
+                                _buildStatus(restaurant.status),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              width: double.infinity,
+                              child: _buildLocation(),
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          _buildDeliveryTime(),
+                          const SizedBox(width: 9),
+                          Expanded(child: _buildLocation()),
+                          _buildStatus(restaurant.status),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
@@ -469,6 +467,43 @@ class _RestaurantCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildDeliveryTime() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.schedule_rounded, color: _muted, size: 15),
+        const SizedBox(width: 4),
+        Text(
+          restaurant.deliveryTime,
+          style: const TextStyle(
+            color: _ink,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocation() {
+    return Row(
+      children: [
+        const Icon(Icons.location_on_outlined, color: _muted, size: 15),
+        const SizedBox(width: 3),
+        Flexible(child: _locationText()),
+      ],
+    );
+  }
+
+  Widget _locationText() {
+    return Text(
+      '${restaurant.distance} · ${restaurant.location}',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(color: _muted, fontSize: 11),
     );
   }
 

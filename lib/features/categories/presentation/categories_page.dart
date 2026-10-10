@@ -233,12 +233,17 @@ class CategoriesPage extends StatelessWidget {
   }
 
   Widget _buildShopByStore(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(10) / 10;
+    final listHeight = (101 + 23 * textScale)
+        .clamp(124.0, double.infinity)
+        .toDouble();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _SectionHeading(title: 'Shop by Store'),
         SizedBox(
-          height: 124,
+          height: listHeight,
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(16, 3, 16, 8),
             scrollDirection: Axis.horizontal,
@@ -263,23 +268,37 @@ class CategoriesPage extends StatelessWidget {
     return SliverMainAxisGroup(
       slivers: [
         SliverToBoxAdapter(child: _SectionHeading(title: title)),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          sliver: SliverGrid(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => _GridCategory(
-                category: categories[index],
-                onTap: _gridCategoryAction(context, categories[index].name),
+        SliverLayoutBuilder(
+          builder: (context, constraints) {
+            final crossAxisCount = switch (constraints.crossAxisExtent) {
+              < 280 => 2,
+              < 360 => 3,
+              _ => 4,
+            };
+            final textScale = MediaQuery.textScalerOf(context).scale(10) / 10;
+            final mainAxisExtent = (77 + 34.5 * textScale)
+                .clamp(112.0, double.infinity)
+                .toDouble();
+
+            return SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              sliver: SliverGrid(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _GridCategory(
+                    category: categories[index],
+                    onTap: _gridCategoryAction(context, categories[index].name),
+                  ),
+                  childCount: categories.length,
+                ),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: 11,
+                  mainAxisSpacing: 12,
+                  mainAxisExtent: mainAxisExtent,
+                ),
               ),
-              childCount: categories.length,
-            ),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              crossAxisSpacing: 11,
-              mainAxisSpacing: 12,
-              mainAxisExtent: 112,
-            ),
-          ),
+            );
+          },
         ),
       ],
     );

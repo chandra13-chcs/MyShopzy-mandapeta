@@ -55,6 +55,33 @@ void main() {
       ),
       isFalse,
     );
+    expect(
+      availabilityStore.isAvailable(
+        productId: 'product-1',
+        serviceType: 'store',
+        merchantId: 'store-1',
+        defaultAvailable: true,
+      ),
+      isTrue,
+    );
+
+    availabilityStore.setAvailability(
+      productId: 'product-1',
+      serviceType: 'store',
+      merchantId: 'store-1',
+      isAvailable: false,
+    );
+    expect(
+      availabilityStore.isAvailable(
+        productId: 'product-1',
+        serviceType: 'store',
+        merchantId: 'store-1',
+        variantId: 'variant-1',
+        defaultAvailable: true,
+      ),
+      isTrue,
+      reason: 'A product override must not replace a variant default.',
+    );
   });
 
   testWidgets('product cart control blocks out-of-stock additions', (
