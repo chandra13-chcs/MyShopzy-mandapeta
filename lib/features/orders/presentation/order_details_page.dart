@@ -5,6 +5,7 @@ import '../../cart/data/cart_store.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../product_details/data/product_availability_store.dart';
 import '../../product_details/models/product_details_product.dart';
+import '../../reviews/presentation/order_rating_page.dart';
 import '../../reviews/presentation/write_review_page.dart';
 import '../data/demo_refund_store.dart';
 import '../models/order_record.dart';
@@ -31,6 +32,8 @@ class OrderDetailsPage extends StatelessWidget {
 
   bool get _canReview =>
       order.orderTab == OrdersTab.delivered && order.items.isNotEmpty;
+
+  bool get _canRateOrder => order.orderTab == OrdersTab.delivered;
 
   bool get _canBuyAgain =>
       order.orderTab == OrdersTab.delivered && order.items.isNotEmpty;
@@ -112,6 +115,30 @@ class OrderDetailsPage extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _cancelledStatus,
                       side: const BorderSide(color: _cancelledStatus),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+              if (_canRateOrder) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: FilledButton.tonalIcon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (context) => OrderRatingPage(order: order),
+                      ),
+                    ),
+                    icon: const Icon(Icons.star_rate_rounded),
+                    label: const Text('Rate Delivery & Products'),
+                    style: FilledButton.styleFrom(
+                      foregroundColor: _green,
+                      backgroundColor: const Color(0xFFEAF5EA),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),

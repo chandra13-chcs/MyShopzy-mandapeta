@@ -8,6 +8,7 @@ import 'package:myshopzy/features/orders/presentation/order_tracking_page.dart';
 import 'package:myshopzy/features/orders/presentation/orders_page.dart';
 import 'package:myshopzy/features/product_details/data/product_availability_store.dart';
 import 'package:myshopzy/features/reviews/presentation/write_review_page.dart';
+import 'package:myshopzy/features/reviews/presentation/order_rating_page.dart';
 
 void main() {
   testWidgets('renders order ID, item quantities, and calculated totals', (
@@ -132,6 +133,14 @@ void main() {
       MaterialApp(home: OrderDetailsPage(order: deliveredOrder)),
     );
 
+    expect(find.text('Rate Delivery & Products'), findsOneWidget);
+    await tester.ensureVisible(find.text('Rate Delivery & Products'));
+    await tester.tap(find.text('Rate Delivery & Products'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OrderRatingPage), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     expect(find.text('Review products'), findsOneWidget);
     await tester.ensureVisible(find.text('Review products'));
     await tester.tap(find.text('Review products'));
@@ -146,6 +155,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: OrderDetailsPage(order: cancelledOrder)),
     );
+    expect(find.text('Rate Delivery & Products'), findsNothing);
     expect(find.text('Review products'), findsNothing);
     expect(find.text('Buy Again'), findsNothing);
   });
@@ -249,9 +259,7 @@ void main() {
     expect(cart.items, hasLength(1));
     expect(cart.items.single.productId, 'other-store-item');
     expect(
-      find.text(
-        'You can only order from one bakery at a time.',
-      ),
+      find.text('You can only order from one bakery at a time.'),
       findsOneWidget,
     );
     cart.clear();
