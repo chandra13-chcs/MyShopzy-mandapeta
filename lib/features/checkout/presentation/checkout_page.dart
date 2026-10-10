@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../cart/data/cart_store.dart';
 import '../../coupons/models/demo_coupon.dart';
+import '../../profile/models/saved_address.dart';
 
 class CheckoutPage extends StatefulWidget {
-  const CheckoutPage({super.key});
+  const CheckoutPage({super.key, this.openNewAddressOnLoad = false});
+
+  final bool openNewAddressOnLoad;
 
   @override
   State<CheckoutPage> createState() => _CheckoutPageState();
@@ -33,21 +36,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _newAddressController = TextEditingController();
   final _newAddressLandmarkController = TextEditingController();
   final List<CheckoutDeliveryAddress> _savedAddresses = [
-    const CheckoutDeliveryAddress(
-      id: 'home',
-      addressType: 'Home',
-      formattedAddress: '12 Green Park Road, Ravulapalem',
-    ),
-    const CheckoutDeliveryAddress(
-      id: 'work',
-      addressType: 'Work',
-      formattedAddress: '24 Market Street, Ravulapalem',
-    ),
-    const CheckoutDeliveryAddress(
-      id: 'other',
-      addressType: 'Other',
-      formattedAddress: '8 River View Lane, Ravulapalem',
-    ),
+    for (final address in demoSavedAddresses)
+      CheckoutDeliveryAddress(
+        id: address.id,
+        addressType: address.label,
+        formattedAddress: address.address,
+      ),
   ];
 
   CheckoutDeliveryAddress? _confirmedDeliveryAddress;
@@ -96,6 +90,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
   void initState() {
     super.initState();
     _cartStore.addListener(_handleCartChanged);
+    if (widget.openNewAddressOnLoad) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showNewAddressForm();
+      });
+    }
   }
 
   @override

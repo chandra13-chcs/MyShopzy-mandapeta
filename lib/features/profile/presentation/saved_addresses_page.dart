@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../models/saved_address.dart';
 
 class SavedAddressesPage extends StatelessWidget {
   const SavedAddressesPage({super.key});
@@ -11,24 +12,6 @@ class SavedAddressesPage extends StatelessWidget {
   static const _mainText = AppTheme.primaryText;
   static const _secondaryText = AppTheme.secondaryText;
   static const _border = Color(0xFFE7EAE8);
-
-  static const _addresses = [
-    _SavedAddress(
-      label: 'Home',
-      icon: Icons.home_outlined,
-      address: 'Demo address: 12 Green Park Road, Ravulapalem',
-    ),
-    _SavedAddress(
-      label: 'Work',
-      icon: Icons.business_outlined,
-      address: 'Demo address: 24 Market Street, Ravulapalem',
-    ),
-    _SavedAddress(
-      label: 'Other',
-      icon: Icons.location_on_outlined,
-      address: 'Demo address: 8 River View Lane, Ravulapalem',
-    ),
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -46,20 +29,20 @@ class SavedAddressesPage extends StatelessWidget {
       body: SafeArea(
         child: ListView.separated(
           padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-          itemCount: _addresses.length + 1,
+          itemCount: demoSavedAddresses.length + 1,
           separatorBuilder: (context, index) => const SizedBox(height: 14),
           itemBuilder: (context, index) {
-            if (index == _addresses.length) {
+            if (index == demoSavedAddresses.length) {
               return _buildAddAddressButton(context);
             }
-            return _buildAddressCard(context, _addresses[index]);
+            return _buildAddressCard(context, demoSavedAddresses[index]);
           },
         ),
       ),
     );
   }
 
-  Widget _buildAddressCard(BuildContext context, _SavedAddress address) {
+  Widget _buildAddressCard(BuildContext context, SavedAddress address) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -116,7 +99,7 @@ class SavedAddressesPage extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            address.address,
+            'Demo address: ${address.address}',
             style: const TextStyle(
               color: _secondaryText,
               fontSize: 14,
@@ -156,16 +139,4 @@ class SavedAddressesPage extends StatelessWidget {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
-}
-
-class _SavedAddress {
-  const _SavedAddress({
-    required this.label,
-    required this.icon,
-    required this.address,
-  });
-
-  final String label;
-  final IconData icon;
-  final String address;
 }

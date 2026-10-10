@@ -4,6 +4,88 @@ import '../../../app/config/delivery_offer_config.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../cart/data/cart_store.dart';
 
+class FreeDeliveryOfferBanner extends StatefulWidget {
+  const FreeDeliveryOfferBanner({super.key});
+
+  @override
+  State<FreeDeliveryOfferBanner> createState() =>
+      _FreeDeliveryOfferBannerState();
+}
+
+class _FreeDeliveryOfferBannerState extends State<FreeDeliveryOfferBanner> {
+  static const _bannerColor = Color(0xFFE8FAFA);
+  var _isDismissed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isDismissed) return const SizedBox.shrink();
+
+    final cartStore = CartStore.instance;
+    return AnimatedBuilder(
+      animation: cartStore,
+      builder: (context, child) {
+        final offerStatus = DeliveryOfferConfig.messageForSubtotal(
+          cartStore.subtotalInPaise,
+        );
+        return Container(
+          key: const ValueKey('free-delivery-offer-banner'),
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 42),
+          padding: const EdgeInsetsDirectional.only(start: 12, end: 4),
+          color: _bannerColor,
+          child: Row(
+            children: [
+              Expanded(
+                child: Semantics(
+                  liveRegion: true,
+                  label:
+                      'FREE DELIVERY on orders above '
+                      '${DeliveryOfferConfig.thresholdLabel}. $offerStatus',
+                  child: Text.rich(
+                    TextSpan(
+                      style: const TextStyle(
+                        color: AppTheme.primaryText,
+                        fontSize: 14,
+                      ),
+                      children: [
+                        const TextSpan(
+                          text: 'FREE DELIVERY',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        TextSpan(
+                          text:
+                              ' on orders above '
+                              '${DeliveryOfferConfig.thresholdLabel}',
+                        ),
+                      ],
+                    ),
+                    key: const ValueKey('free-delivery-offer-message'),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+              IconButton(
+                key: const ValueKey('free-delivery-offer-dismiss'),
+                tooltip: 'Dismiss free delivery offer',
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                onPressed: () => setState(() => _isDismissed = true),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: AppTheme.darkGreen,
+                  size: 19,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class FreeDeliveryProgressStrip extends StatelessWidget {
   const FreeDeliveryProgressStrip({super.key});
 

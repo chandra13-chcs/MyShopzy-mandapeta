@@ -4,8 +4,12 @@ import '../../bakery/presentation/bakery_page.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
+import '../../checkout/presentation/checkout_page.dart';
 import '../../../shared/presentation/dietary_badge.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
+import '../../profile/models/saved_address.dart';
+import '../../profile/presentation/saved_addresses_page.dart';
+import 'delivery_location_bottom_sheet.dart';
 import 'free_delivery_progress_strip.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
@@ -63,7 +67,13 @@ class HomePage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigation(context),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const FreeDeliveryOfferBanner(),
+          _buildBottomNavigation(context),
+        ],
+      ),
     );
   }
 
@@ -117,96 +127,7 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.bolt_rounded, color: _green, size: 20),
-                  const SizedBox(width: 5),
-                  const Text(
-                    '30 mins',
-                    style: TextStyle(
-                      color: _ink,
-                      fontSize: 21,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  const Text(
-                    'delivery',
-                    style: TextStyle(
-                      color: _muted,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Row(
-                children: [
-                  const Icon(
-                    Icons.location_on_rounded,
-                    color: _green,
-                    size: 17,
-                  ),
-                  const SizedBox(width: 4),
-                  const Flexible(
-                    child: Text(
-                      'Mandapeta, Andhra Pradesh',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: _ink,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  const Icon(
-                    Icons.keyboard_arrow_down_rounded,
-                    color: _muted,
-                    size: 18,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Material(
-          color: AppTheme.primaryGreen,
-          shape: const CircleBorder(),
-          child: InkWell(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const ProfilePage(),
-              ),
-            ),
-            customBorder: const CircleBorder(),
-            child: Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFE8EBE6)),
-              ),
-              child: const Icon(
-                Icons.person_outline_rounded,
-                color: AppTheme.brandYellow,
-                size: 23,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
+    return const _HomeLocationHeader();
   }
 
   Widget _buildSearchBar(BuildContext context) {
@@ -1144,6 +1065,168 @@ class HomePage extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _HomeLocationHeader extends StatefulWidget {
+  const _HomeLocationHeader();
+
+  @override
+  State<_HomeLocationHeader> createState() => _HomeLocationHeaderState();
+}
+
+class _HomeLocationHeaderState extends State<_HomeLocationHeader> {
+  static const _ink = AppTheme.primaryText;
+  static const _muted = AppTheme.secondaryText;
+  static const _green = AppTheme.primaryGreen;
+
+  SavedAddress? _selectedAddress;
+
+  String get _locationLabel {
+    final selectedAddress = _selectedAddress;
+    if (selectedAddress == null) return 'Mandapeta, Andhra Pradesh';
+    return '${selectedAddress.label} · Demo address: ${selectedAddress.address}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Icon(Icons.bolt_rounded, color: _green, size: 20),
+                  const SizedBox(width: 5),
+                  const Text(
+                    '30 mins',
+                    style: TextStyle(
+                      color: _ink,
+                      fontSize: 21,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.4,
+                    ),
+                  ),
+                  const SizedBox(width: 7),
+                  const Text(
+                    'delivery',
+                    style: TextStyle(
+                      color: _muted,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  key: const ValueKey('home-delivery-address-selector'),
+                  onTap: _showLocationSelector,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 2,
+                      horizontal: 1,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.location_on_rounded,
+                          color: _green,
+                          size: 17,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            _locationLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _ink,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: _muted,
+                          size: 18,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Material(
+          color: AppTheme.primaryGreen,
+          shape: const CircleBorder(),
+          child: InkWell(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const ProfilePage(),
+              ),
+            ),
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFE8EBE6)),
+              ),
+              child: const Icon(
+                Icons.person_outline_rounded,
+                color: AppTheme.brandYellow,
+                size: 23,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showLocationSelector() async {
+    final selectedAddress = await showModalBottomSheet<SavedAddress>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => DeliveryLocationBottomSheet(
+        onViewAll: () {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) => const SavedAddressesPage(),
+            ),
+          );
+        },
+        onEnterManually: () {
+          Navigator.of(sheetContext).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) =>
+                  const CheckoutPage(openNewAddressOnLoad: true),
+            ),
+          );
+        },
+      ),
+    );
+    if (!mounted || selectedAddress == null) return;
+    setState(() => _selectedAddress = selectedAddress);
   }
 }
 
