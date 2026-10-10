@@ -34,8 +34,14 @@ class HomePage extends StatelessWidget {
   static const _green = AppTheme.primaryGreen;
   static const _page = AppTheme.lightBackground;
   static const _recentlyViewedViewAllThreshold = 4;
+  static const _homeIntroChildCount = 10;
 
   static final _discoverySearchResults = _buildSearchDiscoveryResults();
+  static final _homeSliverChildCount =
+      _homeIntroChildCount +
+      2 * _restaurantDiscoverySections.length +
+      2 +
+      2 * _groceryDiscoverySections.length;
 
   @override
   Widget build(BuildContext context) {
@@ -48,44 +54,10 @@ class HomePage extends StatelessWidget {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
               sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  _buildHeader(context),
-                  const SizedBox(height: 10),
-                  const FreeDeliveryProgressStrip(),
-                  const SizedBox(height: 18),
-                  _buildSearchBar(context),
-                  const SizedBox(height: 22),
-                  _buildServiceGrid(),
-                  const SizedBox(height: 22),
-                  _buildPromotions(),
-                  AnimatedBuilder(
-                    animation: RecentlyViewedStore.instance,
-                    builder: (context, child) {
-                      if (RecentlyViewedStore.instance.products.isEmpty) {
-                        return const SizedBox(height: 24);
-                      }
-                      return Column(
-                        children: [
-                          _buildRecentlyViewedSection(
-                            context,
-                            RecentlyViewedStore.instance.products,
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      );
-                    },
-                  ),
-                  for (final section in _restaurantDiscoverySections) ...[
-                    _buildRestaurantDiscoverySection(context, section),
-                    const SizedBox(height: 22),
-                  ],
-                  _buildParcelAdvertisement(context),
-                  const SizedBox(height: 24),
-                  for (final section in _groceryDiscoverySections) ...[
-                    _buildGroceryDiscoverySection(context, section),
-                    const SizedBox(height: 20),
-                  ],
-                ]),
+                delegate: SliverChildBuilderDelegate(
+                  _buildHomeSliverChild,
+                  childCount: _homeSliverChildCount,
+                ),
               ),
             ),
           ],
@@ -93,6 +65,55 @@ class HomePage extends StatelessWidget {
       ),
       bottomNavigationBar: _buildBottomNavigation(context),
     );
+  }
+
+  Widget _buildHomeSliverChild(BuildContext context, int index) {
+    if (index < _homeIntroChildCount) {
+      return switch (index) {
+        0 => _buildHeader(context),
+        1 => const SizedBox(height: 10),
+        2 => const FreeDeliveryProgressStrip(),
+        3 => const SizedBox(height: 18),
+        4 => _buildSearchBar(context),
+        5 => const SizedBox(height: 22),
+        6 => _buildServiceGrid(),
+        7 => const SizedBox(height: 22),
+        8 => _buildPromotions(),
+        9 => AnimatedBuilder(
+          animation: RecentlyViewedStore.instance,
+          builder: (context, child) {
+            final products = RecentlyViewedStore.instance.products;
+            if (products.isEmpty) return const SizedBox(height: 24);
+            return Column(
+              children: [
+                _buildRecentlyViewedSection(context, products),
+                const SizedBox(height: 24),
+              ],
+            );
+          },
+        ),
+        _ => const SizedBox.shrink(),
+      };
+    }
+
+    final restaurantChildIndex = index - _homeIntroChildCount;
+    final restaurantChildCount = 2 * _restaurantDiscoverySections.length;
+    if (restaurantChildIndex < restaurantChildCount) {
+      final section = _restaurantDiscoverySections[restaurantChildIndex ~/ 2];
+      return restaurantChildIndex.isEven
+          ? _buildRestaurantDiscoverySection(context, section)
+          : const SizedBox(height: 22);
+    }
+
+    final parcelChildIndex = _homeIntroChildCount + restaurantChildCount;
+    if (index == parcelChildIndex) return _buildParcelAdvertisement(context);
+    if (index == parcelChildIndex + 1) return const SizedBox(height: 24);
+
+    final groceryChildIndex = index - parcelChildIndex - 2;
+    final section = _groceryDiscoverySections[groceryChildIndex ~/ 2];
+    return groceryChildIndex.isEven
+        ? _buildGroceryDiscoverySection(context, section)
+        : const SizedBox(height: 20);
   }
 
   Widget _buildHeader(BuildContext context) {

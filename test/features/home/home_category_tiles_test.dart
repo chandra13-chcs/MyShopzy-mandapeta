@@ -118,4 +118,23 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('home discovery remains reachable through the root scroll view', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+
+    final finalDiscoverySection = find.text('Cooking Oils');
+    expect(finalDiscoverySection, findsNothing);
+    await tester.scrollUntilVisible(
+      finalDiscoverySection,
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(finalDiscoverySection, findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

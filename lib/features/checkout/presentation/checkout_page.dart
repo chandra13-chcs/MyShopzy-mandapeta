@@ -1414,6 +1414,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   void _showOrderFlowMessage() {
+    // Replace this only after an order service returns a confirmed OrderRecord.
+    // Until then, checkout must neither create an order nor clear the cart.
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Order flow will be connected next.')),
     );
