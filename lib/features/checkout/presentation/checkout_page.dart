@@ -67,8 +67,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   ];
 
   String? get _deliveryInstruction {
-    final customInstruction =
-        _customDeliveryInstructionController.text.trim();
+    final customInstruction = _customDeliveryInstructionController.text.trim();
     final parts = [
       ?_selectedQuickInstruction,
       if (customInstruction.isNotEmpty) customInstruction,
@@ -123,8 +122,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final shortBy = coupon.minimumOrderInPaise - _subtotalInPaise;
     setState(() {
       _selectedCoupon = null;
-      _couponMessage =
-          'Add ${_formatPrice(shortBy)} more to use this coupon.';
+      _couponMessage = 'Add ${_formatPrice(shortBy)} more to use this coupon.';
       _couponMessageIsError = true;
     });
   }
@@ -151,6 +149,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_cartStore.items.isEmpty) ...[
+                    _buildEmptyCartState(context),
+                    const SizedBox(height: 16),
+                  ],
                   _buildDeliverySection(),
                   const SizedBox(height: 16),
                   _buildDeliveryInstructionsSection(),
@@ -176,8 +178,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
       bottomNavigationBar: AnimatedBuilder(
         animation: _cartStore,
         builder: (context, child) {
-          final canPlaceOrder =
-              _cartStore.items.isNotEmpty && _confirmedDeliveryAddress != null;
+          final hasItems = _cartStore.items.isNotEmpty;
+          final hasConfirmedAddress = _confirmedDeliveryAddress != null;
+          final canPlaceOrder = hasItems && hasConfirmedAddress;
+          if (!hasItems) return const SizedBox.shrink();
           return SafeArea(
             top: false,
             child: Container(
@@ -186,28 +190,90 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 color: Colors.white,
                 border: Border(top: BorderSide(color: _border)),
               ),
-              child: SizedBox(
-                height: 52,
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: canPlaceOrder ? _showOrderFlowMessage : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _green,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: _border,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!hasConfirmedAddress)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Select and confirm a delivery location to continue.',
+                        key: ValueKey('checkout-address-validation'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: _secondaryText, fontSize: 12),
+                      ),
+                    ),
+                  SizedBox(
+                    height: 52,
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: canPlaceOrder ? _showOrderFlowMessage : null,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _green,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: _border,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'Place Order',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
-                  child: const Text(
-                    'Place Order',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
+                ],
               ),
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildEmptyCartState(BuildContext context) {
+    return Container(
+      key: const ValueKey('checkout-empty-cart-title'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _lightGreen,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.shopping_cart_outlined, color: _green, size: 22),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Your cart is empty',
+                  style: TextStyle(
+                    color: _mainText,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Add items before placing an order.',
+                  style: TextStyle(
+                    color: _secondaryText,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            child: const Text('Return to Cart'),
+          ),
+        ],
       ),
     );
   }
@@ -461,10 +527,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
               hintText: 'Custom instructions (optional)',
-              hintStyle: const TextStyle(
-                color: _secondaryText,
-                fontSize: 12,
-              ),
+              hintStyle: const TextStyle(color: _secondaryText, fontSize: 12),
               isDense: true,
               filled: true,
               fillColor: Colors.white,

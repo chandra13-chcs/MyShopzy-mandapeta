@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myshopzy/app/theme/app_theme.dart';
 import 'package:myshopzy/features/bakery/presentation/bakery_page.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
 import 'package:myshopzy/features/local_stores/presentation/local_stores_page.dart';
@@ -27,6 +28,70 @@ void main() {
     };
 
     expect(find.byType(GridView), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('free-delivery-progress-strip')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const ValueKey('free-delivery-progress-strip')),
+          )
+          .dy,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('home-category-restaurants')))
+            .dy,
+      ),
+    );
+    expect(
+      find.byKey(const ValueKey('home-category-arrow-meat_only_chicken')),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Icon &&
+            widget.icon == Icons.person_outline_rounded &&
+            widget.color == AppTheme.brandYellow,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('home-category-arrow-bakery')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('home-category-arrow-parcel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('home-category-arrow-local_stores')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('home-category-arrow-fruits_vegetables')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('home-category-arrow-restaurants')),
+      findsOneWidget,
+    );
+
+    final meatTile = find.byKey(
+      const ValueKey('home-category-meat_only_chicken'),
+    );
+    final pressScale = find.ancestor(
+      of: meatTile,
+      matching: find.byType(AnimatedScale),
+    );
+    final gesture = await tester.startGesture(tester.getCenter(meatTile));
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(tester.widget<AnimatedScale>(pressScale).scale, lessThan(1));
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+    expect(tester.widget<AnimatedScale>(pressScale).scale, 1);
+
     for (final entry in destinations.entries) {
       final tile = find.byKey(ValueKey('home-category-${entry.key}'));
       await tester.ensureVisible(tile);

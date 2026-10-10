@@ -199,6 +199,47 @@ void main() {
     cart.removeItem(key);
     expect(cart.items, isEmpty);
   });
+
+  test('quantity changes and removal recalculate the cart subtotal', () {
+    _add(
+      cart,
+      'local_store',
+      'rice',
+      merchantId: 'store-a',
+      priceInPaise: 15400,
+    );
+    final key = cart.items.single.key;
+
+    expect(cart.subtotalInPaise, 15400);
+    expect(cart.increaseQuantity(key), isTrue);
+    expect(cart.subtotalInPaise, 30800);
+
+    cart.decreaseQuantity(key);
+    expect(cart.subtotalInPaise, 15400);
+    cart.decreaseQuantity(key);
+    expect(cart.items.single.quantity, 1);
+    expect(cart.subtotalInPaise, 15400);
+
+    cart.removeItem(key);
+    expect(cart.items, isEmpty);
+    expect(cart.subtotalInPaise, 0);
+  });
+
+  test('cart listeners receive changes only when cart state changes', () {
+    var notifications = 0;
+    void listener() => notifications++;
+    cart.addListener(listener);
+    addTearDown(() => cart.removeListener(listener));
+
+    _add(cart, 'local_store', 'rice', merchantId: 'store-a');
+    final key = cart.items.single.key;
+    cart.decreaseQuantity(key);
+    cart.increaseQuantity(key);
+    cart.removeItem(key);
+    cart.removeItem(key);
+
+    expect(notifications, 3);
+  });
 }
 
 bool _add(
@@ -207,6 +248,7 @@ bool _add(
   String productId, {
   String? merchantId,
   String? serviceVariant,
+  int priceInPaise = 1000,
 }) {
   return cart.addItem(
     productId: productId,
@@ -215,7 +257,7 @@ bool _add(
     serviceVariant: serviceVariant,
     name: productId,
     description: 'Demo item',
-    priceInPaise: 1000,
+    priceInPaise: priceInPaise,
     icon: Icons.shopping_bag_outlined,
   );
 }

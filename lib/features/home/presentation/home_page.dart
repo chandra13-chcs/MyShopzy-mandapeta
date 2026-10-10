@@ -4,6 +4,9 @@ import '../../bakery/presentation/bakery_page.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
+import '../../../shared/presentation/dietary_badge.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
+import 'free_delivery_progress_strip.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../local_stores/data/local_store_session.dart';
@@ -47,7 +50,9 @@ class HomePage extends StatelessWidget {
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
                   _buildHeader(context),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10),
+                  const FreeDeliveryProgressStrip(),
+                  const SizedBox(height: 18),
                   _buildSearchBar(context),
                   const SizedBox(height: 22),
                   _buildServiceGrid(),
@@ -155,7 +160,7 @@ class HomePage extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Material(
-          color: Colors.white,
+          color: AppTheme.primaryGreen,
           shape: const CircleBorder(),
           child: InkWell(
             onTap: () => Navigator.of(context).push(
@@ -173,7 +178,7 @@ class HomePage extends StatelessWidget {
               ),
               child: const Icon(
                 Icons.person_outline_rounded,
-                color: _ink,
+                color: AppTheme.brandYellow,
                 size: 23,
               ),
             ),
@@ -363,12 +368,13 @@ class HomePage extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final crossAxisCount = constraints.maxWidth < 310 ? 2 : 3;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: services.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
+            crossAxisCount: crossAxisCount,
             crossAxisSpacing: 8,
             mainAxisSpacing: 8,
             childAspectRatio: 1,
@@ -406,17 +412,44 @@ class HomePage extends StatelessWidget {
               ),
               _ => null,
             };
-            return Material(
-              color: AppTheme.white,
-              borderRadius: BorderRadius.circular(12),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                key: ValueKey('home-category-${service.key}'),
-                onTap: onTap,
-                child: Image.asset(
-                  service.assetPath,
-                  fit: BoxFit.cover,
-                  semanticLabel: service.name,
+            return PressScaleFeedback(
+              child: Material(
+                color: AppTheme.white,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: ValueKey('home-category-${service.key}'),
+                  onTap: onTap,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.asset(
+                        service.assetPath,
+                        fit: BoxFit.cover,
+                        semanticLabel: service.name,
+                      ),
+                      Positioned(
+                        right: 6,
+                        bottom: 6,
+                        child: IgnorePointer(
+                          child: Container(
+                            key: ValueKey('home-category-arrow-${service.key}'),
+                            width: 26,
+                            height: 26,
+                            decoration: const BoxDecoration(
+                              color: AppTheme.brandYellow,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_forward_rounded,
+                              color: AppTheme.darkGreen,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
@@ -609,10 +642,8 @@ class HomePage extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             itemCount: products.length,
             separatorBuilder: (context, index) => const SizedBox(width: 10),
-            itemBuilder: (context, index) => RecentlyViewedProductCard(
-              product: products[index],
-              width: 138,
-            ),
+            itemBuilder: (context, index) =>
+                RecentlyViewedProductCard(product: products[index], width: 138),
           ),
         ),
       ],
@@ -625,97 +656,94 @@ class HomePage extends StatelessWidget {
   ) {
     return SizedBox(
       width: 96,
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(13),
-        child: InkWell(
+      child: PressScaleFeedback(
+        child: Material(
+          color: Colors.white,
           borderRadius: BorderRadius.circular(13),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (context) => ProductDetailsPage(
-                product: _restaurantDiscoveryProductDetails(product),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(13),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => ProductDetailsPage(
+                  product: _restaurantDiscoveryProductDetails(product),
+                ),
               ),
             ),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: const Color(0xFFEBEEE9)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    color: product.imageColor,
-                    child: Stack(
-                      children: [
-                        Center(
-                          child: Icon(
-                            product.imageIcon,
-                            color: _ink.withValues(alpha: 0.68),
-                            size: 35,
-                          ),
-                        ),
-                        Positioned(
-                          top: 7,
-                          right: 7,
-                          child: Container(
-                            width: 9,
-                            height: 9,
-                            decoration: BoxDecoration(
-                              color: product.isVeg
-                                  ? _green
-                                  : const Color(0xFFB63E32),
-                              shape: BoxShape.circle,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: const Color(0xFFEBEEE9)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      color: product.imageColor,
+                      child: Stack(
+                        children: [
+                          Center(
+                            child: Icon(
+                              product.imageIcon,
+                              color: _ink.withValues(alpha: 0.68),
+                              size: 35,
                             ),
                           ),
-                        ),
-                        Positioned(
-                          top: 5,
-                          left: 4,
-                          child: ProductAvailabilityBadge(
-                            productId: product.productId,
-                            serviceType: 'restaurant',
-                            merchantId: product.restaurantId,
-                            defaultAvailable: true,
+                          Positioned(
+                            top: 5,
+                            left: 4,
+                            child: ProductAvailabilityBadge(
+                              productId: product.productId,
+                              serviceType: 'restaurant',
+                              merchantId: product.restaurantId,
+                              defaultAvailable: true,
+                            ),
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(7, 6, 7, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          product.productName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _ink,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            height: 1.15,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              '₹${product.price.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                color: _green,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            DietaryBadge(
+                              isVegetarian: product.isVeg,
+                              compact: true,
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(7, 6, 7, 6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        product.productName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _ink,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          height: 1.15,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '₹${product.price.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: _green,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -885,90 +913,92 @@ class HomePage extends StatelessWidget {
   ) {
     return SizedBox(
       width: 84,
-      child: Material(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
+      child: PressScaleFeedback(
+        child: Material(
+          color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (context) => ProductDetailsPage(
-                product: _groceryDiscoveryProductDetails(product),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => ProductDetailsPage(
+                  product: _groceryDiscoveryProductDetails(product),
+                ),
               ),
             ),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFEBEEE9)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    color: product.imageColor,
-                    child: Stack(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFEBEEE9)),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      color: product.imageColor,
+                      child: Stack(
+                        children: [
+                          Center(
+                            child: Icon(
+                              product.imageIcon,
+                              color: _ink.withValues(alpha: 0.65),
+                              size: 33,
+                            ),
+                          ),
+                          Positioned(
+                            top: 4,
+                            left: 3,
+                            child: ProductAvailabilityBadge(
+                              productId: product.productId,
+                              serviceType: 'local_store',
+                              merchantId: product.storeId,
+                              defaultAvailable: true,
+                              compact: true,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 5, 6, 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Center(
-                          child: Icon(
-                            product.imageIcon,
-                            color: _ink.withValues(alpha: 0.65),
-                            size: 33,
+                        Text(
+                          product.productName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _ink,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            height: 1.15,
                           ),
                         ),
-                        Positioned(
-                          top: 4,
-                          left: 3,
-                          child: ProductAvailabilityBadge(
-                            productId: product.productId,
-                            serviceType: 'local_store',
-                            merchantId: product.storeId,
-                            defaultAvailable: true,
-                            compact: true,
+                        const SizedBox(height: 3),
+                        Text(
+                          product.packSize,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: _muted, fontSize: 8),
+                        ),
+                        Text(
+                          '₹${product.price.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            color: _green,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ],
                     ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 5, 6, 6),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        product.productName,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _ink,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          height: 1.15,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        product.packSize,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: _muted, fontSize: 8),
-                      ),
-                      Text(
-                        '₹${product.price.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: _green,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

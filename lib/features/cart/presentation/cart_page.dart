@@ -410,13 +410,8 @@ class _CartPageState extends State<CartPage> {
             ),
             const SizedBox(height: 18),
             OutlinedButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Continue browsing from the shop pages.'),
-                  ),
-                );
-              },
+              onPressed: () =>
+                  Navigator.of(context).popUntil((route) => route.isFirst),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _green,
                 side: const BorderSide(color: _green),
