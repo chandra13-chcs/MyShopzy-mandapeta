@@ -9,13 +9,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:myshopzy/app/myshopzy_app.dart';
+import 'package:myshopzy/app/router.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
 
 void main() {
-  testWidgets('shows customer home delivery and search content', (
+  testWidgets('shows customer home delivery and search content on Home route', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const MyShopzyApp());
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
+    );
+    navigator.pushNamed(AppRouter.home);
     await tester.pumpAndSettle();
 
     expect(find.byType(HomePage), findsOneWidget);
