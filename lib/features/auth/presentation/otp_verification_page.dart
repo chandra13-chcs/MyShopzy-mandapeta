@@ -74,165 +74,170 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
         children: [
           const Positioned.fill(child: AuthCornerDecoration()),
           SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 4, 20, 0),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        key: const ValueKey('otp-back'),
-                        onPressed: () => Navigator.of(context).maybePop(),
-                        tooltip: 'Back',
-                        icon: const Icon(
-                          Icons.arrow_back_rounded,
-                          color: AppTheme.darkGreen,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Flexible(
-                        child: Text(
-                          'OTP Verification',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppTheme.darkGreen,
-                            fontSize: 21,
-                            fontWeight: FontWeight.w800,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final bannerHeight = AuthBrandBanner.heightForViewport(
+                  constraints.maxWidth,
+                  constraints.maxHeight,
+                );
+
+                return Stack(
+                  children: [
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: bannerHeight,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          AuthBrandBanner(height: bannerHeight),
+                          Positioned(
+                            top: 4,
+                            left: 8,
+                            child: IconButton(
+                              key: const ValueKey('otp-back'),
+                              onPressed: () => Navigator.of(context).maybePop(),
+                              tooltip: 'Back',
+                              icon: const Icon(
+                                Icons.arrow_back_rounded,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
+                    ),
+                    Positioned(
+                      top: bannerHeight,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: SingleChildScrollView(
                         keyboardDismissBehavior:
                             ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(22, 14, 22, 24),
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight - 38,
-                          ),
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 22),
-                              MyShopzyBrand(
-                                compact: MediaQuery.sizeOf(context).width < 360,
+                        child: Column(
+                          children: [
+                            const Text(
+                              'OTP Verification',
+                              style: TextStyle(
+                                color: AppTheme.darkGreen,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
                               ),
-                              const SizedBox(height: 39),
-                              const Text(
-                                'UI demo only · no SMS was sent',
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Real SMS OTP verification is not connected. '
+                              'No SMS was sent.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppTheme.secondaryText,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 15),
+                            Text(
+                              _verificationReason,
+                              key: const ValueKey('otp-verification-reason'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppTheme.darkGreen,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 15),
+                            const Text(
+                              'Verification code for',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppTheme.darkGreen,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _maskedPhoneNumber(widget.phoneNumber),
+                              key: const ValueKey('otp-masked-phone'),
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppTheme.darkGreen,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            _otpBoxes(),
+                            const SizedBox(height: 15),
+                            const Text(
+                              'Enter the 6-digit code',
+                              style: TextStyle(
+                                color: AppTheme.primaryGreen,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            if (_message != null) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                _message!,
+                                key: const ValueKey('otp-message'),
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: AppTheme.secondaryText,
-                                  fontSize: 12,
+                                style: const TextStyle(
+                                  color: Color(0xFFB63E32),
+                                  fontSize: 13,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
-                              const SizedBox(height: 15),
-                              Text(
-                                _verificationReason,
-                                key: const ValueKey('otp-verification-reason'),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: AppTheme.darkGreen,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 15),
-                              const Text(
-                                'Verification code for',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: AppTheme.darkGreen,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                _maskedPhoneNumber(widget.phoneNumber),
-                                key: const ValueKey('otp-masked-phone'),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: AppTheme.darkGreen,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 32),
-                              _otpBoxes(),
-                              const SizedBox(height: 15),
-                              const Text(
-                                'Enter the 6-digit code',
-                                style: TextStyle(
-                                  color: AppTheme.primaryGreen,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              if (_message != null) ...[
-                                const SizedBox(height: 12),
-                                Text(
-                                  _message!,
-                                  key: const ValueKey('otp-message'),
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: Color(0xFFB63E32),
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                            ],
+                            const SizedBox(height: 20),
+                            _resendRow(),
+                            const SizedBox(height: 20),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: FilledButton(
+                                key: const ValueKey('otp-verify'),
+                                onPressed: _verify,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryGreen,
+                                  foregroundColor: AppTheme.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                 ),
-                              ],
-                              const SizedBox(height: 27),
-                              _resendRow(),
-                              const SizedBox(height: 31),
-                              SizedBox(
-                                width: double.infinity,
-                                height: 52,
-                                child: FilledButton(
-                                  key: const ValueKey('otp-verify'),
-                                  onPressed: _verify,
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: AppTheme.primaryGreen,
-                                    foregroundColor: AppTheme.white,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'Verify',
-                                    style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-                              TextButton.icon(
-                                onPressed: () => Navigator.of(context).pop(),
-                                icon: const Icon(Icons.arrow_back_rounded),
-                                label: Text(_backLabel),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: AppTheme.primaryGreen,
-                                  textStyle: const TextStyle(
-                                    fontSize: 16,
+                                child: const Text(
+                                  'Verify',
+                                  style: TextStyle(
+                                    fontSize: 17,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextButton.icon(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.arrow_back_rounded),
+                              label: Text(_backLabel),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.primaryGreen,
+                                textStyle: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -346,12 +351,10 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     }
     setState(() {
       _message = switch (widget.purpose) {
-        OtpVerificationPurpose.accountRegistration =>
-          'OTP verification is not connected. No account was created or verified.',
+        OtpVerificationPurpose.accountRegistration => 'OTP verification is not connected. No account was created or verified.',
         OtpVerificationPurpose.login =>
           'OTP verification is not connected. You are not signed in.',
-        OtpVerificationPurpose.passwordReset =>
-          'OTP verification and password reset are not connected. No password was changed.',
+        OtpVerificationPurpose.passwordReset => 'OTP verification and password reset are not connected. No password was changed.',
       };
     });
   }

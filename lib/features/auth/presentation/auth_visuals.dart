@@ -1,4 +1,4 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -91,11 +91,7 @@ class _AuthEntranceState extends State<AuthEntrance>
 }
 
 class AuthFormHeader extends StatelessWidget {
-  const AuthFormHeader({
-    required this.title,
-    required this.backKey,
-    super.key,
-  });
+  const AuthFormHeader({required this.title, required this.backKey, super.key});
 
   final String title;
   final Key backKey;
@@ -115,10 +111,7 @@ class AuthFormHeader extends StatelessWidget {
                 key: backKey,
                 tooltip: 'Back',
                 onPressed: () => Navigator.of(context).maybePop(),
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                  color: Colors.white,
-                ),
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
               ),
               const SizedBox(width: 4),
               const SizedBox(
@@ -177,6 +170,38 @@ class AuthFormHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class AuthBrandBanner extends StatelessWidget {
+  const AuthBrandBanner({super.key, required this.height});
+
+  static const assetPath = 'assets/category_tiles/myshopzy_auth_banner.png';
+  static const artworkAspectRatio = 940 / 994;
+  static const heightFraction = 0.75;
+
+  static double heightForViewport(double width, double height) {
+    final fractionHeight = height * heightFraction;
+    final artworkHeight = width / artworkAspectRatio;
+    return fractionHeight < artworkHeight ? fractionHeight : artworkHeight;
+  }
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: height,
+      child: Image.asset(
+        assetPath,
+        key: const ValueKey('auth-brand-banner'),
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+        alignment: Alignment.topCenter,
+        semanticLabel: 'MyShopzy, Smart Shopping, Fast Delivery',
       ),
     );
   }
@@ -519,10 +544,7 @@ class AuthPhoneField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(
-            color: AuthPalette.green,
-            width: 1.6,
-          ),
+          borderSide: const BorderSide(color: AuthPalette.green, width: 1.6),
         ),
       ),
       inputFormatters: [
@@ -585,10 +607,7 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(
-            color: AuthPalette.green,
-            width: 1.6,
-          ),
+          borderSide: const BorderSide(color: AuthPalette.green, width: 1.6),
         ),
         suffixIcon: IconButton(
           key: widget.toggleKey,

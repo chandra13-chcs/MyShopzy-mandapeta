@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../features/auth/presentation/forgot_password_page.dart';
 import '../features/auth/presentation/phone_entry_page.dart';
-import '../features/auth/presentation/registration_page.dart';
 import '../features/auth/presentation/welcome_page.dart';
 import '../features/home/presentation/home_page.dart';
 
@@ -17,7 +15,7 @@ class AppRouter {
     welcome: (_) => const WelcomePage(),
     phoneEntry: (_) => const PhoneEntryPage(),
     home: (_) => const HomePage(),
-    registration: (_) => const RegistrationPage(),
-    forgotPassword: (_) => const ForgotPasswordPage(),
+    registration: (_) => const PhoneEntryPage(),
+    forgotPassword: (_) => const PhoneEntryPage(),
   };
 }

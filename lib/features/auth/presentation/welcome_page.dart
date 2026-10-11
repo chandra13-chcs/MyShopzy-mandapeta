@@ -25,37 +25,37 @@ class WelcomePage extends StatelessWidget {
             builder: (context, constraints) {
               final screenHeight = constraints.maxHeight;
               final isCompact = screenHeight < 680;
-              final heroHeight = screenHeight * (isCompact ? 0.57 : 0.59);
-              final overlap = isCompact ? 22.0 : 30.0;
+              final heroHeight = AuthBrandBanner.heightForViewport(
+                constraints.maxWidth,
+                screenHeight,
+              );
 
               return Stack(
                 fit: StackFit.expand,
                 children: [
                   Positioned(
-                    top: 0,
+                    top: 8,
                     left: 0,
                     right: 0,
                     height: heroHeight,
                     child: Image.asset(
-                      'assets/category_tiles/myshopzy_welcome.png',
+                      AuthBrandBanner.assetPath,
                       key: const ValueKey('welcome-banner'),
-                      fit: BoxFit.cover,
-                      alignment: const Alignment(0, -0.08),
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      alignment: Alignment.topCenter,
                       semanticLabel:
                           'MyShopzy, Smart Shopping, Fast Delivery',
                     ),
                   ),
                   Positioned(
-                    top: heroHeight - overlap,
+                    top: heroHeight + 8,
                     left: 0,
                     right: 0,
                     bottom: 0,
                     child: _WelcomeActionPanel(
                       compact: isCompact,
-                      onLogin: () =>
-                          Navigator.of(context).pushNamed('/login'),
-                      onSignUp: () =>
-                          Navigator.of(context).pushNamed('/register'),
+                      onLogin: () => Navigator.of(context).pushNamed('/login'),
                     ),
                   ),
                 ],
@@ -69,18 +69,12 @@ class WelcomePage extends StatelessWidget {
 }
 
 class _WelcomeActionPanel extends StatelessWidget {
-  const _WelcomeActionPanel({
-    required this.compact,
-    required this.onLogin,
-    required this.onSignUp,
-  });
+  const _WelcomeActionPanel({required this.compact, required this.onLogin});
 
   static const _green = Color(0xFF006633);
-  static const _yellow = Color(0xFFFFC900);
 
   final bool compact;
   final VoidCallback onLogin;
-  final VoidCallback onSignUp;
 
   @override
   Widget build(BuildContext context) {
@@ -90,10 +84,23 @@ class _WelcomeActionPanel extends StatelessWidget {
       shadowColor: const Color(0x33001A0D),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(34)),
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(26, compact ? 34 : 46, 26, 20),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(26, compact ? 18 : 22, 26, 20),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
+            const Text(
+              'Welcome back,',
+              key: ValueKey('welcome-back-message'),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AuthPalette.darkGreen,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(height: compact ? 10 : 14),
             SizedBox(
               width: double.infinity,
               height: compact ? 54 : 60,
@@ -115,36 +122,40 @@ class _WelcomeActionPanel extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(height: compact ? 14 : 18),
-            SizedBox(
-              width: double.infinity,
-              height: compact ? 54 : 60,
-              child: FilledButton(
-                key: const ValueKey('welcome-signup'),
-                onPressed: onSignUp,
-                style: FilledButton.styleFrom(
-                  backgroundColor: _yellow,
-                  foregroundColor: AuthPalette.darkGreen,
-                  elevation: 3,
-                  shadowColor: const Color(0x33001A0D),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+            const AuthLegalLinks(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 22,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: AuthPalette.yellow,
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
-                child: const Text(
-                  'Sign Up',
-                  style: TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
+                const SizedBox(width: 12),
+                const Flexible(
+                  child: Text(
+                    'Smart Shopping  •  Fast Delivery',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AuthPalette.darkGreen,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const Spacer(),
-            Container(
-              width: 42,
-              height: 4,
-              decoration: BoxDecoration(
-                color: _yellow,
-                borderRadius: BorderRadius.circular(4),
-              ),
+                const SizedBox(width: 12),
+                Container(
+                  width: 22,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: AuthPalette.yellow,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

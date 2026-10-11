@@ -14,234 +14,154 @@ class PhoneEntryPage extends StatefulWidget {
 class _PhoneEntryPageState extends State<PhoneEntryPage> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _rememberLogin = true;
-  String? _phoneError;
 
   @override
   void dispose() {
     _phoneController.dispose();
-    _passwordController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AuthPalette.canvas,
+      backgroundColor: AppTheme.white,
       body: SafeArea(
         child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Column(
-                children: [
-                  AuthEntrance(
-                    scale: true,
-                    child: const AuthFormHeader(
-                      title: 'Log in or sign up',
-                      backKey: ValueKey('login-back'),
-                    ),
-                  ),
-                  AuthEntrance(
-                    slideUp: true,
-                    child: Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 22),
-                      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
-                      decoration: BoxDecoration(
-                        color: AppTheme.white,
-                        borderRadius: BorderRadius.circular(26),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x16002211),
-                            blurRadius: 22,
-                            offset: Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            const Text(
-                              'Welcome back',
-                              style: TextStyle(
-                                color: AuthPalette.darkGreen,
-                                fontSize: 21,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            const Text(
-                              'Sign in to continue shopping',
-                              style: TextStyle(
-                                color: AppTheme.secondaryText,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            AuthPhoneField(
-                              fieldKey: const ValueKey('phone-number-field'),
-                              controller: _phoneController,
-                              validator: (_) => null,
-                              errorText: _phoneError,
-                              onChanged: (_) {
-                                if (_phoneError != null) {
-                                  setState(() => _phoneError = null);
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 13),
-                            AuthPasswordField(
-                              controller: _passwordController,
-                              label: 'Password',
-                              fieldKey: const ValueKey('login-password-field'),
-                              toggleKey:
-                                  const ValueKey('login-password-toggle'),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Enter your password.';
-                                }
-                                return null;
-                              },
-                              textInputAction: TextInputAction.done,
-                            ),
-                            const SizedBox(height: 4),
-                            LayoutBuilder(
-                              builder: (context, rowConstraints) {
-                                final checkbox = Row(
-                                  children: [
-                                    Checkbox(
-                                      key: const ValueKey(
-                                        'remember-login-checkbox',
-                                      ),
-                                      value: _rememberLogin,
-                                      activeColor: AuthPalette.green,
-                                      onChanged: (value) => setState(
-                                        () => _rememberLogin = value ?? false,
-                                      ),
-                                    ),
-                                    const Expanded(
-                                      child: Text(
-                                        'Remember my login for faster sign-in',
-                                        style: TextStyle(
-                                          color: AuthPalette.darkGreen,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                                final forgotPassword = TextButton(
-                                  key: const ValueKey('forgot-password-link'),
-                                  onPressed: () => Navigator.of(
-                                    context,
-                                  ).pushNamed('/forgot-password'),
-                                  child: const Text('Forgot Password?'),
-                                );
+          builder: (context, constraints) {
+            final bannerHeight = AuthBrandBanner.heightForViewport(
+              constraints.maxWidth,
+              constraints.maxHeight,
+            );
 
-                                if (rowConstraints.maxWidth < 370) {
-                                  return Column(
-                                    children: [
-                                      checkbox,
-                                      Align(
-                                        alignment: Alignment.centerRight,
-                                        child: forgotPassword,
-                                      ),
-                                    ],
-                                  );
-                                }
-                                return Row(
-                                  children: [
-                                    Expanded(child: checkbox),
-                                    forgotPassword,
-                                  ],
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 54,
-                              child: FilledButton(
-                                key: const ValueKey('login-submit'),
-                                onPressed: _login,
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: AuthPalette.green,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                                child: const Text(
-                                  'Login',
+            return Column(
+              children: [
+                SizedBox(
+                  height: bannerHeight,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      AuthBrandBanner(height: bannerHeight),
+                      Positioned(
+                        top: 4,
+                        left: 8,
+                        child: IconButton(
+                          key: const ValueKey('login-back'),
+                          tooltip: 'Back',
+                          onPressed: () => Navigator.of(context).maybePop(),
+                          icon: const Icon(
+                            Icons.arrow_back_rounded,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) => SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.fromLTRB(16, 18, 16, 22),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: constraints.maxHeight - 40,
+                        ),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                          decoration: BoxDecoration(
+                            color: AppTheme.white,
+                            borderRadius: BorderRadius.circular(26),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x16002211),
+                                blurRadius: 22,
+                                offset: Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Text(
+                                  'Enter your mobile number',
                                   style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
+                                    color: AuthPalette.darkGreen,
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            TextButton(
-                              key: const ValueKey('login-with-otp'),
-                              onPressed: _loginWithOtp,
-                              child: const Text('Or log in with OTP'),
-                            ),
-                            const Center(
-                              child: Text(
-                                'UI demo only · sign-in is not connected',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: AppTheme.secondaryText,
-                                  fontSize: 11,
+                                const SizedBox(height: 5),
+                                const Text(
+                                  'Log in or sign up with your phone number',
+                                  style: TextStyle(
+                                    color: AppTheme.secondaryText,
+                                    fontSize: 13,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: 20),
+                                AuthPhoneField(
+                                  fieldKey:
+                                      const ValueKey('phone-number-field'),
+                                  controller: _phoneController,
+                                ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 54,
+                                  child: FilledButton(
+                                    key: const ValueKey('phone-continue'),
+                                    onPressed: _continue,
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: AuthPalette.green,
+                                      foregroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Login',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                const Text(
+                                  'OTP verification is not connected yet. '
+                                  'No SMS will be sent.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: AppTheme.secondaryText,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 15),
+                                const AuthLegalLinks(),
+                              ],
                             ),
-                            const SizedBox(height: 15),
-                            const AuthLegalLinks(),
-                          ],
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 
-  void _login() {
+  void _continue() {
     FocusScope.of(context).unfocus();
-    final phoneError = AuthPhoneField.validateIndianMobile(
-      _phoneController.text,
-    );
-    setState(() => _phoneError = phoneError);
-    if (phoneError != null) return;
     if (!_formKey.currentState!.validate()) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Sign-in is not connected yet. No account was authenticated.',
-        ),
-      ),
-    );
-  }
-
-  void _loginWithOtp() {
-    FocusScope.of(context).unfocus();
-    final error = AuthPhoneField.validateIndianMobile(_phoneController.text);
-    if (error != null) {
-      setState(() => _phoneError = error);
-      return;
-    }
-    _passwordController.clear();
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => OtpVerificationPage(

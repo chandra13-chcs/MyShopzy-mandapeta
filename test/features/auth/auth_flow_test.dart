@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/app/myshopzy_app.dart';
 import 'package:myshopzy/app/router.dart';
-import 'package:myshopzy/features/auth/presentation/forgot_password_page.dart';
 import 'package:myshopzy/features/auth/presentation/otp_verification_page.dart';
 import 'package:myshopzy/features/auth/presentation/phone_entry_page.dart';
-import 'package:myshopzy/features/auth/presentation/registration_page.dart';
 import 'package:myshopzy/features/auth/presentation/auth_visuals.dart';
 import 'package:myshopzy/features/auth/presentation/welcome_page.dart';
 import 'package:myshopzy/features/privacy_policy/presentation/privacy_policy_page.dart';
@@ -19,13 +17,16 @@ void main() {
     expect(find.byType(WelcomePage), findsOneWidget);
     expect(find.byKey(const ValueKey('welcome-banner')), findsOneWidget);
     expect(find.byKey(const ValueKey('welcome-login')), findsOneWidget);
-    expect(find.byKey(const ValueKey('welcome-signup')), findsOneWidget);
+    expect(find.byKey(const ValueKey('welcome-signup')), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('welcome-login')));
     await tester.pumpAndSettle();
     expect(find.byType(PhoneEntryPage), findsOneWidget);
-    expect(find.text('Log in or sign up'), findsOneWidget);
-    expect(find.byKey(const ValueKey('login-password-field')), findsOneWidget);
+    expect(find.text('Enter your mobile number'), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-number-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-continue')), findsOneWidget);
+    expect(find.byKey(const ValueKey('login-password-field')), findsNothing);
+    expect(find.text('Forgot Password?'), findsNothing);
     expect(find.text('New customer? Create account'), findsNothing);
     expect(find.byKey(const ValueKey('create-account-link')), findsNothing);
 
@@ -37,23 +38,35 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
   });
 
-  testWidgets('welcome actions open login and registration screens', (
+  testWidgets('welcome shows only Login and opens mobile-number entry', (
     tester,
   ) async {
     await _pumpAppToWelcome(tester);
     final banner = tester.widget<Image>(
       find.byKey(const ValueKey('welcome-banner')),
     );
-    expect(banner.fit, BoxFit.cover);
+    expect(banner.fit, BoxFit.contain);
+    expect(banner.image, const AssetImage(AuthBrandBanner.assetPath));
+    expect(banner.filterQuality, FilterQuality.high);
     expect(find.byKey(const ValueKey('welcome-login')), findsOneWidget);
-    expect(find.byKey(const ValueKey('welcome-signup')), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
+    expect(find.text('Welcome back,'), findsOneWidget);
+    expect(find.byKey(const ValueKey('welcome-signup')), findsNothing);
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('welcome-back-message'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const ValueKey('welcome-login'))).dy,
+      ),
+    );
     expect(find.text('Offers'), findsNothing);
     expect(find.text('Feedback'), findsNothing);
 
-    await tester.tap(find.byKey(const ValueKey('welcome-signup')));
+    await tester.tap(find.byKey(const ValueKey('welcome-login')));
     await tester.pumpAndSettle();
-    expect(find.byType(RegistrationPage), findsOneWidget);
-    expect(find.text('Sign Up'), findsOneWidget);
+    expect(find.byType(PhoneEntryPage), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-number-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('auth-brand-banner')), findsOneWidget);
+    expect(find.byKey(const ValueKey('registration-password')), findsNothing);
   });
 
   testWidgets('login back action returns to the welcome screen', (
@@ -67,75 +80,42 @@ void main() {
     expect(find.byType(WelcomePage), findsOneWidget);
   });
 
-  testWidgets('login validates fields and never creates a fake session', (
+  testWidgets('phone entry validates number and opens disconnected OTP UI', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: PhoneEntryPage()));
-    await tester.tap(find.byKey(const ValueKey('login-submit')));
+    expect(find.byKey(const ValueKey('login-password-field')), findsNothing);
+    expect(find.text('Forgot Password?'), findsNothing);
+    expect(
+      find.text('OTP verification is not connected yet. No SMS will be sent.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('auth-brand-banner')), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('phone-continue')));
+    await tester.tap(find.byKey(const ValueKey('phone-continue')));
     await tester.pumpAndSettle();
     expect(
       find.text('Enter a valid 10-digit Indian mobile number.'),
       findsOneWidget,
     );
-
-    await tester.enterText(
-      find.byKey(const ValueKey('phone-number-field')),
-      '9123456789',
-    );
-    await tester.ensureVisible(find.byKey(const ValueKey('login-submit')));
-    await tester.tap(find.byKey(const ValueKey('login-submit')));
-    await tester.pumpAndSettle();
-    expect(find.text('Enter your password.'), findsOneWidget);
-    await tester.enterText(
-      find.byKey(const ValueKey('login-password-field')),
-      'Passw0rd!',
-    );
-    await tester.ensureVisible(find.byKey(const ValueKey('login-submit')));
-    await tester.tap(find.byKey(const ValueKey('login-submit')));
-    await tester.pump();
-    expect(
-      find.text('Sign-in is not connected yet. No account was authenticated.'),
-      findsOneWidget,
-    );
-    expect(find.byType(OtpVerificationPage), findsNothing);
-  });
-
-  testWidgets('login password visibility control works', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: PhoneEntryPage()));
-    final passwordField = find.descendant(
-      of: find.byKey(const ValueKey('login-password-field')),
-      matching: find.byType(EditableText),
-    );
-    expect(tester.widget<EditableText>(passwordField).obscureText, isTrue);
-
-    await tester.tap(find.byKey(const ValueKey('login-password-toggle')));
-    await tester.pump();
-    expect(tester.widget<EditableText>(passwordField).obscureText, isFalse);
-  });
-
-  testWidgets('login with OTP validates mobile then opens login OTP flow', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: PhoneEntryPage()));
-    await tester.ensureVisible(find.byKey(const ValueKey('login-with-otp')));
-    await tester.tap(find.byKey(const ValueKey('login-with-otp')));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Enter a valid 10-digit Indian mobile number.'),
-      findsOneWidget,
-    );
-    expect(find.byType(OtpVerificationPage), findsNothing);
 
     await tester.enterText(
       find.byKey(const ValueKey('phone-number-field')),
       '9876543210',
     );
-    await tester.ensureVisible(find.byKey(const ValueKey('login-with-otp')));
-    await tester.tap(find.byKey(const ValueKey('login-with-otp')));
+    await tester.ensureVisible(find.byKey(const ValueKey('phone-continue')));
+    await tester.tap(find.byKey(const ValueKey('phone-continue')));
     await tester.pumpAndSettle();
     expect(find.byType(OtpVerificationPage), findsOneWidget);
     expect(find.text('+91 •••••• 3210'), findsOneWidget);
     expect(find.text('Login verification'), findsOneWidget);
+    expect(find.byKey(const ValueKey('auth-brand-banner')), findsOneWidget);
+    expect(find.text('Verify'), findsOneWidget);
+    expect(
+      find.text('Real SMS OTP verification is not connected. No SMS was sent.'),
+      findsOneWidget,
+    );
 
     await tester.enterText(find.byKey(const ValueKey('otp-input')), '123456');
     await tester.ensureVisible(find.byKey(const ValueKey('otp-verify')));
@@ -145,169 +125,26 @@ void main() {
       find.text('OTP verification is not connected. You are not signed in.'),
       findsOneWidget,
     );
+    expect(find.text('Home'), findsNothing);
   });
 
-  testWidgets('registration opens from welcome and returns to login', (
+  testWidgets('legacy auth paths resolve to the mobile entry screen', (
     tester,
   ) async {
-    await _pumpAppToWelcome(tester);
-    expect(find.byKey(const ValueKey('welcome-login')), findsOneWidget);
-    expect(find.byKey(const ValueKey('welcome-signup')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('welcome-signup')));
-    await tester.pumpAndSettle();
-    expect(find.byType(RegistrationPage), findsOneWidget);
-
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('registration-login-link')),
+    await tester.pumpWidget(const MyShopzyApp());
+    final navigator = tester.state<NavigatorState>(
+      find.byType(Navigator).first,
     );
-    await tester.tap(find.byKey(const ValueKey('registration-login-link')));
+
+    navigator.pushNamed(AppRouter.registration);
     await tester.pumpAndSettle();
     expect(find.byType(PhoneEntryPage), findsOneWidget);
-  });
+    expect(find.byKey(const ValueKey('registration-password')), findsNothing);
 
-  testWidgets('registration validates required inputs and password rules', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: RegistrationPage()));
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('registration-submit')),
-    );
-    await tester.tap(find.byKey(const ValueKey('registration-submit')));
+    navigator.pushNamed(AppRouter.forgotPassword);
     await tester.pumpAndSettle();
-    expect(find.text('Enter your full name.'), findsOneWidget);
-    expect(
-      find.text('Enter a valid 10-digit Indian mobile number.'),
-      findsOneWidget,
-    );
-    expect(find.text('Enter a password.'), findsOneWidget);
-    expect(find.text('Confirm your password.'), findsOneWidget);
-
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-name-field')),
-      'Customer Name',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-phone-field')),
-      '9123456789',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-password')),
-      'weak',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-confirm-password')),
-      'weak',
-    );
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('registration-submit')),
-    );
-    await tester.tap(find.byKey(const ValueKey('registration-submit')));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Use at least 8 characters with a letter and a number.'),
-      findsOneWidget,
-    );
-    expect(find.byType(OtpVerificationPage), findsNothing);
-  });
-
-  testWidgets('registration requires matching passwords and then opens OTP', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: RegistrationPage()));
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-name-field')),
-      'Customer Name',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-phone-field')),
-      '9123456789',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-password')),
-      'Passw0rd!',
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-confirm-password')),
-      'Passw0rd?',
-    );
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('registration-submit')),
-    );
-    await tester.tap(find.byKey(const ValueKey('registration-submit')));
-    await tester.pumpAndSettle();
-    expect(find.text('Passwords do not match.'), findsOneWidget);
-    expect(find.byType(OtpVerificationPage), findsNothing);
-
-    await tester.enterText(
-      find.byKey(const ValueKey('registration-confirm-password')),
-      'Passw0rd!',
-    );
-    await tester.ensureVisible(
-      find.byKey(const ValueKey('registration-submit')),
-    );
-    await tester.tap(find.byKey(const ValueKey('registration-submit')));
-    await tester.pumpAndSettle();
-    expect(find.byType(OtpVerificationPage), findsOneWidget);
-    expect(find.text('+91 •••••• 6789'), findsOneWidget);
-    expect(find.text('Account registration'), findsOneWidget);
-    await tester.enterText(find.byKey(const ValueKey('otp-input')), '123456');
-    await tester.ensureVisible(find.byKey(const ValueKey('otp-verify')));
-    await tester.tap(find.byKey(const ValueKey('otp-verify')));
-    await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'OTP verification is not connected. '
-        'No account was created or verified.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Create account'), findsNothing);
-  });
-
-  testWidgets('registration password visibility control works', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: RegistrationPage()));
-    final passwordField = find.descendant(
-      of: find.byKey(const ValueKey('registration-password')),
-      matching: find.byType(EditableText),
-    );
-    expect(tester.widget<EditableText>(passwordField).obscureText, isTrue);
-    await tester.tap(
-      find.byKey(const ValueKey('registration-password-toggle')),
-    );
-    await tester.pump();
-    expect(tester.widget<EditableText>(passwordField).obscureText, isFalse);
-  });
-
-  testWidgets('forgot password validates mobile and opens OTP demo', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: ForgotPasswordPage()));
-    await tester.tap(find.byKey(const ValueKey('forgot-continue')));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Enter a valid 10-digit Indian mobile number.'),
-      findsOneWidget,
-    );
-
-    await tester.enterText(
-      find.byKey(const ValueKey('forgot-phone-field')),
-      '9123456789',
-    );
-    await tester.tap(find.byKey(const ValueKey('forgot-continue')));
-    await tester.pumpAndSettle();
-    expect(find.byType(OtpVerificationPage), findsOneWidget);
-    expect(find.text('Password recovery'), findsOneWidget);
-    await tester.enterText(find.byKey(const ValueKey('otp-input')), '123456');
-    await tester.ensureVisible(find.byKey(const ValueKey('otp-verify')));
-    await tester.tap(find.byKey(const ValueKey('otp-verify')));
-    await tester.pumpAndSettle();
-    expect(
-      find.text(
-        'OTP verification and password reset are not connected. '
-        'No password was changed.',
-      ),
-      findsOneWidget,
-    );
+    expect(find.byType(PhoneEntryPage), findsOneWidget);
+    expect(find.text('Forgot Password?'), findsNothing);
   });
 
   testWidgets('phone entry opens the existing Terms and Privacy pages', (
@@ -334,6 +171,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: OtpVerificationPage(phoneNumber: '9123456789')),
     );
+    await tester.ensureVisible(find.byKey(const ValueKey('otp-input')));
     await tester.tap(find.byKey(const ValueKey('otp-input')));
     await tester.enterText(find.byKey(const ValueKey('otp-input')), '1234567');
     await tester.pump();
@@ -378,24 +216,56 @@ void main() {
 
     await _pumpAppToWelcome(tester);
     expect(find.byKey(const ValueKey('welcome-login')), findsOneWidget);
+    expect(find.byKey(const ValueKey('welcome-signup')), findsNothing);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const MaterialApp(home: PhoneEntryPage()));
-    expect(find.text('Login'), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-number-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-continue')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.pumpWidget(const MaterialApp(home: RegistrationPage()));
-    expect(find.text('Create your MyShopzy account'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    await tester.pumpWidget(const MaterialApp(home: ForgotPasswordPage()));
-    expect(find.text('Reset your password'), findsOneWidget);
+    await tester.pumpWidget(const MaterialApp(home: PhoneEntryPage()));
+    expect(find.byKey(const ValueKey('phone-number-field')), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(
       const MaterialApp(home: OtpVerificationPage(phoneNumber: '9123456789')),
     );
+    expect(find.byKey(const ValueKey('auth-brand-banner')), findsOneWidget);
     expect(find.text('Verify'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('auth banners show full artwork at its natural aspect ratio', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final expectedBannerHeight = AuthBrandBanner.heightForViewport(390, 844);
+
+    await tester.pumpWidget(const MaterialApp(home: WelcomePage()));
+    final welcomeBanner = tester.widget<Image>(
+      find.byKey(const ValueKey('welcome-banner')),
+    );
+    expect(welcomeBanner.fit, BoxFit.contain);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('welcome-banner'))).height,
+      closeTo(expectedBannerHeight, 1),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: PhoneEntryPage()));
+    expect(
+      tester.getSize(find.byKey(const ValueKey('auth-brand-banner'))).height,
+      closeTo(expectedBannerHeight, 1),
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(home: OtpVerificationPage(phoneNumber: '9123456789')),
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('auth-brand-banner'))).height,
+      closeTo(expectedBannerHeight, 1),
+    );
     expect(tester.takeException(), isNull);
   });
 
@@ -418,16 +288,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('login remains scrollable while the keyboard is visible', (
+  testWidgets('phone entry remains scrollable while the keyboard is visible', (
     tester,
   ) async {
     tester.view.viewInsets = const FakeViewPadding(bottom: 280);
     addTearDown(() => tester.view.resetViewInsets());
     await tester.pumpWidget(const MaterialApp(home: PhoneEntryPage()));
     await tester.ensureVisible(
-      find.byKey(const ValueKey('login-password-field')),
+      find.byKey(const ValueKey('phone-number-field')),
     );
-    expect(find.byKey(const ValueKey('login-password-field')), findsOneWidget);
+    expect(find.byKey(const ValueKey('phone-number-field')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
