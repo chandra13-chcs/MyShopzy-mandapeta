@@ -162,6 +162,7 @@ void main() {
     expect(CartStore.instance.hasBackendCart, isTrue);
     expect(CartStore.instance.items.single.productId, productId);
     expect(CartStore.instance.items.single.priceInPaise, 1250);
+    expect(CartStore.instance.items.single.merchantId, shopId);
     expect(
       requests.map((request) => request.url.path),
       contains('/api/v1/shops'),
@@ -225,22 +226,127 @@ void main() {
   });
 
   testWidgets(
-    'keeps demo restaurants visible when the backend is unavailable',
+    'shows a retryable restaurant API error without substituting demo data',
     (tester) async {
+      var attempts = 0;
       CustomerApi.instance = CustomerApi(
         baseUrl: 'https://shop.example',
-        httpClient: MockClient(
-          (request) async => _jsonResponse({
-            'error': {'code': 'DATABASE_UNAVAILABLE'},
-          }, statusCode: 503),
-        ),
+        httpClient: MockClient((request) async {
+          attempts++;
+          if (attempts == 1) {
+            return _jsonResponse({
+              'error': {'code': 'DATABASE_UNAVAILABLE'},
+            }, statusCode: 503);
+          }
+          return _jsonResponse({
+            'data': [
+              {
+                'id': shopId,
+                'name': 'Recovered Kitchen',
+                'partner_type': 'restaurant',
+                'address': 'Market Road',
+              },
+            ],
+          });
+        }),
       );
 
       await tester.pumpWidget(const MaterialApp(home: RestaurantsPage()));
       await _pumpFor(tester);
 
-      expect(find.text('Demo catalog · backend unavailable'), findsOneWidget);
-      expect(find.text('Spice Route Kitchen'), findsOneWidget);
+      expect(find.text('Could not load restaurants.'), findsOneWidget);
+      expect(find.text('Spice Route Kitchen'), findsNothing);
+      await tester.tap(find.text('Retry restaurants'));
+      await _pumpFor(tester);
+      expect(find.text('Recovered Kitchen'), findsOneWidget);
+      expect(attempts, 2);
+    },
+  );
+
+  testWidgets(
+    'shows a retryable local-store API error without substituting demo data',
+    (tester) async {
+      var attempts = 0;
+      CustomerApi.instance = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          attempts++;
+          if (attempts == 1) {
+            return _jsonResponse({
+              'error': {'code': 'DATABASE_UNAVAILABLE'},
+            }, statusCode: 503);
+          }
+          return _jsonResponse({
+            'data': [
+              {
+                'id': shopId,
+                'name': 'Recovered Grocery',
+                'partner_type': 'grocery',
+                'address': 'Market Road',
+              },
+            ],
+          });
+        }),
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: LocalStoresPage()));
+      await _pumpFor(tester);
+
+      expect(find.text('Could not load local stores.'), findsOneWidget);
+      expect(find.text('Sri Lakshmi General Store'), findsNothing);
+      await tester.tap(find.text('Retry stores'));
+      await _pumpFor(tester);
+      expect(find.text('Recovered Grocery'), findsOneWidget);
+      expect(attempts, 2);
+    },
+  );
+
+  testWidgets(
+    'retries failed live local-store catalogs without showing demo products',
+    (tester) async {
+      var categoryRequests = 0;
+      CustomerApi.instance = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          if (request.url.path == '/api/v1/shops') {
+            return _jsonResponse({
+              'data': [
+                {
+                  'id': shopId,
+                  'name': 'Backend Grocery',
+                  'partner_type': 'grocery',
+                  'address': 'Market Road',
+                },
+              ],
+            });
+          }
+          if (request.url.path == '/api/v1/shops/$shopId/categories') {
+            categoryRequests++;
+            if (categoryRequests == 1) {
+              return _jsonResponse({
+                'error': {'code': 'DATABASE_UNAVAILABLE'},
+              }, statusCode: 503);
+            }
+            return _jsonResponse({'data': <Object>[]});
+          }
+          return _jsonResponse({'data': <Object>[]});
+        }),
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: LocalStoresPage()));
+      await _pumpFor(tester);
+      await tester.tap(find.text('Backend Grocery'));
+      await _pumpFor(tester);
+
+      expect(
+        find.text('Could not load this store catalog.'),
+        findsOneWidget,
+      );
+      expect(find.text('Marie Gold'), findsNothing);
+      await tester.tap(find.text('Retry catalog'));
+      await _pumpFor(tester);
+      expect(find.text('Backend catalog'), findsOneWidget);
+      expect(categoryRequests, 2);
     },
   );
 
@@ -372,7 +478,66 @@ void main() {
     expect(find.text('Rice Meal'), findsNothing);
     expect(requests.last.url.queryParameters['shopId'], shopId);
     expect(requests.last.url.queryParameters['q'], 'Biryani');
+    expect(
+      requests.where(
+        (request) => request.url.path.endsWith('/categories'),
+      ),
+      hasLength(1),
+    );
   });
+
+  testWidgets(
+    'retries a failed live restaurant menu without replacing it with demo items',
+    (tester) async {
+      var categoryRequests = 0;
+      var productRequests = 0;
+      CustomerApi.instance = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          if (request.url.path.endsWith('/categories')) {
+            categoryRequests++;
+            return _jsonResponse({'data': <Object>[]});
+          }
+          if (request.url.path == '/api/v1/products') {
+            productRequests++;
+            if (productRequests == 1) {
+              return _jsonResponse({
+                'error': {'code': 'DATABASE_UNAVAILABLE'},
+              }, statusCode: 503);
+            }
+            return _jsonResponse({'data': <Object>[]});
+          }
+          return _jsonResponse({
+            'error': {'code': 'NOT_FOUND'},
+          }, statusCode: 404);
+        }),
+      );
+      const restaurant = Restaurant(
+        id: '11111111-1111-4111-8111-111111111111',
+        name: 'Backend Kitchen',
+        rating: 0,
+        deliveryTime: 'Not provided',
+        cuisine: 'Details not provided',
+        distance: '—',
+        location: 'Market Road',
+        status: RestaurantStatus.unknown,
+        isBackendData: true,
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: RestaurantMenuPage(restaurant: restaurant)),
+      );
+      await _pumpFor(tester);
+
+      expect(find.text('Could not load the backend menu.'), findsOneWidget);
+      expect(find.text('Chicken Dum Biryani'), findsNothing);
+      await tester.tap(find.text('Retry menu'));
+      await _pumpFor(tester);
+      expect(find.text('Backend catalog'), findsOneWidget);
+      expect(categoryRequests, 1);
+      expect(productRequests, 2);
+    },
+  );
 
   testWidgets('loads grocery shops and products into the backend cart', (
     tester,
@@ -459,6 +624,7 @@ void main() {
     expect(CartStore.instance.hasBackendCart, isTrue);
     expect(CartStore.instance.items.single.productId, productId);
     expect(CartStore.instance.items.single.priceInPaise, 1234);
+    expect(CartStore.instance.items.single.merchantId, shopId);
     expect(
       requests.map((request) => request.url.path),
       contains('/api/v1/shops/$shopId/categories'),

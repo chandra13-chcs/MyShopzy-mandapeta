@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../shared/data/customer_api.dart';
 import '../../bakery/presentation/bakery_page.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
@@ -109,9 +112,28 @@ class HomePage extends StatelessWidget {
     final restaurantChildIndex = index - _homeIntroChildCount;
     final restaurantChildCount = 2 * _restaurantDiscoverySections.length;
     if (restaurantChildIndex < restaurantChildCount) {
+      if (CustomerApi.instance.isConfigured) {
+        return restaurantChildIndex == 0
+            ? const _HomeCatalogFeed(key: ValueKey('home-live-catalog'))
+            : const SizedBox.shrink();
+      }
       final section = _restaurantDiscoverySections[restaurantChildIndex ~/ 2];
       return restaurantChildIndex.isEven
-          ? _buildRestaurantDiscoverySection(context, section)
+          ? restaurantChildIndex == 0
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8),
+                        child: Text(
+                          'Demo home catalog · sample shops and products',
+                          style: TextStyle(color: _muted, fontSize: 11),
+                        ),
+                      ),
+                      _buildRestaurantDiscoverySection(context, section),
+                    ],
+                  )
+                : _buildRestaurantDiscoverySection(context, section)
           : const SizedBox(height: 22);
     }
 
@@ -120,6 +142,7 @@ class HomePage extends StatelessWidget {
     if (index == parcelChildIndex + 1) return const SizedBox(height: 24);
 
     final groceryChildIndex = index - parcelChildIndex - 2;
+    if (CustomerApi.instance.isConfigured) return const SizedBox.shrink();
     final section = _groceryDiscoverySections[groceryChildIndex ~/ 2];
     return groceryChildIndex.isEven
         ? _buildGroceryDiscoverySection(context, section)
@@ -203,6 +226,9 @@ class HomePage extends StatelessWidget {
       case SearchResultType.meatProduct:
       case SearchResultType.produceCategory:
       case SearchResultType.produceProduct:
+        return null;
+      case SearchResultType.backendShop:
+      case SearchResultType.backendProduct:
         return null;
     }
   }
@@ -429,7 +455,7 @@ class HomePage extends StatelessWidget {
       ),
     ];
 
-    return SizedBox(
+    final promotionCards = SizedBox(
       height: 126,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
@@ -437,6 +463,20 @@ class HomePage extends StatelessWidget {
         separatorBuilder: (context, index) => const SizedBox(width: 11),
         itemBuilder: (context, index) => _buildPromotionCard(promos[index]),
       ),
+    );
+    if (!CustomerApi.instance.isConfigured) return promotionCards;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 6),
+          child: Text(
+            'Demo offers · not verified or redeemable',
+            style: TextStyle(color: _muted, fontSize: 11),
+          ),
+        ),
+        promotionCards,
+      ],
     );
   }
 
@@ -1228,6 +1268,310 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader> {
     if (!mounted || selectedAddress == null) return;
     setState(() => _selectedAddress = selectedAddress);
   }
+}
+
+class _HomeCatalogFeed extends StatefulWidget {
+  const _HomeCatalogFeed({super.key});
+
+  @override
+  State<_HomeCatalogFeed> createState() => _HomeCatalogFeedState();
+}
+
+class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
+  List<ApiShop> _shops = const [];
+  List<ApiProduct> _products = const [];
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Widget? _shopDestination(ApiShop shop) {
+    if (shop.partnerType == 'restaurant') {
+      return RestaurantMenuPage(
+        restaurant: Restaurant(
+          id: shop.id,
+          name: shop.name,
+          rating: 0,
+          deliveryTime: 'Not provided',
+          cuisine: 'Details not provided',
+          distance: '—',
+          location: shop.address ?? 'Address not provided',
+          status: RestaurantStatus.unknown,
+          isBackendData: true,
+        ),
+      );
+    }
+    if (shop.partnerType == 'grocery') {
+      return LocalStoreCatalogPage(
+        store: LocalStore(
+          id: shop.id,
+          name: shop.name,
+          rating: 0,
+          deliveryTime: 'Not provided',
+          distance: '—',
+          locality: shop.address ?? 'Address not provided',
+          isOpen: false,
+          isBackendData: true,
+        ),
+        categories: commonLocalStoreCategories,
+        products: const [],
+      );
+    }
+    return null;
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _shops = const [];
+      _products = const [];
+    });
+    try {
+      final responses = await Future.wait<Object>([
+        CustomerApi.instance.getShops(),
+        CustomerApi.instance.getProducts(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _shops = responses[0] as List<ApiShop>;
+        _products = responses[1] as List<ApiProduct>;
+        _loading = false;
+      });
+    } on CustomerApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.message;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Live catalog unavailable',
+              style: TextStyle(
+                color: HomePage._ink,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              _error!,
+              style: const TextStyle(color: HomePage._muted, fontSize: 12),
+            ),
+            TextButton.icon(
+              onPressed: _loading ? null : _load,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry catalog'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_shops.isEmpty && _products.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Text(
+          'No live shops or products are available right now.',
+          style: TextStyle(color: HomePage._muted, fontSize: 13),
+        ),
+      );
+    }
+    return Column(
+      key: const ValueKey('home-live-catalog-content'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_shops.isNotEmpty) ...[
+          _sectionTitle('Live shops'),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 58,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _shops.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final shop = _shops[index];
+                return Material(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    key: ValueKey('home-live-shop-${shop.id}'),
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      final destination = _shopDestination(shop);
+                      if (destination == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'This shop type does not have a customer catalog screen yet.',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (context) => destination,
+                        ),
+                      );
+                    },
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 220),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFFE5E9E3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            shop.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: HomePage._ink,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            shop.partnerType,
+                            style: const TextStyle(
+                              color: HomePage._muted,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (_products.isNotEmpty) ...[
+          _sectionTitle('Live products'),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 98,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _products.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final product = _products[index];
+                return SizedBox(
+                  width: 156,
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      key: ValueKey('home-live-product-${product.id}'),
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (context) => ProductDetailsPage(
+                            product: ProductDetailsProduct(
+                              id: product.id,
+                              serviceType: switch (product.partnerType) {
+                                'restaurant' => 'restaurant',
+                                'grocery' => 'local_store',
+                                'meat_shop' => 'meat',
+                                _ => 'catalog',
+                              },
+                              merchantId: product.shopId,
+                              merchantName: product.shopName,
+                              categoryId: product.categoryId,
+                              name: product.name,
+                              description: product.description,
+                              priceInPaise: product.priceMinor,
+                              available: product.available,
+                              icon: Icons.inventory_2_outlined,
+                              isBackendProduct: true,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              product.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: HomePage._ink,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (product.shopName != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                product.shopName!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: HomePage._muted,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _sectionTitle(String title) => Text(
+    title,
+    style: const TextStyle(
+      color: HomePage._ink,
+      fontSize: 18,
+      fontWeight: FontWeight.w800,
+      letterSpacing: -0.3,
+    ),
+  );
 }
 
 const _restaurantDiscoveryCategories = [

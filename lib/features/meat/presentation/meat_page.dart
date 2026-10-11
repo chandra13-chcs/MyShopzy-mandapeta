@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
+import '../../product_details/presentation/product_details_page.dart';
 import 'chicken_page.dart';
 import 'mutton_page.dart';
 
@@ -38,6 +42,11 @@ class MeatPage extends StatelessWidget {
                     style: TextStyle(color: _muted, fontSize: 13),
                   ),
                   const SizedBox(height: 18),
+                  const Text(
+                    'Demo chicken and mutton categories',
+                    style: TextStyle(color: _muted, fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
                   _MeatCategoryCard(
                     title: 'Chicken',
                     subtitle: 'Fresh cuts for every meal',
@@ -63,6 +72,8 @@ class MeatPage extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 20),
+                  const _BackendMeatCatalog(),
                 ],
               ),
             ),
@@ -273,6 +284,140 @@ class _MeatCategoryCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+}
+
+class _BackendMeatCatalog extends StatefulWidget {
+  const _BackendMeatCatalog();
+
+  @override
+  State<_BackendMeatCatalog> createState() => _BackendMeatCatalogState();
+}
+
+class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
+  List<ApiProduct> _products = const [];
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (CustomerApi.instance.isConfigured) unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _products = const [];
+    });
+    try {
+      final products = await CustomerApi.instance.getProducts(
+        partnerType: 'meat_shop',
+      );
+      if (mounted) {
+        setState(() {
+          _products = products;
+          _loading = false;
+        });
+      }
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error.message;
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!CustomerApi.instance.isConfigured) {
+      return const Text(
+        'Demo meat products · sample catalog',
+        style: TextStyle(color: AppTheme.secondaryText, fontSize: 11),
+      );
+    }
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _error!,
+            style: const TextStyle(color: Color(0xFFA85B5B), fontSize: 12),
+          ),
+          TextButton.icon(
+            onPressed: _loading ? null : _load,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Retry meat catalog'),
+          ),
+        ],
+      );
+    }
+    if (_products.isEmpty) {
+      return const Text(
+        'No live meat products are available right now.',
+        style: TextStyle(color: AppTheme.secondaryText, fontSize: 12),
+      );
+    }
+    return Column(
+      key: const ValueKey('backend-meat-catalog'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Live meat shop products',
+          style: TextStyle(
+            color: AppTheme.primaryText,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'The catalog does not identify chicken versus mutton.',
+          style: TextStyle(color: AppTheme.secondaryText, fontSize: 11),
+        ),
+        const SizedBox(height: 9),
+        for (final product in _products)
+          Card(
+            child: ListTile(
+              key: ValueKey('backend-meat-product-${product.id}'),
+              title: Text(product.name),
+              subtitle: Text(
+                [
+                  if (product.shopName?.isNotEmpty ?? false) product.shopName!,
+                  if (product.description.isNotEmpty) product.description,
+                ].join(' · '),
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (context) => ProductDetailsPage(
+                    product: ProductDetailsProduct(
+                      id: product.id,
+                      serviceType: 'meat',
+                      merchantId: product.shopId,
+                      merchantName: product.shopName,
+                      categoryId: product.categoryId,
+                      name: product.name,
+                      description: product.description,
+                      priceInPaise: product.priceMinor,
+                      available: product.available,
+                      icon: Icons.set_meal_rounded,
+                      isBackendProduct: true,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

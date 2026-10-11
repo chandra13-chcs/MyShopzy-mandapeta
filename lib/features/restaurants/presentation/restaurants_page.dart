@@ -151,11 +151,7 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
           return _buildLoadingPage();
         }
         if (snapshot.hasError) {
-          return _buildPage(
-            context,
-            widget.restaurants,
-            sourceLabel: 'Demo catalog · backend unavailable',
-          );
+          return _buildApiErrorPage(snapshot.error);
         }
         return _buildPage(
           context,
@@ -199,6 +195,56 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
     return Scaffold(
       backgroundColor: RestaurantsPage._page,
       body: const SafeArea(child: Center(child: CircularProgressIndicator())),
+    );
+  }
+
+  Widget _buildApiErrorPage(Object? error) {
+    return Scaffold(
+      backgroundColor: RestaurantsPage._page,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(context),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Could not load restaurants.',
+                        style: TextStyle(
+                          color: RestaurantsPage._ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          error.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: RestaurantsPage._muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () => _searchRestaurants(_searchQuery),
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry restaurants'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

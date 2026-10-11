@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
+import 'parcel_history_page.dart';
 import 'parcel_summary_page.dart';
 
 class ParcelPage extends StatefulWidget {
@@ -15,18 +17,13 @@ class _ParcelPageState extends State<ParcelPage> {
   static const _muted = AppTheme.secondaryText;
   static const _green = AppTheme.primaryGreen;
   static const _page = AppTheme.lightBackground;
-  static const _parcelTypes = [
-    'Documents',
-    'Food',
-    'Clothing',
-    'Electronics',
-    'Other',
-  ];
+  static const _parcelTypes = ApiParcelBookingRequest.parcelTypes;
 
   final _pickupController = TextEditingController();
   final _dropController = TextEditingController();
   final _weightController = TextEditingController();
   final _instructionsController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
   String _selectedParcelType = _parcelTypes.first;
 
   @override
@@ -47,21 +44,28 @@ class _ParcelPageState extends State<ParcelPage> {
           children: [
             _buildHeader(context),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
-                children: [
-                  _buildLocationFields(),
-                  const SizedBox(height: 22),
-                  _buildSectionTitle('Parcel details'),
-                  const SizedBox(height: 11),
-                  _buildParcelTypeOptions(),
-                  const SizedBox(height: 18),
-                  _buildWeightField(),
-                  const SizedBox(height: 17),
-                  _buildInstructionsField(),
-                  const SizedBox(height: 18),
-                  _buildDeliveryInformation(),
-                ],
+              child: Form(
+                key: _formKey,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+                  children: [
+                    if (!CustomerApi.instance.isConfigured) ...[
+                      _buildDemoModeNotice(),
+                      const SizedBox(height: 14),
+                    ],
+                    _buildLocationFields(),
+                    const SizedBox(height: 22),
+                    _buildSectionTitle('Parcel details'),
+                    const SizedBox(height: 11),
+                    _buildParcelTypeOptions(),
+                    const SizedBox(height: 18),
+                    _buildWeightField(),
+                    const SizedBox(height: 17),
+                    _buildInstructionsField(),
+                    const SizedBox(height: 18),
+                    _buildDeliveryInformation(),
+                  ],
+                ),
               ),
             ),
             _buildBottomAction(context),
@@ -112,7 +116,38 @@ class _ParcelPageState extends State<ParcelPage> {
               ],
             ),
           ),
+          IconButton(
+            key: const ValueKey('parcel-history-button'),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const ParcelHistoryPage(),
+              ),
+            ),
+            tooltip: 'Parcel history',
+            icon: const Icon(Icons.history_rounded, color: _green),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white,
+              side: const BorderSide(color: Color(0xFFE8EBE6)),
+              minimumSize: const Size(42, 42),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDemoModeNotice() {
+    return Container(
+      key: const ValueKey('parcel-demo-mode'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFEED9A8)),
+      ),
+      child: const Text(
+        'Demo mode · parcel requests are not sent until the backend is configured.',
+        style: TextStyle(color: _ink, fontSize: 12, height: 1.35),
       ),
     );
   }
@@ -129,6 +164,7 @@ class _ParcelPageState extends State<ParcelPage> {
           icon: Icons.radio_button_checked_rounded,
           iconColor: _green,
           controller: _pickupController,
+          validator: (value) => _validateLocation(value, 'pickup'),
         ),
         Padding(
           padding: const EdgeInsets.only(left: 21),
@@ -144,6 +180,7 @@ class _ParcelPageState extends State<ParcelPage> {
           icon: Icons.location_on_rounded,
           iconColor: const Color(0xFFD16A53),
           controller: _dropController,
+          validator: (value) => _validateLocation(value, 'drop'),
         ),
       ],
     );
@@ -235,9 +272,10 @@ class _ParcelPageState extends State<ParcelPage> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _weightController,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          validator: _validateWeight,
           decoration: _inputDecoration(
             hint: 'Enter parcel weight',
             prefixIcon: const Icon(
@@ -265,11 +303,17 @@ class _ParcelPageState extends State<ParcelPage> {
           ),
         ),
         const SizedBox(height: 8),
-        TextField(
+        TextFormField(
           controller: _instructionsController,
           minLines: 3,
           maxLines: 3,
           textCapitalization: TextCapitalization.sentences,
+          validator: (value) {
+            if ((value ?? '').length > 1000) {
+              return 'Instructions must be 1000 characters or fewer.';
+            }
+            return null;
+          },
           decoration: _inputDecoration(
             hint: 'Any instructions for the rider?',
             alignLabelWithHint: true,
@@ -328,6 +372,7 @@ class _ParcelPageState extends State<ParcelPage> {
         height: 50,
         child: FilledButton(
           onPressed: () {
+            if (!(_formKey.currentState?.validate() ?? false)) return;
             Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (context) => ParcelSummaryPage(
@@ -355,6 +400,30 @@ class _ParcelPageState extends State<ParcelPage> {
         ),
       ),
     );
+  }
+
+  String? _validateLocation(String? value, String kind) {
+    final location = value?.trim() ?? '';
+    if (location.isEmpty) return 'Enter a $kind location.';
+    if (location.length > 300) {
+      return 'Location must be 300 characters or fewer.';
+    }
+    return null;
+  }
+
+  String? _validateWeight(String? value) {
+    final weightText = value?.trim() ?? '';
+    final weight = double.tryParse(weightText);
+    if (weight == null || !weight.isFinite) {
+      return 'Enter a valid parcel weight.';
+    }
+    if (weight <= 0 || weight > 20) {
+      return 'Weight must be greater than 0 kg and no more than 20 kg.';
+    }
+    if ((weight * 1000 - (weight * 1000).round()).abs() > 1e-7) {
+      return 'Weight can have up to 3 decimal places.';
+    }
+    return null;
   }
 
   InputDecoration _inputDecoration({
@@ -400,6 +469,7 @@ class _LocationField extends StatelessWidget {
     required this.icon,
     required this.iconColor,
     required this.controller,
+    required this.validator,
   });
 
   final String label;
@@ -407,6 +477,7 @@ class _LocationField extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final TextEditingController controller;
+  final String? Function(String?) validator;
 
   @override
   Widget build(BuildContext context) {
@@ -434,15 +505,19 @@ class _LocationField extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                TextField(
+                TextFormField(
                   controller: controller,
                   textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration.collapsed(
+                  validator: validator,
+                  decoration: InputDecoration(
                     hintText: hint,
                     hintStyle: const TextStyle(
                       color: Color(0xFF929892),
                       fontSize: 12,
                     ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
                   ),
                   style: const TextStyle(
                     color: Color(0xFF17251F),

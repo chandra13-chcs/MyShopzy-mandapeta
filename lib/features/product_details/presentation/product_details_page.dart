@@ -74,11 +74,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         actions: [
-          SaveListButton(
-            product: product,
-            color: _ink,
-            size: 23,
-          ),
+          SaveListButton(product: product, color: _ink, size: 23),
           IconButton(
             onPressed: () =>
                 _showDemoMessage('Sharing is unavailable in this demo.'),
@@ -147,15 +143,14 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           child: AnimatedBuilder(
             animation: ProductAvailabilityStore.instance,
             builder: (context, child) {
-              final isAvailable = ProductAvailabilityStore.instance
-                  .isAvailable(
-                    productId: product.id,
-                    serviceType: product.serviceType,
-                    merchantId: product.merchantId,
-                    variantId: selectedVariant?.id,
-                    defaultAvailable:
-                        selectedVariant?.available ?? product.available,
-                  );
+              final isAvailable = ProductAvailabilityStore.instance.isAvailable(
+                productId: product.id,
+                serviceType: product.serviceType,
+                merchantId: product.merchantId,
+                variantId: selectedVariant?.id,
+                defaultAvailable:
+                    selectedVariant?.available ?? product.available,
+              );
               final selectedPrice =
                   selectedVariant?.priceInPaise ?? product.priceInPaise;
               return Column(
@@ -209,8 +204,8 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
   }
 
   Future<void> _loadCatalogProduct() async {
+    final current = widget.product;
     try {
-      final current = widget.product;
       final latest = await CustomerApi.instance.getProduct(current.id);
       if (!mounted) return;
       setState(() {
@@ -232,12 +227,40 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
         );
         _catalogLoading = false;
       });
-    } on CustomerApiException {
+    } on CustomerApiException catch (error) {
       if (!mounted) return;
       setState(() {
         _catalogLoading = false;
-        _catalogLoadError =
-            'Latest product details unavailable; showing catalog list data.';
+        if (error.statusCode == 404) {
+          _freshCatalogProduct = ProductDetailsProduct(
+            id: current.id,
+            serviceType: current.serviceType,
+            merchantId: current.merchantId,
+            merchantName: current.merchantName,
+            serviceVariant: current.serviceVariant,
+            categoryId: current.categoryId,
+            brand: current.brand,
+            description: current.description,
+            imageUrl: current.imageUrl,
+            priceInPaise: current.priceInPaise,
+            mrpInPaise: current.mrpInPaise,
+            discountPercent: current.discountPercent,
+            quantityLabel: current.quantityLabel,
+            rating: current.rating,
+            isVegetarian: current.isVegetarian,
+            isBackendProduct: true,
+            variants: current.variants,
+            relatedProducts: current.relatedProducts,
+            name: current.name,
+            icon: current.icon,
+            available: false,
+          );
+          _catalogLoadError =
+              'This product is no longer available in the backend catalog.';
+        } else {
+          _catalogLoadError =
+              'Latest product details unavailable; showing catalog list data.';
+        }
       });
     }
   }
@@ -370,9 +393,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                   setState(() => _selectedVariantId = variant.id),
               selectedColor: const Color(0xFFE8F3E9),
               side: BorderSide(
-                color: variant.id == selectedVariant?.id
-                    ? _green
-                    : _border,
+                color: variant.id == selectedVariant?.id ? _green : _border,
               ),
             ),
         ],
@@ -641,8 +662,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                       index < reviews.length && index < 2;
                       index++
                     ) ...[
-                      if (index > 0)
-                        const Divider(height: 22, color: _border),
+                      if (index > 0) const Divider(height: 22, color: _border),
                       CustomerReviewCard(
                         review: reviews[index],
                         onHelpful: () => reviewStore.markHelpful(

@@ -135,6 +135,11 @@ class MeatCatalogPage extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Demo $title catalog · the backend does not identify chicken versus mutton.',
+                    style: TextStyle(color: _muted, fontSize: 11),
+                  ),
                   const SizedBox(height: 12),
                   _buildPartnerCard(),
                   const SizedBox(height: 16),

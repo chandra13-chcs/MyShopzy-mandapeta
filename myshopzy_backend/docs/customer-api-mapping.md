@@ -133,7 +133,7 @@ unavailable.
 | Edit profile | `PATCH /me/profile` with `displayName`, `email`, and/or `phone` | Implemented; uniqueness is enforced by existing indexes. |
 | Saved addresses | `GET/POST /me/addresses`, `PATCH/DELETE /me/addresses/:addressId` | Implemented using migration 003; current Flutter addresses remain demo data. |
 | Wishlist and save-list controls | `GET /me/wishlist`, `POST /me/wishlist/items`, `DELETE /me/wishlist/items/:productId` | Implemented using migration 003; current Flutter store remains in-memory. |
-| Parcel booking and parcel summary | `POST/GET /me/parcels`, `GET /me/parcels/:parcelId` | Implemented as requested bookings using migration 003; dispatch, distance validation, and price are unavailable. |
+| Parcel booking, history, and details | `POST/GET /me/parcels`, `GET /me/parcels/:parcelId` | Flutter uses these APIs when configured and surfaces authentication errors; records are requests only, with no dispatch, distance verification, or price. |
 | Notifications | No endpoint available | Notifications are demo data; no notification table/provider exists. |
 | Reviews list, write review, order rating | No endpoint available | No review/rating table exists. |
 | Help and support | No endpoint available | Contact options/submissions have no support table/service. |

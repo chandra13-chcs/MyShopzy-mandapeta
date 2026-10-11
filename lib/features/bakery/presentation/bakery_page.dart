@@ -130,6 +130,14 @@ class BakeryPage extends StatelessWidget {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 4),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Demo bakery catalog · the API has no bakery partner type.',
+                      style: TextStyle(color: _muted, fontSize: 11),
+                    ),
+                  ),
                   const SizedBox(height: 13),
                   for (var index = 0; index < bakeries.length; index++) ...[
                     _BakeryCard(

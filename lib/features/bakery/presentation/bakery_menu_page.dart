@@ -268,6 +268,15 @@ class BakeryMenuPage extends StatelessWidget {
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _buildBakeryHeader(context)),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  'Demo bakery menu · backend bakery catalog is not supported.',
+                  style: TextStyle(color: _muted, fontSize: 11),
+                ),
+              ),
+            ),
             SliverToBoxAdapter(child: _buildMenuHeading(bakeryItemList.length)),
             for (final category in menuCategories)
               SliverToBoxAdapter(

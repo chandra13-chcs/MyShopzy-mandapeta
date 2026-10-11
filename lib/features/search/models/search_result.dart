@@ -13,6 +13,8 @@ enum SearchResultType {
   homeRestaurantProduct,
   homeStore,
   homeStoreProduct,
+  backendShop,
+  backendProduct,
 }
 
 class SearchResult {
@@ -28,6 +30,8 @@ class SearchResult {
     this.merchantName,
     this.categoryId,
     this.available = true,
+    this.isBackendData = false,
+    this.partnerType,
   });
 
   final String id;
@@ -41,6 +45,8 @@ class SearchResult {
   final String? merchantName;
   final String? categoryId;
   final bool available;
+  final bool isBackendData;
+  final String? partnerType;
 
   bool get isProductResult => switch (type) {
     SearchResultType.restaurantProduct ||
@@ -49,7 +55,8 @@ class SearchResult {
     SearchResultType.meatProduct ||
     SearchResultType.produceProduct ||
     SearchResultType.homeRestaurantProduct ||
-    SearchResultType.homeStoreProduct => true,
+    SearchResultType.homeStoreProduct ||
+    SearchResultType.backendProduct => true,
     _ => false,
   };
 
@@ -59,6 +66,12 @@ class SearchResult {
     SearchResultType.bakeryProduct => 'bakery',
     SearchResultType.storeProduct ||
     SearchResultType.homeStoreProduct => 'local_store',
+    SearchResultType.backendProduct => switch (partnerType) {
+      'restaurant' => 'restaurant',
+      'grocery' => 'local_store',
+      'meat_shop' => 'meat',
+      _ => null,
+    },
     SearchResultType.meatProduct => 'meat',
     SearchResultType.produceProduct => 'vegetables_fruits',
     _ => null,

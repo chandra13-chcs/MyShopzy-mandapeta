@@ -479,6 +479,16 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
         child: Column(
           children: [
             _buildHeader(context, title),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Demo produce products · no supported produce catalog filter.',
+                  style: TextStyle(color: _muted, fontSize: 11),
+                ),
+              ),
+            ),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,

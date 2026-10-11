@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/config/delivery_offer_config.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../cart/data/cart_store.dart';
+import '../../../shared/data/customer_api.dart';
 
 class FreeDeliveryOfferBanner extends StatefulWidget {
   const FreeDeliveryOfferBanner({super.key});
@@ -27,59 +28,78 @@ class _FreeDeliveryOfferBannerState extends State<FreeDeliveryOfferBanner> {
         final offerStatus = DeliveryOfferConfig.messageForSubtotal(
           cartStore.subtotalInPaise,
         );
-        return Container(
-          key: const ValueKey('free-delivery-offer-banner'),
-          width: double.infinity,
-          constraints: const BoxConstraints(minHeight: 42),
-          padding: const EdgeInsetsDirectional.only(start: 12, end: 4),
-          color: _bannerColor,
-          child: Row(
-            children: [
-              Expanded(
-                child: Semantics(
-                  liveRegion: true,
-                  label:
-                      'FREE DELIVERY on orders above '
-                      '${DeliveryOfferConfig.thresholdLabel}. $offerStatus',
-                  child: Text.rich(
-                    TextSpan(
-                      style: const TextStyle(
-                        color: AppTheme.primaryText,
-                        fontSize: 14,
-                      ),
-                      children: [
-                        const TextSpan(
-                          text: 'FREE DELIVERY',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                        TextSpan(
-                          text:
-                              ' on orders above '
-                              '${DeliveryOfferConfig.thresholdLabel}',
-                        ),
-                      ],
-                    ),
-                    key: const ValueKey('free-delivery-offer-message'),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (CustomerApi.instance.isConfigured)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 3),
+                child: Text(
+                  'Demo offer · not verified by backend',
+                  style: TextStyle(
+                    color: AppTheme.secondaryText,
+                    fontSize: 10,
                   ),
                 ),
               ),
-              IconButton(
-                key: const ValueKey('free-delivery-offer-dismiss'),
-                tooltip: 'Dismiss free delivery offer',
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-                onPressed: () => setState(() => _isDismissed = true),
-                icon: const Icon(
-                  Icons.close_rounded,
-                  color: AppTheme.darkGreen,
-                  size: 19,
-                ),
+            Container(
+              key: const ValueKey('free-delivery-offer-banner'),
+              width: double.infinity,
+              constraints: const BoxConstraints(minHeight: 42),
+              padding: const EdgeInsetsDirectional.only(start: 12, end: 4),
+              color: _bannerColor,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Semantics(
+                      liveRegion: true,
+                      label:
+                          'FREE DELIVERY on orders above '
+                          '${DeliveryOfferConfig.thresholdLabel}. $offerStatus',
+                      child: Text.rich(
+                        TextSpan(
+                          style: const TextStyle(
+                            color: AppTheme.primaryText,
+                            fontSize: 14,
+                          ),
+                          children: [
+                            const TextSpan(
+                              text: 'FREE DELIVERY',
+                              style: TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            TextSpan(
+                              text:
+                                  ' on orders above '
+                                  '${DeliveryOfferConfig.thresholdLabel}',
+                            ),
+                          ],
+                        ),
+                        key: const ValueKey('free-delivery-offer-message'),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    key: const ValueKey('free-delivery-offer-dismiss'),
+                    tooltip: 'Dismiss free delivery offer',
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 44,
+                      minHeight: 44,
+                    ),
+                    onPressed: () => setState(() => _isDismissed = true),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: AppTheme.darkGreen,
+                      size: 19,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
@@ -106,9 +126,9 @@ class FreeDeliveryProgressStrip extends StatelessWidget {
 
         return Semantics(
           liveRegion: true,
-          label: DeliveryOfferConfig.messageForSubtotal(
-            eligibleSubtotalInPaise,
-          ),
+          label:
+              '${CustomerApi.instance.isConfigured ? 'Demo offer, not verified by backend. ' : ''}'
+              '${DeliveryOfferConfig.messageForSubtotal(eligibleSubtotalInPaise)}',
           child: Container(
             key: const ValueKey('free-delivery-progress-strip'),
             padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
@@ -117,8 +137,25 @@ class FreeDeliveryProgressStrip extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: const Color(0xFFD8E9D9)),
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
+                if (CustomerApi.instance.isConfigured)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 5),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Demo offer · not verified by backend',
+                        style: TextStyle(
+                          color: AppTheme.secondaryText,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ),
+                Row(
+                  children: [
                 Icon(
                   isUnlocked
                       ? Icons.check_circle_rounded
@@ -167,6 +204,8 @@ class FreeDeliveryProgressStrip extends StatelessWidget {
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
+                ),
+                  ],
                 ),
               ],
             ),

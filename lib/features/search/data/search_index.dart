@@ -118,8 +118,10 @@ class SearchIndex {
       case SearchResultType.homeRestaurantProduct:
       case SearchResultType.homeStore:
       case SearchResultType.homeStoreProduct:
+      case SearchResultType.backendShop:
+      case SearchResultType.backendProduct:
         throw StateError(
-          'Home discovery results must use the HomePage destination adapter.',
+          'This search result must use its page destination adapter.',
         );
     }
   }
@@ -249,6 +251,8 @@ class SearchIndex {
       case SearchResultType.homeRestaurantProduct:
       case SearchResultType.homeStore:
       case SearchResultType.homeStoreProduct:
+      case SearchResultType.backendShop:
+      case SearchResultType.backendProduct:
         throw ArgumentError.value(
           result.type,
           'result.type',

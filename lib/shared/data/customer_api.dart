@@ -77,6 +77,8 @@ class ApiProduct {
     required this.currency,
     required this.available,
     this.categoryId,
+    this.partnerType,
+    this.shopName,
   });
 
   final String id;
@@ -87,6 +89,8 @@ class ApiProduct {
   final String currency;
   final bool available;
   final String? categoryId;
+  final String? partnerType;
+  final String? shopName;
 
   factory ApiProduct.fromJson(Map<String, dynamic> json) {
     final priceValue = json['price_minor'];
@@ -110,6 +114,8 @@ class ApiProduct {
       currency: _requiredString(json, 'currency'),
       available: json['is_available'] as bool,
       categoryId: _optionalString(json['category_id']),
+      partnerType: _optionalString(json['partner_type']),
+      shopName: _optionalString(json['shop_name']),
     );
   }
 }
@@ -327,15 +333,40 @@ class ApiCustomerProfile {
 }
 
 class ApiOrderResult {
-  const ApiOrderResult({required this.orderId, required this.status});
+  const ApiOrderResult({
+    required this.orderId,
+    required this.status,
+    required this.currency,
+    required this.itemSubtotalMinor,
+    required this.deliveryFeeMinor,
+    required this.discountMinor,
+    required this.totalMinor,
+    required this.itemCount,
+  });
 
   final String orderId;
   final String status;
+  final String currency;
+  final int itemSubtotalMinor;
+  final int deliveryFeeMinor;
+  final int discountMinor;
+  final int totalMinor;
+  final int itemCount;
 
   factory ApiOrderResult.fromJson(Map<String, dynamic> json) {
+    final status = _requiredString(json, 'status');
+    if (status != 'placed') {
+      throw const FormatException('Invalid order status.');
+    }
     return ApiOrderResult(
       orderId: _requiredString(json, 'orderId'),
-      status: _requiredString(json, 'status'),
+      status: status,
+      currency: _requiredString(json, 'currency'),
+      itemSubtotalMinor: _requiredMinor(json, 'itemSubtotalMinor'),
+      deliveryFeeMinor: _requiredMinor(json, 'deliveryFeeMinor'),
+      discountMinor: _requiredMinor(json, 'discountMinor'),
+      totalMinor: _requiredMinor(json, 'totalMinor'),
+      itemCount: _requiredInteger(json, 'items', minimum: 1),
     );
   }
 }
@@ -471,6 +502,103 @@ class ApiCustomerOrderDetail extends ApiCustomerOrder {
         }
         return ApiCustomerOrderItem.fromJson(item);
       }).toList(growable: false),
+    );
+  }
+}
+
+class ApiParcelBookingRequest {
+  const ApiParcelBookingRequest({
+    required this.pickupLocation,
+    required this.dropLocation,
+    required this.parcelType,
+    required this.weightKg,
+    this.instructions = '',
+  });
+
+  static const parcelTypes = [
+    'Documents',
+    'Food',
+    'Clothing',
+    'Electronics',
+    'Other',
+  ];
+
+  final String pickupLocation;
+  final String dropLocation;
+  final String parcelType;
+  final double weightKg;
+  final String instructions;
+
+  String? get validationError {
+    if (pickupLocation.trim().isEmpty || dropLocation.trim().isEmpty) {
+      return 'Enter both pickup and drop locations.';
+    }
+    if (pickupLocation.trim().length > 300 ||
+        dropLocation.trim().length > 300) {
+      return 'Locations must be 300 characters or fewer.';
+    }
+    if (!parcelTypes.contains(parcelType)) {
+      return 'Select a supported parcel type.';
+    }
+    if (!weightKg.isFinite || weightKg <= 0 || weightKg > 20) {
+      return 'Weight must be greater than 0 kg and no more than 20 kg.';
+    }
+    if ((weightKg * 1000 - (weightKg * 1000).round()).abs() > 1e-7) {
+      return 'Weight can have up to 3 decimal places.';
+    }
+    if (instructions.length > 1000) {
+      return 'Instructions must be 1000 characters or fewer.';
+    }
+    return null;
+  }
+}
+
+class ApiParcelBooking {
+  const ApiParcelBooking({
+    required this.id,
+    required this.pickupLocation,
+    required this.dropLocation,
+    required this.parcelType,
+    required this.weightKg,
+    required this.instructions,
+    required this.status,
+    required this.createdAt,
+    this.updatedAt,
+  });
+
+  final String id;
+  final String pickupLocation;
+  final String dropLocation;
+  final String parcelType;
+  final double weightKg;
+  final String instructions;
+  final String status;
+  final String createdAt;
+  final String? updatedAt;
+
+  factory ApiParcelBooking.fromJson(Map<String, dynamic> json) {
+    final weightGrams = _requiredInteger(json, 'weight_grams', minimum: 1);
+    if (weightGrams > 20000) {
+      throw const FormatException('Invalid parcel weight.');
+    }
+    final parcelType = _requiredString(json, 'parcel_type');
+    if (!ApiParcelBookingRequest.parcelTypes.contains(parcelType)) {
+      throw const FormatException('Invalid parcel type.');
+    }
+    final instructions = json['instructions'];
+    if (instructions is! String) {
+      throw const FormatException('Invalid parcel instructions.');
+    }
+    return ApiParcelBooking(
+      id: _requiredString(json, 'id'),
+      pickupLocation: _requiredString(json, 'pickup_location'),
+      dropLocation: _requiredString(json, 'drop_location'),
+      parcelType: parcelType,
+      weightKg: weightGrams / 1000,
+      instructions: instructions,
+      status: _requiredString(json, 'status'),
+      createdAt: _requiredString(json, 'created_at'),
+      updatedAt: _optionalString(json['updated_at']),
     );
   }
 }
@@ -742,6 +870,56 @@ class CustomerApi {
     }
   }
 
+  Future<ApiParcelBooking> createParcelBooking(
+    ApiParcelBookingRequest request,
+  ) async {
+    final validationError = request.validationError;
+    if (validationError != null) {
+      throw CustomerApiException(
+        statusCode: null,
+        code: 'INVALID_REQUEST',
+        message: validationError,
+      );
+    }
+    final payload = await _request(
+      'POST',
+      '/me/parcels',
+      body: {
+        'pickupLocation': request.pickupLocation.trim(),
+        'dropLocation': request.dropLocation.trim(),
+        'parcelType': request.parcelType,
+        'weightKg': request.weightKg,
+        'instructions': request.instructions.trim(),
+      },
+    );
+    try {
+      return ApiParcelBooking.fromJson(_dataObject(payload));
+    } on FormatException {
+      throw _invalidResponse();
+    }
+  }
+
+  Future<List<ApiParcelBooking>> getParcelBookings({
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    final payload = await _request(
+      'GET',
+      '/me/parcels',
+      queryParameters: {'limit': '$limit', 'offset': '$offset'},
+    );
+    return _parseList(payload, ApiParcelBooking.fromJson);
+  }
+
+  Future<ApiParcelBooking> getParcelBookingDetails(String bookingId) async {
+    final payload = await _request('GET', '/me/parcels/$bookingId');
+    try {
+      return ApiParcelBooking.fromJson(_dataObject(payload));
+    } on FormatException {
+      throw _invalidResponse();
+    }
+  }
+
   void clearCartToken() {
     _cartToken = null;
     _cartInitialization = null;
@@ -978,7 +1156,7 @@ int _requiredInteger(
 
 String _statusMessage(int statusCode) {
   return switch (statusCode) {
-    401 => 'Customer authentication is required to access the profile, saved addresses, wishlist, or place an order.',
+    401 => 'Customer authentication is required to access your account or submit a parcel request.',
     404 => 'The requested item was not found.',
     409 => 'The cart or product changed. Review your cart and try again.',
     503 => 'The service is temporarily unavailable. Please try again later.',

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
+import 'parcel_history_page.dart';
 
-class ParcelSummaryPage extends StatelessWidget {
+class ParcelSummaryPage extends StatefulWidget {
   const ParcelSummaryPage({
     required this.pickupLocation,
     required this.dropLocation,
@@ -18,9 +20,17 @@ class ParcelSummaryPage extends StatelessWidget {
   final String weight;
   final String instructions;
 
+  @override
+  State<ParcelSummaryPage> createState() => _ParcelSummaryPageState();
+}
+
+class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
   static const _ink = AppTheme.primaryText;
   static const _green = AppTheme.primaryGreen;
   static const _page = AppTheme.lightBackground;
+
+  bool _submitting = false;
+  String? _error;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +40,11 @@ class ParcelSummaryPage extends StatelessWidget {
         child: Column(
           children: [
             _buildHeader(context),
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: _buildErrorNotice(_error!),
+              ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 17, 16, 20),
@@ -41,6 +56,10 @@ class ParcelSummaryPage extends StatelessWidget {
                   _buildDeliveryDetails(),
                   const SizedBox(height: 14),
                   _buildEstimate(),
+                  if (!CustomerApi.instance.isConfigured) ...[
+                    const SizedBox(height: 12),
+                    _buildDemoNotice(),
+                  ],
                 ],
               ),
             ),
@@ -88,7 +107,7 @@ class ParcelSummaryPage extends StatelessWidget {
         children: [
           _RoutePoint(
             title: 'Pickup',
-            location: pickupLocation,
+            location: widget.pickupLocation,
             icon: Icons.radio_button_checked_rounded,
             color: _green,
           ),
@@ -105,7 +124,7 @@ class ParcelSummaryPage extends StatelessWidget {
           ),
           _RoutePoint(
             title: 'Drop',
-            location: dropLocation,
+            location: widget.dropLocation,
             icon: Icons.location_on_rounded,
             color: const Color(0xFFD16A53),
           ),
@@ -119,15 +138,15 @@ class ParcelSummaryPage extends StatelessWidget {
       title: 'Parcel details',
       child: Column(
         children: [
-          _SummaryRow(label: 'Parcel type', value: parcelType),
+          _SummaryRow(label: 'Parcel type', value: widget.parcelType),
           const SizedBox(height: 11),
           _SummaryRow(
             label: 'Weight',
-            value: _displayValue(weight, 'Not entered'),
+            value: _displayValue(widget.weight, 'Not entered'),
           ),
-          if (instructions.isNotEmpty) ...[
+          if (widget.instructions.isNotEmpty) ...[
             const SizedBox(height: 11),
-            _SummaryRow(label: 'Instructions', value: instructions),
+            _SummaryRow(label: 'Instructions', value: widget.instructions),
           ],
         ],
       ),
@@ -189,11 +208,7 @@ class ParcelSummaryPage extends StatelessWidget {
         width: double.infinity,
         height: 50,
         child: FilledButton(
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Parcel details confirmed')),
-            );
-          },
+          onPressed: _submitting ? null : _submitParcelRequest,
           style: FilledButton.styleFrom(
             backgroundColor: _green,
             foregroundColor: Colors.white,
@@ -205,10 +220,86 @@ class ParcelSummaryPage extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          child: const Text('Confirm Parcel'),
+          child: _submitting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Submit Parcel Request'),
         ),
       ),
     );
+  }
+
+  Widget _buildDemoNotice() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFEED9A8)),
+      ),
+      child: const Text(
+        'Demo mode · submitting here will not create a parcel request because the backend is not configured.',
+        style: TextStyle(color: _ink, fontSize: 12, height: 1.4),
+      ),
+    );
+  }
+
+  Widget _buildErrorNotice(String message) {
+    return Container(
+      key: const ValueKey('parcel-submit-error'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF2F1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE7C7C3)),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(color: Color(0xFF914747), fontSize: 12),
+      ),
+    );
+  }
+
+  Future<void> _submitParcelRequest() async {
+    final api = CustomerApi.instance;
+    if (!api.isConfigured) {
+      setState(() {
+        _error = 'Demo mode: parcel request was not submitted. Configure the backend to submit requests.';
+      });
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final booking = await api.createParcelBooking(
+        ApiParcelBookingRequest(
+          pickupLocation: widget.pickupLocation,
+          dropLocation: widget.dropLocation,
+          parcelType: widget.parcelType,
+          weightKg: double.tryParse(widget.weight) ?? double.nan,
+          instructions: widget.instructions,
+        ),
+      );
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (context) => ParcelBookingDetailsPage(bookingId: booking.id),
+        ),
+      );
+    } on CustomerApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   String _displayValue(String value, String fallback) {

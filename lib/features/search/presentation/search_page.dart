@@ -1,7 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
+import '../../local_stores/models/local_store.dart';
+import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../product_details/data/product_availability_store.dart';
+import '../../product_details/presentation/product_details_page.dart';
+import '../../restaurants/presentation/restaurant_menu_page.dart';
+import '../../restaurants/presentation/restaurants_page.dart';
 import '../data/search_index.dart';
 import '../models/search_result.dart';
 
@@ -27,19 +35,171 @@ class _SearchPageState extends State<SearchPage> {
 
   final _controller = TextEditingController();
   String _query = '';
+  Timer? _debounce;
+  int _searchRequestGeneration = 0;
+  bool _loading = false;
+  Object? _error;
+  List<SearchResult> _backendResults = const [];
+
+  bool get _backendMode => CustomerApi.instance.isConfigured;
+
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _searchRequestGeneration++;
+    setState(() {
+      _query = value;
+      _error = null;
+      _backendResults = const [];
+      _loading = value.trim().isNotEmpty && _backendMode;
+    });
+    if (value.trim().isEmpty || !_backendMode) return;
+    _debounce = Timer(const Duration(milliseconds: 350), _searchBackend);
+  }
+
+  Future<void> _searchBackend() async {
+    final query = _query.trim();
+    if (query.isEmpty || !_backendMode) return;
+    final requestGeneration = ++_searchRequestGeneration;
+    setState(() {
+      _loading = true;
+      _error = null;
+      _backendResults = const [];
+    });
+    try {
+      final responses = await Future.wait([
+        CustomerApi.instance.getShops(query: query),
+        CustomerApi.instance.getProducts(query: query),
+      ]);
+      if (!mounted ||
+          requestGeneration != _searchRequestGeneration ||
+          query != _query.trim()) {
+        return;
+      }
+      final shops = responses[0] as List<ApiShop>;
+      final products = responses[1] as List<ApiProduct>;
+      setState(() {
+        _backendResults = [
+          ...shops.map(_shopResult),
+          ...products.map(_productResult),
+        ];
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted ||
+          requestGeneration != _searchRequestGeneration ||
+          query != _query.trim()) {
+        return;
+      }
+      setState(() {
+        _error = error;
+        _loading = false;
+      });
+    }
+  }
+
+  SearchResult _shopResult(ApiShop shop) => SearchResult(
+    id: shop.id,
+    type: SearchResultType.backendShop,
+    displayName: shop.name,
+    subtitle: shop.address ?? shop.partnerName ?? 'Shop',
+    merchantId: shop.id,
+    merchantName: shop.name,
+    partnerType: shop.partnerType,
+    isBackendData: true,
+    searchableText: '${shop.name} ${shop.partnerName ?? ''} ${shop.address ?? ''}',
+  );
+
+  SearchResult _productResult(ApiProduct product) => SearchResult(
+    id: product.id,
+    type: SearchResultType.backendProduct,
+    displayName: product.name,
+    subtitle: product.shopName,
+    merchantId: product.shopId,
+    merchantName: product.shopName,
+    categoryId: product.categoryId,
+    partnerType: product.partnerType,
+    price: product.priceMinor / 100,
+    available: product.available,
+    isBackendData: true,
+    searchableText: '${product.name} ${product.description} ${product.shopName ?? ''}',
+  );
+
+  Widget? _backendDestination(SearchResult result) {
+    if (result.type == SearchResultType.backendShop) {
+      if (result.partnerType == 'restaurant') {
+        return RestaurantMenuPage(
+          restaurant: Restaurant(
+            id: result.id,
+            name: result.displayName,
+            rating: 0,
+            deliveryTime: 'Not provided',
+            cuisine: 'Details not provided',
+            distance: '—',
+            location: result.subtitle ?? 'Address not provided',
+            status: RestaurantStatus.unknown,
+            isBackendData: true,
+          ),
+        );
+      }
+      if (result.partnerType == 'grocery') {
+        final store = LocalStore(
+          id: result.id,
+          name: result.displayName,
+          rating: 0,
+          deliveryTime: 'Not provided',
+          distance: '—',
+          locality: result.subtitle ?? 'Address not provided',
+          isOpen: false,
+          isBackendData: true,
+        );
+        return LocalStoreCatalogPage(
+          store: store,
+          categories: commonLocalStoreCategories,
+          products: const [],
+        );
+      }
+      return null;
+    }
+    if (result.type != SearchResultType.backendProduct) return null;
+    final type = result.partnerType;
+    return ProductDetailsPage(
+      product: ProductDetailsProduct(
+        id: result.id,
+        serviceType: switch (type) {
+          'restaurant' => 'restaurant',
+          'grocery' => 'local_store',
+          'meat_shop' => 'meat',
+          _ => 'other',
+        },
+        merchantId: result.merchantId,
+        merchantName: result.merchantName,
+        categoryId: result.categoryId,
+        name: result.displayName,
+        description: '',
+        priceInPaise: result.price == null ? null : (result.price! * 100).round(),
+        available: result.available,
+        icon: switch (type) {
+          'restaurant' => Icons.restaurant_menu_rounded,
+          'meat_shop' => Icons.set_meal_rounded,
+          _ => Icons.shopping_basket_rounded,
+        },
+        isBackendProduct: true,
+      ),
+    );
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final results = SearchIndex.search(
-      _query,
-      additionalResults: widget.additionalResults,
-    );
+    final results = _backendMode
+        ? _backendResults
+        : SearchIndex.search(_query, additionalResults: widget.additionalResults);
 
     return Scaffold(
       backgroundColor: _page,
@@ -82,8 +242,7 @@ class _SearchPageState extends State<SearchPage> {
                             child: TextField(
                               controller: _controller,
                               autofocus: true,
-                              onChanged: (value) =>
-                                  setState(() => _query = value),
+                              onChanged: _onQueryChanged,
                               textInputAction: TextInputAction.search,
                               decoration: const InputDecoration(
                                 hintText: 'Search restaurants, groceries, products...',
@@ -118,18 +277,49 @@ class _SearchPageState extends State<SearchPage> {
                 ],
               ),
             ),
+            if (!_backendMode && _query.trim().isNotEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Demo search · sample results',
+                    style: TextStyle(color: _muted, fontSize: 11),
+                  ),
+                ),
+              ),
+            if (_backendMode &&
+                _query.trim().isNotEmpty &&
+                !_loading &&
+                _error == null)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Live catalog · shops and products',
+                    style: TextStyle(color: _muted, fontSize: 11),
+                  ),
+                ),
+              ),
             Expanded(
               child: _query.trim().isEmpty
-                  ? const _SearchMessage(
+                  ? _SearchMessage(
                       icon: Icons.search_rounded,
                       title: 'Search MyShopzy',
                       message: 'Find restaurants, shops and products near you.',
                     )
+                  : _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? _SearchRetry(onRetry: _searchBackend)
                   : results.isEmpty
-                  ? const _SearchMessage(
+                  ? _SearchMessage(
                       icon: Icons.search_off_rounded,
                       title: 'No results found',
-                      message: 'Try another name, product or category.',
+                      message: _backendMode
+                          ? 'Try another name, shop or product. Live category search is not available.'
+                          : 'Try another name, product or category.',
                     )
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -140,9 +330,21 @@ class _SearchPageState extends State<SearchPage> {
                         result: results[index],
                         onTap: () {
                           final result = results[index];
-                          final destination = widget.destinationBuilder?.call(
-                            result,
-                          );
+                          final destination = _backendMode
+                              ? _backendDestination(result)
+                              : widget.destinationBuilder?.call(result);
+                          if (_backendMode &&
+                              result.type == SearchResultType.backendShop &&
+                              destination == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'This shop type does not have a customer catalog screen yet.',
+                                ),
+                              ),
+                            );
+                            return;
+                          }
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
                               builder: (context) =>
@@ -206,6 +408,55 @@ class _SearchMessage extends StatelessWidget {
   }
 }
 
+class _SearchRetry extends StatelessWidget {
+  const _SearchRetry({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              color: Color(0xFF9AA29C),
+              size: 42,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Search is unavailable',
+              style: TextStyle(
+                color: _SearchPageState._ink,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Check your connection and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _SearchPageState._muted,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _SearchResultTile extends StatelessWidget {
   const _SearchResultTile({required this.result, required this.onTap});
 
@@ -248,6 +499,16 @@ class _SearchResultTile extends StatelessWidget {
       SearchResultType.homeRestaurantProduct => Icons.restaurant_menu_rounded,
       SearchResultType.homeStore => Icons.storefront_rounded,
       SearchResultType.homeStoreProduct => Icons.shopping_basket_rounded,
+      SearchResultType.backendShop => switch (result.partnerType) {
+        'restaurant' => Icons.restaurant_rounded,
+        'meat_shop' => Icons.set_meal_rounded,
+        _ => Icons.storefront_rounded,
+      },
+      SearchResultType.backendProduct => switch (result.partnerType) {
+        'restaurant' => Icons.restaurant_menu_rounded,
+        'meat_shop' => Icons.set_meal_rounded,
+        _ => Icons.shopping_basket_rounded,
+      },
     };
     final typeLabel = switch (result.type) {
       SearchResultType.restaurant => 'Restaurant',
@@ -264,6 +525,18 @@ class _SearchResultTile extends StatelessWidget {
       SearchResultType.homeRestaurantProduct => 'Restaurant item',
       SearchResultType.homeStore => 'Local store',
       SearchResultType.homeStoreProduct => 'Store product',
+      SearchResultType.backendShop => switch (result.partnerType) {
+        'restaurant' => 'Restaurant',
+        'grocery' => 'Local store',
+        'meat_shop' => 'Meat shop',
+        _ => 'Shop',
+      },
+      SearchResultType.backendProduct => switch (result.partnerType) {
+        'restaurant' => 'Restaurant item',
+        'grocery' => 'Store product',
+        'meat_shop' => 'Meat product',
+        _ => 'Product',
+      },
     };
 
     return Material(

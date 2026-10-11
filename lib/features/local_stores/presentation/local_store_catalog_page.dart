@@ -455,7 +455,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
   static const _page = AppTheme.lightBackground;
 
   late String _selectedCategoryId;
-  late final Future<_BackendLocalStoreCatalog>? _backendCatalogFuture;
+  late Future<_BackendLocalStoreCatalog>? _backendCatalogFuture;
 
   @override
   void initState() {
@@ -498,35 +498,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
           );
         }
         if (snapshot.hasError) {
-          final demoProducts = sampleLocalStoreProducts
-              .where(
-                (product) => product.storeId == 'sri-lakshmi-general-store',
-              )
-              .map(
-                (product) => StoreProduct(
-                  id: product.id,
-                  storeId: widget.store.id,
-                  categoryId: product.categoryId,
-                  name: product.name,
-                  brand: product.brand,
-                  description: product.description,
-                  packSize: product.packSize,
-                  price: product.price,
-                  mrp: product.mrp,
-                  discount: product.discount,
-                  rating: product.rating,
-                  available: product.available,
-                  imageUrl: product.imageUrl,
-                  badge: product.badge,
-                  variants: product.variants,
-                ),
-              )
-              .toList(growable: false);
-          return _buildCatalog(
-            commonLocalStoreCategories,
-            demoProducts,
-            sourceLabel: 'Demo catalog · backend unavailable',
-          );
+          return _buildBackendCatalogError(snapshot.error);
         }
         final catalog = snapshot.data!;
         return _buildCatalog(
@@ -535,6 +507,60 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
           sourceLabel: 'Backend catalog',
         );
       },
+    );
+  }
+
+  Widget _buildBackendCatalogError(Object? error) {
+    return Scaffold(
+      backgroundColor: _page,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(context),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Could not load this store catalog.',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          error.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: _muted, fontSize: 12),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _backendCatalogFuture = _loadBackendCatalog(
+                              CustomerApi.instance,
+                            );
+                          });
+                        },
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry catalog'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: const CartSummaryBar(),
     );
   }
 

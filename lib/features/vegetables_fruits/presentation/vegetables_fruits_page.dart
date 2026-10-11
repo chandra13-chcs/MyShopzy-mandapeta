@@ -93,6 +93,11 @@ class VegetablesFruitsPage extends StatelessWidget {
                     'Choose what you need today',
                     style: TextStyle(color: _muted, fontSize: 13),
                   ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    'Demo produce catalog · the API cannot distinguish produce from other shops.',
+                    style: TextStyle(color: _muted, fontSize: 11),
+                  ),
                   const SizedBox(height: 19),
                   _ProduceTypeCard(
                     title: 'Fruits',

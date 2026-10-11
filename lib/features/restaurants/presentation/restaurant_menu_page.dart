@@ -201,6 +201,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
   static const _page = AppTheme.lightBackground;
 
   late Future<_RestaurantCatalog>? _catalogFuture;
+  Future<List<ApiCategory>>? _categoriesFuture;
   _DietaryFilter _selectedFilter = _DietaryFilter.all;
   String _productQuery = '';
 
@@ -217,12 +218,22 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     CustomerApi api, {
     String? query,
   }) async {
-    final categoriesFuture = api.getCategories(widget.restaurant.id);
+    final categoriesFuture = _categoriesFuture ??= api.getCategories(
+      widget.restaurant.id,
+    );
     final productsFuture = api.getProducts(
       shopId: widget.restaurant.id,
       query: query,
     );
-    final categories = await categoriesFuture;
+    late final List<ApiCategory> categories;
+    try {
+      categories = await categoriesFuture;
+    } on CustomerApiException {
+      if (identical(_categoriesFuture, categoriesFuture)) {
+        _categoriesFuture = null;
+      }
+      rethrow;
+    }
     final products = await productsFuture;
     final menuCategories = categories
         .map((category) => MenuCategory(id: category.id, name: category.name))
@@ -282,11 +293,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
           );
         }
         if (snapshot.hasError) {
-          return _buildMenu(
-            widget.categories,
-            widget.menuItems,
-            sourceLabel: 'Demo menu · backend unavailable',
-          );
+          return _buildCatalogError(snapshot.error);
         }
         return _buildMenu(
           snapshot.data!.categories,
@@ -294,6 +301,64 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
           sourceLabel: 'Backend catalog',
         );
       },
+    );
+  }
+
+  Widget _buildCatalogError(Object? error) {
+    return Scaffold(
+      backgroundColor: _page,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildRestaurantHeader(context),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Could not load the backend menu.',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          error.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: _muted, fontSize: 12),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          final api = CustomerApi.instance;
+                          setState(() {
+                            _catalogFuture = _loadCatalog(
+                              api,
+                              query: _productQuery.isEmpty
+                                  ? null
+                                  : _productQuery,
+                            );
+                          });
+                        },
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry menu'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: const CartSummaryBar(),
     );
   }
 

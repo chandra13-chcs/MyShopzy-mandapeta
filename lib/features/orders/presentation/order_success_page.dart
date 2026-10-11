@@ -50,7 +50,9 @@ class OrderSuccessPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Your order from ${confirmedOrder.storeName} is confirmed.',
+                  confirmedOrder.isBackendData
+                      ? 'Your order has been placed.'
+                      : 'Your order from ${confirmedOrder.storeName} is confirmed.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: AppTheme.secondaryText,
@@ -98,8 +100,9 @@ class OrderSuccessPage extends StatelessWidget {
                     key: const ValueKey('order-success-view-details'),
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (context) =>
-                            OrderDetailsPage(order: confirmedOrder),
+                        builder: (context) => confirmedOrder.isBackendData
+                            ? BackendOrderDetailsPage(order: confirmedOrder)
+                            : OrderDetailsPage(order: confirmedOrder),
                       ),
                     ),
                     icon: const Icon(Icons.receipt_long_outlined),

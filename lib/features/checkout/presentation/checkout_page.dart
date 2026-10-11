@@ -4,6 +4,8 @@ import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../cart/data/cart_store.dart';
 import '../../coupons/models/demo_coupon.dart';
+import '../../orders/models/order_record.dart';
+import '../../orders/presentation/order_success_page.dart';
 import '../../profile/models/saved_address.dart';
 
 class CheckoutPage extends StatefulWidget {
@@ -1630,9 +1632,33 @@ class _CheckoutPageState extends State<CheckoutPage> {
       };
       final order = await CustomerApi.instance.placeOrder(deliveryAddress);
       if (!mounted) return;
+      final confirmedOrder = OrderRecord(
+        storeName: '',
+        icon: Icons.receipt_long_outlined,
+        orderId: order.orderId,
+        dateTime: '',
+        itemSummary:
+            '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}',
+        totalInPaise: order.totalMinor,
+        status: order.status,
+        statusMessage: '',
+        orderTab: OrdersTab.ongoing,
+        serviceType: '',
+        items: const [],
+        deliveryAddress: address.formattedAddress,
+        paymentMethod: '',
+        paymentStatus: '',
+        deliveryChargeInPaise: order.deliveryFeeMinor,
+        discountInPaise: order.discountMinor,
+        isBackendData: true,
+        itemCount: order.itemCount,
+      );
       _cartStore.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Order placed · ${order.orderId}')),
+      await Navigator.of(context).pushReplacement<void, void>(
+        MaterialPageRoute<void>(
+          builder: (context) =>
+              OrderSuccessPage(confirmedOrder: confirmedOrder),
+        ),
       );
     } on CustomerApiException catch (error) {
       if (!mounted) return;

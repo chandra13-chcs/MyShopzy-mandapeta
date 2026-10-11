@@ -42,15 +42,19 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
   static const _green = LocalStoresPage._green;
   static const _page = LocalStoresPage._page;
 
-  late final Future<List<ApiShop>>? _storesFuture;
+  late Future<List<ApiShop>>? _storesFuture;
 
   @override
   void initState() {
     super.initState();
     final api = CustomerApi.instance;
     _storesFuture = api.isConfigured && widget.useDefaultStores
-        ? api.getShops(partnerType: 'grocery')
+        ? _loadStores(api)
         : null;
+  }
+
+  Future<List<ApiShop>> _loadStores(CustomerApi api) {
+    return api.getShops(partnerType: 'grocery');
   }
 
   @override
@@ -74,10 +78,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
           );
         }
         if (snapshot.hasError) {
-          return _buildPage(
-            widget.stores,
-            sourceLabel: 'Demo catalog · backend unavailable',
-          );
+          return _buildApiError(snapshot.error);
         }
         final stores = snapshot.data!
             .map(
@@ -95,6 +96,57 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
             .toList(growable: false);
         return _buildPage(stores, sourceLabel: 'Backend catalog');
       },
+    );
+  }
+
+  Widget _buildApiError(Object? error) {
+    return Scaffold(
+      backgroundColor: _page,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(context, showRadius: false),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Could not load local stores.',
+                        style: TextStyle(
+                          color: _ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (error != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          error.toString(),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: _muted, fontSize: 12),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _storesFuture = _loadStores(CustomerApi.instance);
+                          });
+                        },
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry stores'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
