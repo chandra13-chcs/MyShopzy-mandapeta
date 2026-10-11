@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
 import 'restaurants_page.dart';
 
-enum FoodType { vegetarian, nonVegetarian }
+enum FoodType { vegetarian, nonVegetarian, unknown }
 
 class MenuCategory {
   const MenuCategory({required this.id, required this.name});
@@ -26,6 +27,8 @@ class MenuItem {
     required this.foodType,
     required this.isVeg,
     required this.available,
+    this.isBackendProduct = false,
+    this.dietaryInfoAvailable = true,
     this.imageUrl,
   });
 
@@ -39,6 +42,8 @@ class MenuItem {
   final FoodType foodType;
   final bool isVeg;
   final bool available;
+  final bool isBackendProduct;
+  final bool dietaryInfoAvailable;
 }
 
 const sampleRestaurantMenuCategories = [
@@ -183,26 +188,138 @@ class RestaurantMenuPage extends StatefulWidget {
 
 enum _DietaryFilter { all, veg, nonVeg }
 
+class _RestaurantCatalog {
+  const _RestaurantCatalog({required this.categories, required this.items});
+
+  final List<MenuCategory> categories;
+  final List<MenuItem> items;
+}
+
 class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
   static const _page = AppTheme.lightBackground;
 
+  late Future<_RestaurantCatalog>? _catalogFuture;
   _DietaryFilter _selectedFilter = _DietaryFilter.all;
+  String _productQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final api = CustomerApi.instance;
+    _catalogFuture = api.isConfigured && widget.restaurant.isBackendData
+        ? _loadCatalog(api)
+        : null;
+  }
+
+  Future<_RestaurantCatalog> _loadCatalog(
+    CustomerApi api, {
+    String? query,
+  }) async {
+    final categoriesFuture = api.getCategories(widget.restaurant.id);
+    final productsFuture = api.getProducts(
+      shopId: widget.restaurant.id,
+      query: query,
+    );
+    final categories = await categoriesFuture;
+    final products = await productsFuture;
+    final menuCategories = categories
+        .map((category) => MenuCategory(id: category.id, name: category.name))
+        .toList();
+    final categoryIds = categories.map((category) => category.id).toSet();
+    const uncategorizedId = 'uncategorized';
+    if (products.any(
+      (product) =>
+          product.categoryId == null ||
+          !categoryIds.contains(product.categoryId),
+    )) {
+      menuCategories.add(
+        const MenuCategory(id: uncategorizedId, name: 'Uncategorized'),
+      );
+    }
+    final items = products.map((product) {
+      final categoryId =
+          product.categoryId != null && categoryIds.contains(product.categoryId)
+          ? product.categoryId!
+          : uncategorizedId;
+      return MenuItem(
+        id: product.id,
+        restaurantId: widget.restaurant.id,
+        categoryId: categoryId,
+        name: product.name,
+        description: product.description,
+        price: product.priceMinor / 100,
+        foodType: FoodType.unknown,
+        isVeg: false,
+        available: product.available,
+        isBackendProduct: true,
+        dietaryInfoAvailable: false,
+      );
+    }).toList();
+    return _RestaurantCatalog(categories: menuCategories, items: items);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final restaurantItems = widget.menuItems
-        .where((item) => item.restaurantId == widget.restaurant.id)
+    final catalogFuture = _catalogFuture;
+    if (catalogFuture == null) {
+      return _buildMenu(
+        widget.categories,
+        widget.menuItems,
+        sourceLabel: 'Demo menu · sample products and prices',
+      );
+    }
+    return FutureBuilder<_RestaurantCatalog>(
+      future: catalogFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Scaffold(
+            backgroundColor: _page,
+            body: const SafeArea(
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return _buildMenu(
+            widget.categories,
+            widget.menuItems,
+            sourceLabel: 'Demo menu · backend unavailable',
+          );
+        }
+        return _buildMenu(
+          snapshot.data!.categories,
+          snapshot.data!.items,
+          sourceLabel: 'Backend catalog',
+        );
+      },
+    );
+  }
+
+  Widget _buildMenu(
+    List<MenuCategory> categories,
+    List<MenuItem> items, {
+    required String sourceLabel,
+  }) {
+    final query = _productQuery.toLowerCase();
+    final restaurantItems = items
+        .where(
+          (item) =>
+              item.restaurantId == widget.restaurant.id &&
+              (query.isEmpty ||
+                  item.name.toLowerCase().contains(query) ||
+                  item.description.toLowerCase().contains(query)),
+        )
         .toList();
     final filteredItems = restaurantItems.where((item) {
       return switch (_selectedFilter) {
         _DietaryFilter.all => true,
-        _DietaryFilter.veg => item.isVeg,
-        _DietaryFilter.nonVeg => !item.isVeg,
+        _DietaryFilter.veg => item.dietaryInfoAvailable && item.isVeg,
+        _DietaryFilter.nonVeg => item.dietaryInfoAvailable && !item.isVeg,
       };
     }).toList();
-    final menuCategories = widget.categories
+    final menuCategories = categories
         .where(
           (category) =>
               filteredItems.any((item) => item.categoryId == category.id),
@@ -215,7 +332,27 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _buildRestaurantHeader(context)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 9, 16, 0),
+                child: Text(
+                  sourceLabel,
+                  style: const TextStyle(color: _muted, fontSize: 11),
+                ),
+              ),
+            ),
             SliverToBoxAdapter(child: _buildMenuHeading(filteredItems.length)),
+            SliverToBoxAdapter(child: _buildProductSearch()),
+            if (items.any((item) => !item.dietaryInfoAvailable))
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
+                  child: Text(
+                    'Dietary details are not provided by the catalog.',
+                    style: TextStyle(color: _muted, fontSize: 11),
+                  ),
+                ),
+              ),
             SliverToBoxAdapter(child: _buildDietaryFilters()),
             for (final category in menuCategories)
               SliverToBoxAdapter(
@@ -231,6 +368,50 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         ),
       ),
       bottomNavigationBar: const CartSummaryBar(),
+    );
+  }
+
+  Widget _buildProductSearch() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: const Color(0xFFE5E9E3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.search_rounded, color: _muted, size: 21),
+            const SizedBox(width: 9),
+            Expanded(
+              child: TextField(
+                key: const ValueKey('restaurant-product-search'),
+                textInputAction: TextInputAction.search,
+                onSubmitted: (value) {
+                  final query = value.trim();
+                  final api = CustomerApi.instance;
+                  setState(() {
+                    _productQuery = query;
+                    _catalogFuture =
+                        api.isConfigured && widget.restaurant.isBackendData
+                        ? _loadCatalog(api, query: query.isEmpty ? null : query)
+                        : null;
+                  });
+                },
+                decoration: const InputDecoration(
+                  hintText: 'Search dishes...',
+                  border: InputBorder.none,
+                  isDense: true,
+                ),
+                style: const TextStyle(color: _ink, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -296,35 +477,37 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEAF5EA),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.star_rounded,
-                          color: Color(0xFFE4A323),
-                          size: 16,
-                        ),
-                        const SizedBox(width: 2),
-                        Text(
-                          widget.restaurant.rating.toStringAsFixed(1),
-                          style: const TextStyle(
-                            color: _ink,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
+                  if (!widget.restaurant.isBackendData) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEAF5EA),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: Color(0xFFE4A323),
+                            size: 16,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 2),
+                          Text(
+                            widget.restaurant.rating.toStringAsFixed(1),
+                            style: const TextStyle(
+                              color: _ink,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
               const SizedBox(height: 5),
@@ -629,6 +812,7 @@ class _OpenStatus extends StatelessWidget {
       RestaurantStatus.open => 'Open',
       RestaurantStatus.closed => 'Closed',
       RestaurantStatus.unavailable => 'Unavailable',
+      RestaurantStatus.unknown => 'Hours not provided',
     };
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -685,19 +869,20 @@ class _MenuItemCard extends StatelessWidget {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 5, right: 6),
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: item.isVeg
-                                  ? AppTheme.primaryGreen
-                                  : const Color(0xFFB63E32),
-                              shape: BoxShape.circle,
+                        if (item.dietaryInfoAvailable)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 5, right: 6),
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: item.isVeg
+                                    ? AppTheme.primaryGreen
+                                    : const Color(0xFFB63E32),
+                                shape: BoxShape.circle,
+                              ),
                             ),
                           ),
-                        ),
                         Expanded(
                           child: Text(
                             item.name,
@@ -715,7 +900,7 @@ class _MenuItemCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 7),
                     Text(
-                      '₹${item.price.toStringAsFixed(0)}',
+                      '₹${item.price.toStringAsFixed(item.price % 1 == 0 ? 0 : 2)}',
                       style: const TextStyle(
                         color: _ink,
                         fontSize: 13,
@@ -772,7 +957,10 @@ class _MenuItemCard extends StatelessWidget {
                         priceInPaise: (item.price * 100).round(),
                         available: item.available,
                         icon: Icons.restaurant_rounded,
-                        isVegetarian: item.isVeg,
+                        isVegetarian: item.dietaryInfoAvailable
+                            ? item.isVeg
+                            : null,
+                        isBackendProduct: item.isBackendProduct,
                       ),
                     ),
                   ),
@@ -792,6 +980,7 @@ class _MenuItemCard extends StatelessWidget {
                     priceInPaise: (item.price * 100).round(),
                     imageUrl: item.imageUrl,
                     icon: Icons.restaurant_rounded,
+                    backendCatalogItem: item.isBackendProduct,
                     width: 84,
                     unavailableLabel: 'OUT OF STOCK',
                   ),
@@ -834,7 +1023,8 @@ class _MenuItemCard extends StatelessWidget {
             priceInPaise: (item.price * 100).round(),
             available: item.available,
             icon: Icons.restaurant_rounded,
-            isVegetarian: item.isVeg,
+            isVegetarian: item.dietaryInfoAvailable ? item.isVeg : null,
+            isBackendProduct: item.isBackendProduct,
             relatedProducts: relatedItems
                 .map(
                   (related) => ProductDetailsProduct(
@@ -849,7 +1039,10 @@ class _MenuItemCard extends StatelessWidget {
                     priceInPaise: (related.price * 100).round(),
                     available: related.available,
                     icon: Icons.restaurant_rounded,
-                    isVegetarian: related.isVeg,
+                    isVegetarian: related.dietaryInfoAvailable
+                        ? related.isVeg
+                        : null,
+                    isBackendProduct: related.isBackendProduct,
                   ),
                 )
                 .toList(),
@@ -860,9 +1053,11 @@ class _MenuItemCard extends StatelessWidget {
   }
 
   Widget _buildPlaceholder() {
-    final colors = item.foodType == FoodType.vegetarian
-        ? const [Color(0xFFE2EEDB), Color(0xFFBDCFB3)]
-        : const [Color(0xFFF0DFD2), Color(0xFFD3B39B)];
+    final colors = switch (item.foodType) {
+      FoodType.vegetarian => const [Color(0xFFE2EEDB), Color(0xFFBDCFB3)],
+      FoodType.nonVegetarian => const [Color(0xFFF0DFD2), Color(0xFFD3B39B)],
+      FoodType.unknown => const [Color(0xFFE8EAE7), Color(0xFFBFC7BF)],
+    };
     return Container(
       width: 112,
       height: 112,

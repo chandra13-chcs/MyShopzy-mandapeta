@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../categories/presentation/categories_page.dart';
@@ -16,9 +19,14 @@ import '../../wishlist/presentation/wishlist_page.dart';
 import 'edit_profile_page.dart';
 import 'saved_addresses_page.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
   static const _background = AppTheme.lightBackground;
   static const _green = AppTheme.primaryGreen;
   static const _lightGreen = AppTheme.lightBackground;
@@ -29,6 +37,49 @@ class ProfilePage extends StatelessWidget {
   static const _yellowText = AppTheme.darkGreen;
   static const _logoutBackground = Color(0xFFFFF2F1);
   static const _logoutColor = Color(0xFFA85B5B);
+  static const _demoProfile = ApiCustomerProfile(
+    displayName: 'Chandra Shekar',
+    phone: '+91 89XXX XXX45',
+    email: null,
+  );
+
+  ApiCustomerProfile? _profile;
+  String? _profileError;
+  bool _profileLoading = false;
+
+  bool get _backendMode => CustomerApi.instance.isConfigured;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_backendMode) {
+      _profileLoading = true;
+      unawaited(_loadProfile());
+    } else {
+      _profile = _demoProfile;
+    }
+  }
+
+  Future<void> _loadProfile() async {
+    if (!mounted) return;
+    setState(() {
+      _profileLoading = true;
+      _profileError = null;
+    });
+    try {
+      final profile = await CustomerApi.instance.getProfile();
+      if (mounted) setState(() => _profile = profile);
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _profile = null;
+          _profileError = error.message;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _profileLoading = false);
+    }
+  }
 
   static const _accountItems = [
     _ProfileMenuItem('My Orders', Icons.inventory_2_outlined),
@@ -95,6 +146,7 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _buildProfileCard(BuildContext context) {
+    final profile = _profile;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: _cardDecoration(radius: 22),
@@ -116,65 +168,101 @@ class ProfilePage extends StatelessWidget {
           ),
           const SizedBox(width: 17),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Chandra Shekar',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: _mainText,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                const Text(
-                  '+91 89XXX XXX45',
-                  style: TextStyle(color: _secondaryText, fontSize: 14),
-                ),
-                const SizedBox(height: 10),
-                OutlinedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (context) => const EditProfilePage(),
+            child: _profileLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _profileError != null
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _profileError!,
+                        style: const TextStyle(
+                          color: _logoutColor,
+                          fontSize: 12,
+                        ),
                       ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _green,
-                    disabledForegroundColor: _green,
-                    side: const BorderSide(color: _green),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 15,
-                      vertical: 7,
-                    ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    shape: const StadiumBorder(),
-                  ),
-                  child: const Text(
-                    'Edit Profile',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ],
-            ),
+                      TextButton(
+                        onPressed: _profileLoading ? null : _loadProfile,
+                        child: const Text('Retry profile'),
+                      ),
+                    ],
+                  )
+                : _buildProfileDetails(context, profile!),
           ),
         ],
       ),
     );
   }
 
+  Widget _buildProfileDetails(
+    BuildContext context,
+    ApiCustomerProfile profile,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _backendMode ? 'Backend profile' : 'Demo profile · on this device',
+          style: const TextStyle(color: _secondaryText, fontSize: 10),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          profile.displayName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: _mainText,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          profile.phone ?? profile.email ?? 'No contact method saved',
+          style: const TextStyle(color: _secondaryText, fontSize: 14),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton(
+          onPressed: () async {
+            final updatedProfile = await Navigator.of(context)
+                .push<ApiCustomerProfile>(
+                  MaterialPageRoute<ApiCustomerProfile>(
+                    builder: (context) => EditProfilePage(profile: profile),
+                  ),
+                );
+            if (!context.mounted || updatedProfile == null) return;
+            setState(() => _profile = updatedProfile);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  _backendMode
+                      ? 'Profile updated successfully.'
+                      : 'Demo profile updated on this device.',
+                ),
+              ),
+            );
+          },
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _green,
+            disabledForegroundColor: _green,
+            side: const BorderSide(color: _green),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: const StadiumBorder(),
+          ),
+          child: const Text(
+            'Edit Profile',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildQuickOrders(BuildContext context) {
     const orders = [
-      _QuickOrder(
-        'Ongoing',
-        Icons.access_time_rounded,
-        OrdersTab.ongoing,
-      ),
+      _QuickOrder('Ongoing', Icons.access_time_rounded, OrdersTab.ongoing),
       _QuickOrder(
         'Delivered',
         Icons.check_circle_outline_rounded,
@@ -330,12 +418,14 @@ class ProfilePage extends StatelessWidget {
 
   Widget _buildMenuRow(BuildContext context, _ProfileMenuItem item) {
     final badge = switch (item.title) {
-      'Notifications' => NotificationsPage.unreadCount.value == 0
-          ? null
-          : '${NotificationsPage.unreadCount.value}',
-      'Coupons & Offers' => CouponsPage.newDemoCouponCount.value == 0
-          ? null
-          : '${CouponsPage.newDemoCouponCount.value} New',
+      'Notifications' =>
+        NotificationsPage.unreadCount.value == 0
+            ? null
+            : '${NotificationsPage.unreadCount.value}',
+      'Coupons & Offers' =>
+        CouponsPage.newDemoCouponCount.value == 0
+            ? null
+            : '${CouponsPage.newDemoCouponCount.value} New',
       _ => null,
     };
     final row = Padding(
@@ -577,13 +667,13 @@ class _Badge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: ProfilePage._yellow,
+        color: _ProfilePageState._yellow,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         label,
         style: const TextStyle(
-          color: ProfilePage._yellowText,
+          color: _ProfilePageState._yellowText,
           fontSize: 11,
           fontWeight: FontWeight.w600,
         ),

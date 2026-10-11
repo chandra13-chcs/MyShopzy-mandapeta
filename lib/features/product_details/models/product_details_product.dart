@@ -22,6 +22,7 @@ class ProductDetailsProduct {
     this.quantityLabel,
     this.rating,
     this.isVegetarian,
+    this.isBackendProduct = false,
     this.variants = const [],
     this.relatedProducts = const [],
   });
@@ -44,6 +45,7 @@ class ProductDetailsProduct {
   final String? quantityLabel;
   final double? rating;
   final bool? isVegetarian;
+  final bool isBackendProduct;
   final List<ProductVariant> variants;
   final List<ProductDetailsProduct> relatedProducts;
 }

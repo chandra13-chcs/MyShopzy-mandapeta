@@ -1,12 +1,18 @@
 # MyShopzy Backend
 
-Initial CommonJS/Express backend skeleton for the MyShopzy Mandapeta delivery
-platform. This is not production-ready and does not connect to PostgreSQL or
-implement business APIs.
+CommonJS/Express backend for the MyShopzy Mandapeta delivery platform.
+Customer catalog read APIs are implemented against the initial PostgreSQL
+schema. Cart and checkout foundations are also implemented; order placement
+requires a trusted authentication middleware which is not yet configured.
+The backend is not production-ready.
 
 ## Structure
 
 - `src/app.js` creates the Express application and exposes `GET /health`.
+- `src/modules/catalog/routes.js` implements public shop, category, and product
+  catalog reads under `/api/v1`.
+- `src/modules/cart-checkout/routes.js` implements anonymous capability-token
+  carts, server-priced checkout quotes, and authenticated order placement.
 - `src/server.js` loads environment variables and starts the HTTP server.
 - `src/config/env.js` validates the HTTP port and any PostgreSQL environment
   configuration. `src/config/database.js` creates the PostgreSQL pool and
@@ -14,17 +20,75 @@ implement business APIs.
 - `src/middleware/`, `src/routes/`, `src/validators/`, and `src/utils/` are
   reserved for shared API infrastructure.
 - `src/modules/` contains one folder for each planned business area: `auth`,
-  `users`, `addresses`, `partners`, `shops`, `products`, `categories`, `cart`,
-  `orders`, `riders`, `deliveries`, `tracking`, `payments`, `refunds`,
-  `notifications`, `commissions`, `settlements`, `admin`, and `audit`.
+  `users`, `addresses`, `partners`, `shops`, `catalog`, `products`,
+  `categories`, `cart`, `orders`, `riders`, `deliveries`, `tracking`,
+  `payments`, `refunds`, `notifications`, `commissions`, `settlements`,
+  `admin`, and `audit`.
 - `database/migrations/` contains reviewed, versioned SQL migrations.
 - `database/seeds/` remains reserved; no seed data is included.
 - `tests/unit/` and `tests/integration/` are reserved for future tests.
 - `docs/` is reserved for API and implementation documentation.
 
-Future business APIs will use the `/api/v1` prefix. `GET /health` reports process liveness. `GET /health/ready` reports database
+`GET /health` reports process liveness. `GET /health/ready` reports database
 readiness with a generic response and returns HTTP 503 when PostgreSQL is
-unconfigured or unavailable.
+unconfigured or unavailable. Customer API request/response mapping and schema
+gaps are documented in `docs/customer-api-mapping.md`.
+
+Implemented customer catalog endpoints:
+
+- `GET /api/v1/shops`
+- `GET /api/v1/shops/:shopId/categories`
+- `GET /api/v1/products`
+- `GET /api/v1/products/:productId`
+
+Catalog endpoints require PostgreSQL and only return active shops/products
+belonging to approved partners. They do not expose customer-specific records.
+Login/signup, JWT authentication, and customer-scoped APIs are intentionally
+deferred; do not accept a client-supplied customer ID as authorization.
+
+Cart and checkout endpoints:
+
+- `POST /api/v1/carts` creates a cart and returns a random bearer capability
+  token once. Send it in `X-Cart-Token`; only its SHA-256 hash is persisted.
+- `GET /api/v1/cart` retrieves that token's cart.
+- `POST /api/v1/cart/items` adds `{ "productId": "...", "quantity": 1 }`.
+- `PATCH /api/v1/cart/items/:productId` sets a positive quantity.
+- `DELETE /api/v1/cart/items/:productId` removes an item.
+- `DELETE /api/v1/cart/items` clears the cart.
+- `POST /api/v1/checkout/quote` calculates a quote from current PostgreSQL
+  product prices; delivery and discount are currently zero because pricing
+  rules and coupons are not modeled.
+- `POST /api/v1/orders` accepts `{ "deliveryAddress": { ... } }`, creates the
+  order and immutable item snapshots in one transaction, and decrements
+  tracked inventory in that same transaction.
+
+Cart tokens are bearer secrets for anonymous carts, not customer identities.
+Anyone with a token can operate that cart; clients must protect it like a
+credential. The existing Flutter cart is demo-only and still uses local
+product IDs/prices; it has not been wired to these APIs. Order placement is
+disabled unless `createApp` receives a trusted `authenticateCustomer`
+middleware which sets `req.auth.customerUserId` from verified authentication.
+No authentication mechanism is implemented here, request bodies cannot choose
+the customer, and private customer APIs return `401` by default.
+
+Authenticated customer API foundations (all return `401` unless a trusted
+`authenticateCustomer` middleware is injected):
+
+- `GET /api/v1/me/profile`, `PATCH /api/v1/me/profile`
+- `GET /api/v1/me/addresses`, `POST /api/v1/me/addresses`,
+  `PATCH /api/v1/me/addresses/:addressId`,
+  `DELETE /api/v1/me/addresses/:addressId`
+- `GET /api/v1/me/wishlist`, `POST /api/v1/me/wishlist/items`,
+  `DELETE /api/v1/me/wishlist/items/:productId`
+- `GET /api/v1/me/orders`, `GET /api/v1/me/orders/:orderId`
+- `POST /api/v1/me/parcels`, `GET /api/v1/me/parcels`,
+  `GET /api/v1/me/parcels/:parcelId`
+
+Migration `003_customer_account_parcels.sql` adds only the saved-address,
+wishlist, and parcel-booking records needed by these APIs. Address, wishlist,
+profile, order, and parcel endpoints are customer-scoped and never accept a
+customer ID in their route or request body. Order history/details are read
+only.
 
 ## Setup and run
 
@@ -53,13 +117,15 @@ Requires Node.js 18.11 or later.
 
 4. Check `http://localhost:3000/health`.
 
-Run the test script with `npm test`. There are no business APIs yet.
+Run the test script with `npm test`.
 
 ## Database migrations
 
-The initial multi-partner schema is in
-`database/migrations/001_initial_multi_partner_schema.sql`. It has not been
-applied. After reviewing the SQL and verifying the local target configuration,
+The initial multi-partner schema and additive customer schemas are in
+`database/migrations/001_initial_multi_partner_schema.sql`,
+`database/migrations/002_customer_carts.sql`, and
+`database/migrations/003_customer_account_parcels.sql`. They have not been applied.
+After reviewing the SQL and verifying the local target configuration,
 the command to apply pending migrations is:
 
 ```sh
@@ -91,9 +157,16 @@ database-backed tests using that exact role.
 
 ## Planned security and integrations
 
-Input validation, centralized error handling, authentication, role-based
-authorization, rate limiting, and request logging are not implemented yet.
+Authentication, role-based authorization, rate limiting, and request logging
+are not implemented yet. Catalog endpoints validate their query/path inputs
+and return generic errors without leaking PostgreSQL details.
 The PostgreSQL pool uses the validated environment settings. Pool errors and
 readiness responses do not expose database error details or credentials.
 Payment processing, OTP delivery, object storage, and production deployment
-remain unconfigured.
+remain unconfigured. The migrations do not model coupons, refunds, reviews,
+support requests, notifications, or payment verification. Coupon
+eligibility/redemption, notification delivery, support ticketing, payment
+verification/provider references, and review/rating records need separately
+designed schema and integrations before those APIs can be implemented. Order
+creation is available only when a trusted authentication middleware is
+injected; no login/signup/JWT implementation is included.

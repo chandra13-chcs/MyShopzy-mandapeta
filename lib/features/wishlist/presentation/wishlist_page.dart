@@ -1,19 +1,34 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../cart/data/cart_store.dart';
 import '../../product_details/data/product_availability_store.dart';
 import '../../product_details/presentation/product_availability_badge.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../data/wishlist_store.dart';
 
-class WishlistPage extends StatelessWidget {
+class WishlistPage extends StatefulWidget {
   const WishlistPage({super.key});
 
+  @override
+  State<WishlistPage> createState() => _WishlistPageState();
+}
+
+class _WishlistPageState extends State<WishlistPage> {
   static const _background = AppTheme.lightBackground;
   static const _green = AppTheme.primaryGreen;
   static const _mainText = AppTheme.primaryText;
   static const _secondaryText = AppTheme.secondaryText;
+
+  @override
+  void initState() {
+    super.initState();
+    final wishlist = WishlistStore.instance;
+    if (wishlist.isBackendMode) unawaited(wishlist.load());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,41 +48,104 @@ class WishlistPage extends StatelessWidget {
         animation: wishlist,
         builder: (context, child) {
           final products = wishlist.products;
-          if (products.isEmpty) return _buildEmptyState();
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-            itemCount: products.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 12),
-            itemBuilder: (context, index) =>
-                _WishlistProductCard(product: products[index]),
+          if (wishlist.isBackendMode && wishlist.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (wishlist.isBackendMode && wishlist.error != null) {
+            return _buildErrorState(wishlist);
+          }
+          if (products.isEmpty) return _buildEmptyState(wishlist.isBackendMode);
+          return Column(
+            children: [
+              _sourceLabel(wishlist.isBackendMode),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                  itemCount: products.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 12),
+                  itemBuilder: (context, index) =>
+                      _WishlistProductCard(product: products[index]),
+                ),
+              ),
+            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return const Center(
+  Widget _sourceLabel(bool backendMode) {
+    return Align(
+      alignment: Alignment.centerLeft,
       child: Padding(
-        padding: EdgeInsets.all(32),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+        child: Text(
+          backendMode ? 'Backend wishlist' : 'Demo wishlist · saved on device',
+          style: const TextStyle(color: _secondaryText, fontSize: 11),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(WishlistStore wishlist) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.favorite_border_rounded, color: _green, size: 52),
-            SizedBox(height: 14),
+            const Icon(
+              Icons.cloud_off_outlined,
+              color: _secondaryText,
+              size: 42,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              wishlist.error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _secondaryText, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: wishlist.isLoading ? null : wishlist.load,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(bool backendMode) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              backendMode
+                  ? 'Backend wishlist'
+                  : 'Demo wishlist · saved on device',
+              style: const TextStyle(color: _secondaryText, fontSize: 11),
+            ),
+            const SizedBox(height: 14),
+            const Icon(Icons.favorite_border_rounded, color: _green, size: 52),
+            const SizedBox(height: 14),
             Text(
               'Your Wishlist is empty',
-              style: TextStyle(
+              style: const TextStyle(
                 color: _mainText,
                 fontSize: 17,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text(
               'Save items you love and find them here.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: _secondaryText, fontSize: 14),
+              style: const TextStyle(color: _secondaryText, fontSize: 14),
             ),
           ],
         ),
@@ -145,7 +223,9 @@ class _WishlistProductCard extends StatelessWidget {
                       ),
                       padding: EdgeInsets.zero,
                       tooltip: 'Remove from wishlist',
-                      onPressed: () => WishlistStore.instance.remove(product),
+                      onPressed: WishlistStore.instance.isPending(product)
+                          ? null
+                          : () => _removeFromWishlist(context),
                       icon: const Icon(
                         Icons.favorite_rounded,
                         color: _green,
@@ -228,6 +308,16 @@ class _WishlistProductCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _removeFromWishlist(BuildContext context) async {
+    try {
+      await WishlistStore.instance.removeSavedProduct(product);
+    } on CustomerApiException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   Widget _productImage(ProductDetailsProduct product) {

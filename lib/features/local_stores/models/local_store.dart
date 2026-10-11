@@ -9,6 +9,7 @@ class LocalStore {
     required this.distance,
     required this.locality,
     required this.isOpen,
+    this.isBackendData = false,
     this.imageUrl,
     this.offer,
   });
@@ -22,6 +23,7 @@ class LocalStore {
   final String locality;
   final String? offer;
   final bool isOpen;
+  final bool isBackendData;
 
   double get distanceInKm =>
       double.tryParse(distance.toLowerCase().replaceAll('km', '').trim()) ??

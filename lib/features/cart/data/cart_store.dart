@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/data/customer_api.dart';
 import '../models/cart_order_context.dart';
 
 class CartStore extends ChangeNotifier {
@@ -10,6 +11,9 @@ class CartStore extends ChangeNotifier {
   final List<CartItem> _items = [];
 
   List<CartItem> get items => List.unmodifiable(_items);
+
+  bool get hasBackendCart =>
+      _items.isNotEmpty && _items.every((item) => item.isBackendProduct);
 
   int get totalQuantity =>
       _items.fold(0, (total, item) => total + item.quantity);
@@ -49,7 +53,11 @@ class CartStore extends ChangeNotifier {
     required int priceInPaise,
     String? imageUrl,
     required IconData icon,
+    bool isBackendProduct = false,
   }) {
+    if (_items.any((item) => item.isBackendProduct != isBackendProduct)) {
+      return false;
+    }
     final incomingContext = CartOrderContext(
       serviceType: serviceType,
       merchantId: merchantId,
@@ -87,10 +95,129 @@ class CartStore extends ChangeNotifier {
         priceInPaise: priceInPaise,
         imageUrl: imageUrl,
         icon: icon,
+        isBackendProduct: isBackendProduct,
       ),
     );
     notifyListeners();
     return true;
+  }
+
+  Future<bool> addCatalogItem({
+    required String productId,
+    required String serviceType,
+    required String merchantId,
+    required String categoryId,
+    required String name,
+    required String description,
+    required int priceInPaise,
+    required IconData icon,
+  }) async {
+    final api = CustomerApi.instance;
+    if (!api.isConfigured) {
+      return addItem(
+        productId: productId,
+        serviceType: serviceType,
+        merchantId: merchantId,
+        categoryId: categoryId,
+        name: name,
+        description: description,
+        priceInPaise: priceInPaise,
+        icon: icon,
+      );
+    }
+
+    if (_items.any((item) => !item.isBackendProduct)) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'DEMO_CART_NOT_SYNCED',
+        message: 'Clear demo cart items before using the live catalog.',
+      );
+    }
+    final incomingContext = CartOrderContext(
+      serviceType: serviceType,
+      merchantId: merchantId,
+    );
+    final restoredBackendContext = _items.isNotEmpty &&
+        _items.every(
+          (item) =>
+              item.isBackendProduct && item.merchantId == merchantId,
+        );
+    if (!restoredBackendContext && !canAddContext(incomingContext)) return false;
+
+    await api.addCartItem(productId);
+    for (final item in _items) {
+      if (item.isBackendProduct &&
+          item.productId == productId &&
+          item.merchantId == merchantId) {
+        item.quantity++;
+        item.name = name;
+        item.description = description;
+        item.priceInPaise = priceInPaise;
+        item.categoryId = categoryId;
+        notifyListeners();
+        return true;
+      }
+    }
+    return addItem(
+      productId: productId,
+      serviceType: serviceType,
+      merchantId: merchantId,
+      categoryId: categoryId,
+      name: name,
+      description: description,
+      priceInPaise: priceInPaise,
+      icon: icon,
+      isBackendProduct: true,
+    );
+  }
+
+  Future<void> refreshBackendCart() async {
+    if (_items.any((item) => !item.isBackendProduct)) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'DEMO_CART_NOT_SYNCED',
+        message: 'Demo cart items are not stored in the backend cart.',
+      );
+    }
+    final cart = await CustomerApi.instance.getCart();
+    final existingItems = {
+      for (final item in _items)
+        if (item.isBackendProduct) '${item.merchantId}:${item.productId}': item,
+    };
+    _items
+      ..clear()
+      ..addAll(
+        cart.items.map((apiItem) {
+          final existing =
+              existingItems['${apiItem.shopId}:${apiItem.productId}'];
+          if (existing != null) {
+            return existing
+              ..quantity = apiItem.quantity
+              ..priceInPaise = apiItem.priceMinor
+              ..name = apiItem.name
+              ..available = apiItem.available;
+          }
+          final key = CartItem.keyFor(
+            serviceType: 'backend_catalog',
+            merchantId: apiItem.shopId,
+            productId: apiItem.productId,
+          );
+          return CartItem(
+            key: key,
+            productId: apiItem.productId,
+            serviceType: 'backend_catalog',
+            merchantId: apiItem.shopId,
+            name: apiItem.name,
+            description: '',
+            priceInPaise: apiItem.priceMinor,
+            icon: Icons.shopping_bag_outlined,
+            quantity: apiItem.quantity,
+            isBackendProduct: true,
+            available: apiItem.available,
+          );
+        }),
+      );
+    notifyListeners();
   }
 
   bool canAddItem({
@@ -108,6 +235,12 @@ class CartStore extends ChangeNotifier {
   }
 
   bool canAddContext(CartOrderContext context) {
+    if (_items.isNotEmpty &&
+        _items.every((item) => item.isBackendProduct) &&
+        context.merchantId != null &&
+        _items.every((item) => item.merchantId == context.merchantId)) {
+      return true;
+    }
     return _items.every((item) => item.orderContext.isCompatibleWith(context));
   }
 
@@ -137,9 +270,36 @@ class CartStore extends ChangeNotifier {
     return true;
   }
 
+  Future<bool> increaseQuantityFromUi(String key) async {
+    final item = _findItem(key);
+    if (item == null || !canAddContext(item.orderContext)) return false;
+    if (item.isBackendProduct) {
+      await CustomerApi.instance.updateCartItem(
+        item.productId,
+        item.quantity + 1,
+      );
+    }
+    item.quantity++;
+    notifyListeners();
+    return true;
+  }
+
   void decreaseQuantity(String key) {
     final item = _findItem(key);
     if (item == null || item.quantity <= 1) return;
+    item.quantity--;
+    notifyListeners();
+  }
+
+  Future<void> decreaseQuantityFromUi(String key) async {
+    final item = _findItem(key);
+    if (item == null || item.quantity <= 1) return;
+    if (item.isBackendProduct) {
+      await CustomerApi.instance.updateCartItem(
+        item.productId,
+        item.quantity - 1,
+      );
+    }
     item.quantity--;
     notifyListeners();
   }
@@ -148,6 +308,22 @@ class CartStore extends ChangeNotifier {
     final originalLength = _items.length;
     _items.removeWhere((item) => item.key == key);
     if (_items.length != originalLength) notifyListeners();
+  }
+
+  Future<void> removeItemFromUi(String key) async {
+    final item = _findItem(key);
+    if (item == null) return;
+    if (item.isBackendProduct) {
+      await CustomerApi.instance.removeCartItem(item.productId);
+    }
+    removeItem(key);
+  }
+
+  Future<void> clearFromUi() async {
+    if (_items.any((item) => item.isBackendProduct)) {
+      await CustomerApi.instance.clearCart();
+    }
+    clear();
   }
 
   void clear() {
@@ -180,6 +356,8 @@ class CartItem {
     this.imageUrl,
     this.variantLabel,
     this.quantity = 1,
+    this.isBackendProduct = false,
+    this.available = true,
   });
 
   final String key;
@@ -188,14 +366,16 @@ class CartItem {
   final String? merchantId;
   final String? serviceVariant;
   final String? productVariantId;
-  final String? categoryId;
-  final String name;
-  final String description;
-  final int priceInPaise;
+  String? categoryId;
+  String name;
+  String description;
+  int priceInPaise;
   final String? imageUrl;
   final String? variantLabel;
   final IconData icon;
   int quantity;
+  final bool isBackendProduct;
+  bool available;
 
   CartOrderContext get orderContext => CartOrderContext(
     serviceType: serviceType,

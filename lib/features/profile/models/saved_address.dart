@@ -6,12 +6,14 @@ class SavedAddress {
     required this.label,
     required this.address,
     required this.icon,
+    this.isBackendData = false,
   });
 
   final String id;
   final String label;
   final String address;
   final IconData icon;
+  final bool isBackendData;
 }
 
 const demoSavedAddresses = [

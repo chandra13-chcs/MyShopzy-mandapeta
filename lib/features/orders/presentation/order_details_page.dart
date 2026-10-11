@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../cart/data/cart_store.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../product_details/data/product_availability_store.dart';
@@ -900,6 +903,251 @@ class _RefundTimelineStep extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class BackendOrderDetailsPage extends StatefulWidget {
+  const BackendOrderDetailsPage({required this.order, super.key});
+
+  final OrderRecord order;
+
+  @override
+  State<BackendOrderDetailsPage> createState() =>
+      _BackendOrderDetailsPageState();
+}
+
+class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
+  static const _muted = Color(0xFF59615C);
+  static const _border = Color(0xFFE7EAE8);
+
+  ApiCustomerOrderDetail? _detail;
+  String? _error;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final detail = await CustomerApi.instance.getOrderDetails(
+        widget.order.orderId,
+      );
+      if (mounted) setState(() => _detail = detail);
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _detail = null;
+          _error = error.message;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.lightBackground,
+      appBar: AppBar(
+        backgroundColor: AppTheme.primaryGreen,
+        foregroundColor: AppTheme.white,
+        surfaceTintColor: Colors.transparent,
+        title: const Text(
+          'Order Details',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: _muted),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: _loading ? null : _load,
+                      child: const Text('Retry order details'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : _buildDetails(_detail!),
+    );
+  }
+
+  Widget _buildDetails(ApiCustomerOrderDetail detail) {
+    final address = _displayAddress(detail.deliveryAddressSnapshot);
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
+        children: [
+          const Text(
+            'Backend order',
+            style: TextStyle(color: _muted, fontSize: 11),
+          ),
+          const SizedBox(height: 8),
+          _section(
+            title: detail.shopName,
+            children: [
+              _row('Order ID', detail.id),
+              _row('Status', detail.status),
+              _row('Placed at', detail.placedAt),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _section(
+            title: 'Items',
+            children: [
+              for (final item in detail.items) ...[
+                _row(
+                  '${item.name} × ${item.quantity}',
+                  _formatMinor(item.lineTotalMinor, item.currency),
+                ),
+                if (item.sku != null && item.sku!.isNotEmpty)
+                  _row('SKU', item.sku!),
+                if (item.variantSnapshot != null)
+                  for (final entry in item.variantSnapshot!.entries)
+                    _row(entry.key, '${entry.value}'),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          _section(
+            title: 'Price details',
+            children: [
+              _row(
+                'Items subtotal',
+                _formatMinor(detail.itemsSubtotalMinor, detail.currency),
+              ),
+              _row(
+                'Delivery fee',
+                _formatMinor(detail.deliveryFeeMinor, detail.currency),
+              ),
+              _row(
+                'Discount',
+                _formatMinor(detail.discountMinor, detail.currency),
+              ),
+              _row(
+                'Total',
+                _formatMinor(detail.totalMinor, detail.currency),
+                emphasized: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _section(
+            title: 'Delivery address',
+            children: [
+              Text(
+                address,
+                style: const TextStyle(
+                  color: AppTheme.primaryText,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _section({required String title, required List<Widget> children}) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppTheme.primaryText,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ...children,
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value, {bool emphasized = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: emphasized ? AppTheme.primaryText : _muted,
+                fontWeight: emphasized ? FontWeight.w700 : FontWeight.normal,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                color: AppTheme.primaryText,
+                fontWeight: emphasized ? FontWeight.w700 : FontWeight.normal,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _displayAddress(Map<String, dynamic> snapshot) {
+    final formatted = snapshot['formattedAddress'];
+    if (formatted is String && formatted.trim().isNotEmpty) return formatted;
+    return snapshot.entries
+        .where(
+          (entry) =>
+              entry.value is String &&
+              (entry.value as String).trim().isNotEmpty,
+        )
+        .map((entry) => '${entry.value}')
+        .join(', ');
+  }
+
+  String _formatMinor(int amount, String currency) {
+    if (currency == 'INR') {
+      final rupees = amount ~/ 100;
+      final paise = amount % 100;
+      return paise == 0
+          ? '₹$rupees'
+          : '₹$rupees.${paise.toString().padLeft(2, '0')}';
+    }
+    return '$currency $amount minor units';
   }
 }
 

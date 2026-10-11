@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../cart/data/cart_store.dart';
 import '../../coupons/models/demo_coupon.dart';
 import '../../profile/models/saved_address.dart';
@@ -27,6 +28,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // Kept isolated as a demo placeholder for future backend pricing.
   static const _demoDeliveryChargeInPaise = 3000;
   final _cartStore = CartStore.instance;
+  ApiCartQuote? _backendQuote;
+  String? _quoteError;
+  bool _quoteLoading = false;
+  bool _placingOrder = false;
   final _couponCodeController = TextEditingController();
   final _receiverNameController = TextEditingController();
   final _receiverMobileController = TextEditingController();
@@ -35,7 +40,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _customDeliveryInstructionController = TextEditingController();
   final _newAddressController = TextEditingController();
   final _newAddressLandmarkController = TextEditingController();
-  final List<CheckoutDeliveryAddress> _savedAddresses = [
+  List<CheckoutDeliveryAddress> _savedAddresses = [
     for (final address in demoSavedAddresses)
       CheckoutDeliveryAddress(
         id: address.id,
@@ -43,6 +48,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
         formattedAddress: address.address,
       ),
   ];
+  bool _savedAddressesLoading = false;
+  String? _savedAddressesError;
 
   CheckoutDeliveryAddress? _confirmedDeliveryAddress;
   bool _currentLocationSuggested = false;
@@ -69,18 +76,32 @@ class _CheckoutPageState extends State<CheckoutPage> {
     return parts.isEmpty ? null : parts.join('\n');
   }
 
-  int get _subtotalInPaise => _cartStore.subtotalInPaise;
+  bool get _isBackendCart =>
+      CustomerApi.instance.isConfigured && _cartStore.hasBackendCart;
+
+  int get _subtotalInPaise =>
+      _isBackendCart && _backendQuote != null
+      ? _backendQuote!.itemSubtotalMinor
+      : _isBackendCart
+      ? 0
+      : _cartStore.subtotalInPaise;
 
   int get _discountInPaise {
+    if (_isBackendCart) return _backendQuote?.discountMinor ?? 0;
     final coupon = _selectedCoupon;
     if (coupon == null) return 0;
     return coupon.discountFor(_subtotalInPaise);
   }
 
-  int get _deliveryChargeInPaise =>
-      _cartStore.items.isEmpty ? 0 : _demoDeliveryChargeInPaise;
+  int get _deliveryChargeInPaise => _isBackendCart
+      ? _backendQuote?.deliveryFeeMinor ?? 0
+      : _cartStore.items.isEmpty
+      ? 0
+      : _demoDeliveryChargeInPaise;
 
-  int get _totalInPaise => DemoCouponValidator.payableTotal(
+  int get _totalInPaise => _isBackendCart
+      ? _backendQuote?.totalMinor ?? 0
+      : DemoCouponValidator.payableTotal(
     subtotalInPaise: _subtotalInPaise,
     deliveryFeeInPaise: _deliveryChargeInPaise,
     coupon: _selectedCoupon,
@@ -90,10 +111,46 @@ class _CheckoutPageState extends State<CheckoutPage> {
   void initState() {
     super.initState();
     _cartStore.addListener(_handleCartChanged);
+    if (CustomerApi.instance.isConfigured) {
+      _savedAddresses = [];
+      _savedAddressesLoading = true;
+      Future<void>.delayed(Duration.zero, _loadSavedAddresses);
+    }
+    if (_isBackendCart) {
+      Future<void>.delayed(Duration.zero, _refreshBackendQuote);
+    }
     if (widget.openNewAddressOnLoad) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _showNewAddressForm();
       });
+    }
+  }
+
+  Future<void> _loadSavedAddresses() async {
+    if (!mounted) return;
+    setState(() {
+      _savedAddressesLoading = true;
+      _savedAddressesError = null;
+    });
+    try {
+      final addresses = await CustomerApi.instance.getSavedAddresses();
+      if (!mounted) return;
+      setState(() {
+        _savedAddresses = addresses
+            .map(
+              (address) => CheckoutDeliveryAddress(
+                id: address.id,
+                addressType: address.label,
+                formattedAddress: address.formattedAddress,
+                isBackendData: true,
+              ),
+            )
+            .toList(growable: false);
+      });
+    } on CustomerApiException catch (error) {
+      if (mounted) setState(() => _savedAddressesError = error.message);
+    } finally {
+      if (mounted) setState(() => _savedAddressesLoading = false);
     }
   }
 
@@ -112,6 +169,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   void _handleCartChanged() {
+    if (_isBackendCart) {
+      Future<void>.delayed(Duration.zero, _refreshBackendQuote);
+    } else if (_cartStore.items.isEmpty) {
+      _backendQuote = null;
+      _quoteError = null;
+    }
     final coupon = _selectedCoupon;
     if (!mounted ||
         coupon == null ||
@@ -124,6 +187,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _couponMessage = 'Add ${_formatPrice(shortBy)} more to use this coupon.';
       _couponMessageIsError = true;
     });
+  }
+
+  Future<void> _refreshBackendQuote() async {
+    if (!mounted || !_isBackendCart) return;
+    setState(() {
+      _quoteLoading = true;
+      _quoteError = null;
+      _backendQuote = null;
+    });
+    try {
+      final quote = await CustomerApi.instance.getCheckoutQuote();
+      if (!mounted) return;
+      setState(() {
+        _backendQuote = quote;
+        _quoteLoading = false;
+      });
+    } on CustomerApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _backendQuote = null;
+        _quoteError = error.message;
+        _quoteLoading = false;
+      });
+    }
   }
 
   @override
@@ -164,10 +251,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   const SizedBox(height: 16),
                   _buildPriceDetails(),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Demo checkout · delivery and discounts are illustrative.',
-                    style: TextStyle(color: _secondaryText, fontSize: 11),
+                  Text(
+                    _isBackendCart
+                        ? _quoteError ??
+                              (_quoteLoading
+                                  ? 'Refreshing server checkout quote…'
+                                  : 'Backend quote · coupons and delivery fees are not configured.')
+                        : 'Demo checkout · delivery and discounts are illustrative.',
+                    style: TextStyle(
+                      color: _quoteError == null
+                          ? _secondaryText
+                          : const Color(0xFFA85B5B),
+                      fontSize: 11,
+                    ),
                   ),
+                  if (_isBackendCart && _quoteError != null)
+                    TextButton(
+                      onPressed: _quoteLoading ? null : _refreshBackendQuote,
+                      child: const Text('Retry quote'),
+                    ),
                 ],
               ),
             );
@@ -179,7 +281,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
         builder: (context, child) {
           final hasItems = _cartStore.items.isNotEmpty;
           final hasConfirmedAddress = _confirmedDeliveryAddress != null;
-          final canPlaceOrder = hasItems && hasConfirmedAddress;
+          final canPlaceOrder =
+              hasItems &&
+              hasConfirmedAddress &&
+              (!_isBackendCart || _backendQuote != null) &&
+              (!_isBackendCart || (!_quoteLoading && _quoteError == null)) &&
+              !_placingOrder;
           if (!hasItems) return const SizedBox.shrink();
           return SafeArea(
             top: false,
@@ -206,7 +313,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     height: 52,
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: canPlaceOrder ? _showOrderFlowMessage : null,
+                      onPressed: canPlaceOrder ? _placeOrder : null,
                       style: FilledButton.styleFrom(
                         backgroundColor: _green,
                         foregroundColor: Colors.white,
@@ -215,8 +322,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           borderRadius: BorderRadius.circular(16),
                         ),
                       ),
-                      child: const Text(
-                        'Place Order',
+                      child: Text(
+                        _placingOrder ? 'Submitting…' : 'Place Order',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
@@ -616,17 +723,49 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.only(top: 6, bottom: 5),
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 5),
                 child: Text(
-                  'Saved Addresses',
-                  style: TextStyle(
+                  CustomerApi.instance.isConfigured
+                      ? 'Saved Addresses · backend'
+                      : 'Saved Addresses · demo',
+                  style: const TextStyle(
                     color: _mainText,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
+              if (_savedAddressesLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              if (_savedAddressesError != null) ...[
+                Text(
+                  _savedAddressesError!,
+                  style: const TextStyle(
+                    color: Color(0xFFA85B5B),
+                    fontSize: 12,
+                  ),
+                ),
+                TextButton(
+                  onPressed: _savedAddressesLoading
+                      ? null
+                      : _loadSavedAddresses,
+                  child: const Text('Retry addresses'),
+                ),
+              ],
+              if (!_savedAddressesLoading &&
+                  _savedAddressesError == null &&
+                  _savedAddresses.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'No saved addresses.',
+                    style: TextStyle(color: _secondaryText, fontSize: 12),
+                  ),
+                ),
               for (final address in _savedAddresses)
                 _deliveryOptionTile(
                   icon: _addressIcon(address.addressType),
@@ -873,13 +1012,33 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     const Divider(height: 20, color: _border),
                 ],
                 const Divider(height: 22, color: _border),
-                _priceRow('Subtotal', _formatPrice(_subtotalInPaise)),
+                _priceRow(
+                  'Subtotal',
+                  _displayPrice(
+                    _isBackendCart
+                        ? _backendQuote?.itemSubtotalMinor
+                        : _subtotalInPaise,
+                  ),
+                ),
               ],
             ),
     );
   }
 
   Widget _buildCartItem(CartItem item) {
+    ApiCartQuoteItem? quoteItem;
+    if (_isBackendCart && _backendQuote != null) {
+      for (final quoted in _backendQuote!.items) {
+        if (quoted.productId == item.productId) {
+          quoteItem = quoted;
+          break;
+        }
+      }
+    }
+    final quantity = quoteItem?.quantity ?? item.quantity;
+    final priceMinor = quoteItem?.priceMinor ?? item.priceInPaise;
+    final lineTotalMinor =
+        quoteItem?.lineTotalMinor ?? item.priceInPaise * item.quantity;
     return Row(
       children: [
         Container(
@@ -897,7 +1056,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                item.name,
+                quoteItem?.name ?? item.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -919,7 +1078,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ],
               const SizedBox(height: 3),
               Text(
-                'Qty ${item.quantity} · ${_formatPrice(item.priceInPaise)} each',
+                _isBackendCart && quoteItem == null
+                    ? (_quoteLoading
+                          ? 'Refreshing server price…'
+                          : 'Server price unavailable')
+                    : 'Qty $quantity · ${_formatPrice(priceMinor)} each',
                 style: const TextStyle(color: _secondaryText, fontSize: 11),
               ),
             ],
@@ -927,7 +1090,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
         ),
         const SizedBox(width: 8),
         Text(
-          _formatPrice(item.priceInPaise * item.quantity),
+          _isBackendCart && quoteItem == null
+              ? '—'
+              : _formatPrice(lineTotalMinor),
           style: const TextStyle(
             color: _mainText,
             fontSize: 13,
@@ -1059,6 +1224,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   void _applyCoupon() {
+    if (_isBackendCart) {
+      setState(() {
+        _couponMessage =
+            'Demo coupons are not included in the backend checkout quote.';
+        _couponMessageIsError = true;
+        _selectedCoupon = null;
+      });
+      return;
+    }
     final result = DemoCouponValidator.validate(
       code: _couponCodeController.text,
       subtotalInPaise: _subtotalInPaise,
@@ -1201,14 +1375,28 @@ class _CheckoutPageState extends State<CheckoutPage> {
       icon: Icons.receipt_long_outlined,
       child: Column(
         children: [
-          _priceRow('Subtotal', _formatPrice(_subtotalInPaise)),
+          _priceRow(
+            'Subtotal',
+            _displayPrice(
+              _isBackendCart
+            ? _backendQuote?.itemSubtotalMinor
+            : _subtotalInPaise,
+            ),
+          ),
           const SizedBox(height: 10),
-          _priceRow('Delivery Charge', _formatPrice(_deliveryChargeInPaise)),
+          _priceRow(
+            'Delivery Charge',
+            _displayPrice(
+              _isBackendCart
+            ? _backendQuote?.deliveryFeeMinor
+            : _deliveryChargeInPaise,
+            ),
+          ),
           const SizedBox(height: 10),
           _priceRow(
             'Discount',
-            _discountInPaise == 0
-                ? '−${_formatPrice(0)}'
+            _isBackendCart && _backendQuote == null
+                ? _displayPrice(null)
                 : '−${_formatPrice(_discountInPaise)}',
             valueColor: _green,
             valueKey: const ValueKey('coupon-discount-value'),
@@ -1216,20 +1404,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
           const Divider(height: 24, color: _border),
           _priceRow(
             'Total',
-            _formatPrice(_totalInPaise),
+            _displayPrice(
+              _isBackendCart ? _backendQuote?.totalMinor : _totalInPaise,
+            ),
             emphasize: true,
             valueKey: const ValueKey('checkout-total-value'),
           ),
           const SizedBox(height: 8),
-          const Align(
+          Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'Delivery charge is a demo value; serviceability and final '
-              'pricing are not checked here.',
-              style: TextStyle(
-                color: _secondaryText,
-                fontSize: 11,
-                height: 1.4,
+              _isBackendCart
+                  ? 'The server quote uses current catalog prices. Delivery fees and coupons are not configured.'
+                  : 'Delivery charge is a demo value; serviceability and final '
+                        'pricing are not checked here.',
+              style: const TextStyle(
+                  color: _secondaryText,
+                  fontSize: 11,
+                  height: 1.4,
               ),
             ),
           ),
@@ -1405,19 +1597,51 @@ class _CheckoutPageState extends State<CheckoutPage> {
       landmark: _newAddressLandmarkController.text.trim(),
     );
     setState(() {
-      _savedAddresses.add(address);
+      if (!CustomerApi.instance.isConfigured) {
+        _savedAddresses.add(address);
+      }
       _confirmedDeliveryAddress = address;
       _currentLocationSuggested = false;
       _someoneElseSelected = false;
     });
   }
 
-  void _showOrderFlowMessage() {
-    // Replace this only after an order service returns a confirmed OrderRecord.
-    // Until then, checkout must neither create an order nor clear the cart.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Order flow will be connected next.')),
-    );
+  Future<void> _placeOrder() async {
+    if (!_isBackendCart) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order flow will be connected next.')),
+      );
+      return;
+    }
+    final address = _confirmedDeliveryAddress;
+    if (address == null || _backendQuote == null) return;
+    setState(() => _placingOrder = true);
+    try {
+      final deliveryAddress = <String, Object?>{
+        'label': address.addressType,
+        'formattedAddress': address.formattedAddress,
+        if (address.receiverName?.isNotEmpty ?? false)
+          'receiverName': address.receiverName,
+        if (address.receiverMobile?.isNotEmpty ?? false)
+          'receiverMobile': address.receiverMobile,
+        if (address.landmark?.isNotEmpty ?? false) 'landmark': address.landmark,
+        if (address.latitude != null) 'latitude': address.latitude,
+        if (address.longitude != null) 'longitude': address.longitude,
+      };
+      final order = await CustomerApi.instance.placeOrder(deliveryAddress);
+      if (!mounted) return;
+      _cartStore.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Order placed · ${order.orderId}')),
+      );
+    } on CustomerApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } finally {
+      if (mounted) setState(() => _placingOrder = false);
+    }
   }
 
   IconData _addressIcon(String addressType) {
@@ -1433,6 +1657,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final paise = priceInPaise % 100;
     if (paise == 0) return '₹$rupees';
     return '₹$rupees.${paise.toString().padLeft(2, '0')}';
+  }
+
+  String _displayPrice(int? amountInPaise) {
+    if (_isBackendCart && amountInPaise == null) {
+      if (_quoteLoading) return 'Refreshing…';
+      if (_quoteError != null) return 'Unavailable';
+      return '—';
+    }
+    return _formatPrice(amountInPaise ?? 0);
   }
 }
 
@@ -1457,6 +1690,7 @@ class CheckoutDeliveryAddress {
     this.receiverName,
     this.receiverMobile,
     this.landmark,
+    this.isBackendData = false,
   });
 
   final String id;
@@ -1467,4 +1701,5 @@ class CheckoutDeliveryAddress {
   final String? receiverMobile;
   final String addressType;
   final String? landmark;
+  final bool isBackendData;
 }

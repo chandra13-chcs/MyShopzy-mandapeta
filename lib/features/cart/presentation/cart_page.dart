@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../checkout/presentation/checkout_page.dart';
 import '../data/cart_store.dart';
 import '../../product_details/data/product_availability_store.dart';
@@ -21,6 +22,32 @@ class _CartPageState extends State<CartPage> {
   static const _border = Color(0xFFE7EAE8);
 
   final _cartStore = CartStore.instance;
+  bool _loadingBackendCart = false;
+  String? _cartLoadError;
+
+  @override
+  void initState() {
+    super.initState();
+    if (CustomerApi.instance.isConfigured &&
+        !_cartStore.items.any((item) => !item.isBackendProduct)) {
+      Future<void>.delayed(Duration.zero, _refreshBackendCart);
+    }
+  }
+
+  Future<void> _refreshBackendCart() async {
+    if (!mounted) return;
+    setState(() {
+      _loadingBackendCart = true;
+      _cartLoadError = null;
+    });
+    try {
+      await _cartStore.refreshBackendCart();
+    } on CustomerApiException catch (error) {
+      if (mounted) setState(() => _cartLoadError = error.message);
+    } finally {
+      if (mounted) setState(() => _loadingBackendCart = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,9 +66,14 @@ class _CartPageState extends State<CartPage> {
         animation: _cartStore,
         builder: (context, child) {
           final items = _cartStore.items;
-          return items.isEmpty
-              ? _buildEmptyState(context)
-              : _buildCartContents(items);
+          if (items.isNotEmpty) return _buildCartContents(items);
+          if (_loadingBackendCart) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (_cartLoadError != null) {
+            return _buildCartLoadError();
+          }
+          return _buildEmptyState(context);
         },
       ),
       bottomNavigationBar: AnimatedBuilder(
@@ -57,22 +89,33 @@ class _CartPageState extends State<CartPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [
+        if (_cartLoadError != null) ...[
+          _buildCartLoadErrorBanner(),
+          const SizedBox(height: 10),
+        ],
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: _lightGreen,
             borderRadius: BorderRadius.circular(13),
           ),
-          child: const Row(
+          child: Row(
             children: [
-              Icon(Icons.info_outline_rounded, color: _green, size: 18),
-              SizedBox(width: 8),
+              const Icon(Icons.info_outline_rounded, color: _green, size: 18),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Demo cart · Items and prices are for preview only',
-                  style: TextStyle(color: _green, fontSize: 12),
+                  items.every((item) => item.isBackendProduct)
+                      ? 'Backend cart · Prices are refreshed during checkout'
+                      : 'Demo cart · Items and prices are for preview only',
+                  style: const TextStyle(color: _green, fontSize: 12),
                 ),
               ),
+              if (_cartStore.hasBackendCart)
+                TextButton(
+                  onPressed: () => _runCartMutation(_cartStore.clearFromUi()),
+                  child: const Text('Clear cart'),
+                ),
             ],
           ),
         ),
@@ -156,7 +199,9 @@ class _CartPageState extends State<CartPage> {
           ),
           const SizedBox(width: 4),
           IconButton(
-            onPressed: () => _cartStore.removeItem(item.key),
+            onPressed: () => _runCartMutation(
+              _cartStore.removeItemFromUi(item.key),
+            ),
             tooltip: 'Remove item',
             visualDensity: VisualDensity.compact,
             icon: const Icon(
@@ -179,7 +224,7 @@ class _CartPageState extends State<CartPage> {
           serviceType: item.serviceType,
           merchantId: item.merchantId,
           variantId: item.productVariantId,
-          defaultAvailable: true,
+          defaultAvailable: item.available,
         );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -207,7 +252,9 @@ class _CartPageState extends State<CartPage> {
                   _quantityButton(
                     icon: Icons.remove_rounded,
                     label: 'Decrease quantity',
-                    onPressed: () => _cartStore.decreaseQuantity(item.key),
+                    onPressed: () => _runCartMutation(
+                      _cartStore.decreaseQuantityFromUi(item.key),
+                    ),
                   ),
                   SizedBox(
                     width: 25,
@@ -236,22 +283,7 @@ class _CartPageState extends State<CartPage> {
                         );
                         return;
                       }
-                      if (!_cartStore.increaseQuantity(item.key)) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              _cartStore.incompatibilityMessage(
-                                    serviceType: item.serviceType,
-                                    merchantId: item.merchantId,
-                                    serviceVariant: item.serviceVariant,
-                                  ) ??
-                                  'Please complete or clear your current '
-                                      'order before adding items from another '
-                                      'service.',
-                            ),
-                          ),
-                        );
-                      }
+                      _increaseQuantity(item);
                     },
                   ),
                 ],
@@ -261,6 +293,44 @@ class _CartPageState extends State<CartPage> {
         );
       },
     );
+  }
+
+  Future<void> _increaseQuantity(CartItem item) async {
+    try {
+      if (!await _cartStore.increaseQuantityFromUi(item.key) && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _cartStore.incompatibilityMessage(
+                    serviceType: item.serviceType,
+                    merchantId: item.merchantId,
+                    serviceVariant: item.serviceVariant,
+                  ) ??
+                  'Please complete or clear your current order before adding '
+                      'items from another service.',
+            ),
+          ),
+        );
+      }
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
+  Future<void> _runCartMutation(Future<void> mutation) async {
+    try {
+      await mutation;
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
   }
 
   Widget _quantityButton({
@@ -423,6 +493,68 @@ class _CartPageState extends State<CartPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildCartLoadError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_outlined,
+              color: _secondaryText,
+              size: 42,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Could not load your cart.',
+              style: TextStyle(
+                color: _mainText,
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _cartLoadError!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _secondaryText, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _loadingBackendCart ? null : _refreshBackendCart,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCartLoadErrorBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4E5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              _cartLoadError!,
+              style: TextStyle(color: _secondaryText, fontSize: 12),
+            ),
+          ),
+          TextButton(
+            onPressed: _loadingBackendCart ? null : _refreshBackendCart,
+            child: const Text('Retry'),
+          ),
+        ],
       ),
     );
   }

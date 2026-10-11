@@ -13,6 +13,14 @@ const schemaPath = path.resolve(
   __dirname,
   '../../database/migrations/001_initial_multi_partner_schema.sql',
 );
+const cartsSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/002_customer_carts.sql',
+);
+const customerAccountSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/003_customer_account_parcels.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -85,16 +93,49 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const pool = createMockPool();
   const appliedCount = await runMigrations(pool);
   const schema = await readFile(schemaPath, 'utf8');
+  const cartsSchema = await readFile(cartsSchemaPath, 'utf8');
+  const customerAccountSchema = await readFile(customerAccountSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
-  assert.equal(appliedCount, 1);
+  assert.equal(appliedCount, 3);
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
+  assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
+  assert.equal(
+    pool.applied.get('003').name,
+    '003_customer_account_parcels.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
+  assert.ok(calls.includes(cartsSchema.trim()));
+  assert.ok(calls.includes(customerAccountSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
   assert.equal(pool.released, true);
+});
+
+test('customer account migration adds address, wishlist, and parcel foundations', async () => {
+  const schema = await readFile(customerAccountSchemaPath, 'utf8');
+
+  assert.match(schema, /CREATE TABLE app\.customer_saved_addresses\b/);
+  assert.match(schema, /address_snapshot jsonb NOT NULL/);
+  assert.match(schema, /CREATE TABLE app\.customer_wishlist_items\b/);
+  assert.match(schema, /REFERENCES app\.products \(id, shop_id, partner_id\)/);
+  assert.match(schema, /CREATE TABLE app\.parcel_bookings\b/);
+  assert.match(schema, /weight_grams integer NOT NULL CHECK \(weight_grams BETWEEN 1 AND 20000\)/);
+  assert.match(schema, /status text NOT NULL DEFAULT 'requested'/);
+});
+
+test('cart migration adds token-protected single-shop cart persistence', async () => {
+  const schema = await readFile(cartsSchemaPath, 'utf8');
+
+  assert.match(schema, /CREATE TABLE app\.customer_carts\b/);
+  assert.match(schema, /token_hash bytea NOT NULL UNIQUE/);
+  assert.match(schema, /octet_length\(token_hash\) = 32/);
+  assert.match(schema, /CHECK \(\(shop_id IS NULL\) = \(partner_id IS NULL\)\)/);
+  assert.match(schema, /CREATE TABLE app\.customer_cart_items\b/);
+  assert.match(schema, /quantity integer NOT NULL CHECK \(quantity BETWEEN 1 AND 99\)/);
+  assert.match(schema, /REFERENCES app\.products \(id, shop_id, partner_id\)/);
 });
 
 test('skips matching applied migrations and refuses checksum drift', async () => {
@@ -102,10 +143,15 @@ test('skips matching applied migrations and refuses checksum drift', async () =>
   const alreadyApplied = createMockPool({
     applied: new Map([['001', { checksum: migration.checksum }]]),
   });
-  assert.equal(await runMigrations(alreadyApplied), 1);
+  assert.equal(await runMigrations(alreadyApplied), 3);
   assert.equal(
     alreadyApplied.calls.some((call) => call.sql === migration.sql.trim()),
     false,
+  );
+  assert.ok(
+    alreadyApplied.calls.some((call) =>
+      call.sql.startsWith('CREATE TABLE app.customer_carts'),
+    ),
   );
 
   const changed = createMockPool({

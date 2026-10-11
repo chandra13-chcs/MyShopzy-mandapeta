@@ -58,6 +58,8 @@ class OrderRecord {
     this.deliveryOtp,
     this.cancellationReason,
     this.deliveryInstruction,
+    this.isBackendData = false,
+    this.itemCount,
   });
 
   final String storeName;
@@ -80,6 +82,8 @@ class OrderRecord {
   final String? deliveryOtp;
   String? cancellationReason;
   final String? deliveryInstruction;
+  final bool isBackendData;
+  final int? itemCount;
 
   bool get canCustomerCancel =>
       orderTab == OrdersTab.ongoing &&

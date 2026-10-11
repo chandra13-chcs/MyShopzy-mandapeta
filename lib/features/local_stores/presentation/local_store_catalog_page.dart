@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../product_details/models/product_variant.dart';
@@ -20,6 +21,16 @@ class CommonCategory {
   final IconData icon;
 }
 
+class _BackendLocalStoreCatalog {
+  const _BackendLocalStoreCatalog({
+    required this.categories,
+    required this.products,
+  });
+
+  final List<CommonCategory> categories;
+  final List<StoreProduct> products;
+}
+
 class StoreProduct {
   const StoreProduct({
     required this.id,
@@ -37,6 +48,7 @@ class StoreProduct {
     this.imageUrl,
     this.badge,
     this.variants = const [],
+    this.isBackendData = false,
   });
 
   final String id;
@@ -54,6 +66,7 @@ class StoreProduct {
   final String? imageUrl;
   final String? badge;
   final List<ProductVariant> variants;
+  final bool isBackendData;
 }
 
 const commonLocalStoreCategories = [
@@ -442,11 +455,16 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
   static const _page = AppTheme.lightBackground;
 
   late String _selectedCategoryId;
+  late final Future<_BackendLocalStoreCatalog>? _backendCatalogFuture;
 
   @override
   void initState() {
     super.initState();
     LocalStoreSession.instance.select(widget.store);
+    final api = CustomerApi.instance;
+    _backendCatalogFuture = widget.store.isBackendData && api.isConfigured
+        ? _loadBackendCatalog(api)
+        : null;
     final initialCategoryIndex = widget.categories.indexWhere(
       (category) => category.id == widget.initialCategoryId,
     );
@@ -459,15 +477,140 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
 
   @override
   Widget build(BuildContext context) {
-    final visibleProducts = widget.products
+    final catalogFuture = _backendCatalogFuture;
+    if (catalogFuture == null) {
+      return _buildCatalog(
+        widget.categories,
+        widget.products,
+        sourceLabel: 'Demo catalog',
+      );
+    }
+    return FutureBuilder<_BackendLocalStoreCatalog>(
+      future: catalogFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Scaffold(
+            backgroundColor: _page,
+            body: const SafeArea(
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            bottomNavigationBar: const CartSummaryBar(),
+          );
+        }
+        if (snapshot.hasError) {
+          final demoProducts = sampleLocalStoreProducts
+              .where(
+                (product) => product.storeId == 'sri-lakshmi-general-store',
+              )
+              .map(
+                (product) => StoreProduct(
+                  id: product.id,
+                  storeId: widget.store.id,
+                  categoryId: product.categoryId,
+                  name: product.name,
+                  brand: product.brand,
+                  description: product.description,
+                  packSize: product.packSize,
+                  price: product.price,
+                  mrp: product.mrp,
+                  discount: product.discount,
+                  rating: product.rating,
+                  available: product.available,
+                  imageUrl: product.imageUrl,
+                  badge: product.badge,
+                  variants: product.variants,
+                ),
+              )
+              .toList(growable: false);
+          return _buildCatalog(
+            commonLocalStoreCategories,
+            demoProducts,
+            sourceLabel: 'Demo catalog · backend unavailable',
+          );
+        }
+        final catalog = snapshot.data!;
+        return _buildCatalog(
+          catalog.categories,
+          catalog.products,
+          sourceLabel: 'Backend catalog',
+        );
+      },
+    );
+  }
+
+  Future<_BackendLocalStoreCatalog> _loadBackendCatalog(CustomerApi api) async {
+    final categories = await api.getCategories(widget.store.id);
+    final products = await api.getProducts(shopId: widget.store.id);
+    final categoryIds = categories.map((category) => category.id).toSet();
+    final hasUncategorizedProducts = products.any(
+      (product) =>
+          product.categoryId == null ||
+          !categoryIds.contains(product.categoryId),
+    );
+    final mappedCategories = [
+      ...categories.map(
+        (category) => CommonCategory(
+          id: category.id,
+          name: category.name,
+          icon: Icons.inventory_2_rounded,
+        ),
+      ),
+      if (hasUncategorizedProducts)
+        const CommonCategory(
+          id: 'other',
+          name: 'Other',
+          icon: Icons.category_rounded,
+        ),
+    ];
+    final mappedProducts = products
+        .map(
+          (product) => StoreProduct(
+            id: product.id,
+            storeId: product.shopId,
+            categoryId:
+                product.categoryId != null &&
+                    categoryIds.contains(product.categoryId)
+                ? product.categoryId!
+                : 'other',
+            name: product.name,
+            brand: '',
+            description: product.description,
+            packSize: '',
+            price: product.priceMinor / 100,
+            mrp: product.priceMinor / 100,
+            discount: 0,
+            rating: 0,
+            available: product.available,
+            isBackendData: true,
+          ),
+        )
+        .toList(growable: false);
+    return _BackendLocalStoreCatalog(
+      categories: mappedCategories,
+      products: mappedProducts,
+    );
+  }
+
+  Widget _buildCatalog(
+    List<CommonCategory> categories,
+    List<StoreProduct> products, {
+    required String sourceLabel,
+  }) {
+    final selectedCategoryId =
+        categories.any((category) => category.id == _selectedCategoryId)
+        ? _selectedCategoryId
+        : categories.isEmpty
+        ? ''
+        : categories.first.id;
+    final visibleProducts = products
         .where(
           (product) =>
               product.storeId == widget.store.id &&
-              product.categoryId == _selectedCategoryId,
+              product.categoryId == selectedCategoryId,
         )
         .toList();
-    final selectedCategory = widget.categories.where(
-      (category) => category.id == _selectedCategoryId,
+    final selectedCategory = categories.where(
+      (category) => category.id == selectedCategoryId,
     );
     final categoryName = selectedCategory.isEmpty
         ? 'Products'
@@ -479,12 +622,22 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
         child: Column(
           children: [
             _buildHeader(context),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 7),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  sourceLabel,
+                  style: const TextStyle(color: _muted, fontSize: 11),
+                ),
+              ),
+            ),
             _buildToolbar(),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _buildCategorySidebar(),
+                  _buildCategorySidebar(categories, selectedCategoryId),
                   Expanded(
                     child: CustomScrollView(
                       slivers: [
@@ -615,15 +768,18 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
     );
   }
 
-  Widget _buildCategorySidebar() {
+  Widget _buildCategorySidebar(
+    List<CommonCategory> categories,
+    String selectedCategoryId,
+  ) {
     return SizedBox(
       width: 82,
       child: ListView.builder(
         padding: const EdgeInsets.only(top: 7, bottom: 10),
-        itemCount: widget.categories.length,
+        itemCount: categories.length,
         itemBuilder: (context, index) {
-          final category = widget.categories[index];
-          final selected = category.id == _selectedCategoryId;
+          final category = categories[index];
+          final selected = category.id == selectedCategoryId;
           return InkWell(
             onTap: () => setState(() => _selectedCategoryId = category.id),
             child: Padding(
@@ -808,12 +964,14 @@ class _ProductCard extends StatelessWidget {
                           merchantId: product.storeId,
                           categoryId: product.categoryId,
                           name: product.name,
-                          description:
-                              '${product.brand} · ${product.packSize} · '
-                              '${product.description}',
+                          description: product.isBackendData
+                              ? product.description
+                              : '${product.brand} · ${product.packSize} · '
+                                    '${product.description}',
                           priceInPaise: (product.price * 100).round(),
                           imageUrl: product.imageUrl,
                           icon: Icons.inventory_2_rounded,
+                          backendCatalogItem: product.isBackendData,
                           width: 96,
                           height: 31,
                           unavailableLabel: 'OUT OF STOCK',
@@ -824,29 +982,30 @@ class _ProductCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFE5E9E3)),
-            borderRadius: BorderRadius.circular(5),
-          ),
-          child: Text(
-            product.variants.isNotEmpty ? 'From' : product.packSize,
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
+        if (!product.isBackendData)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: const Color(0xFFE5E9E3)),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Text(
+              product.variants.isNotEmpty ? 'From' : product.packSize,
+              style: const TextStyle(
+                color: _ink,
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-        ),
         const SizedBox(height: 4),
         Row(
           children: [
             Text(
               product.variants.isNotEmpty
-                  ? 'From ₹${product.price.toStringAsFixed(0)}'
-                  : '₹${product.price.toStringAsFixed(0)}',
+                  ? 'From ₹${_formatPrice(product.price)}'
+                  : '₹${_formatPrice(product.price)}',
               style: const TextStyle(
                 color: _ink,
                 fontSize: 14,
@@ -893,29 +1052,41 @@ class _ProductCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Row(
-          children: [
-            const Icon(Icons.star_rounded, color: Color(0xFF28A36A), size: 12),
-            const SizedBox(width: 2),
-            Text(
-              product.rating.toStringAsFixed(1),
-              style: const TextStyle(
-                color: Color(0xFF328760),
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
+        if (product.isBackendData)
+          Text(
+            product.description,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _muted, fontSize: 9, height: 1.2),
+          )
+        else
+          Row(
+            children: [
+              const Icon(
+                Icons.star_rounded,
+                color: Color(0xFF28A36A),
+                size: 12,
               ),
-            ),
-            const SizedBox(width: 4),
-            Expanded(
-              child: Text(
-                product.brand,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: _muted, fontSize: 9),
+              const SizedBox(width: 2),
+              Text(
+                product.rating.toStringAsFixed(1),
+                style: const TextStyle(
+                  color: Color(0xFF328760),
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  product.brand,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 9),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }
@@ -975,9 +1146,8 @@ class _ProductCard extends StatelessWidget {
   void _openDetails(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => ProductDetailsPage(
-          product: _toDetails(product, relatedProducts),
-        ),
+        builder: (context) =>
+            ProductDetailsPage(product: _toDetails(product, relatedProducts)),
       ),
     );
   }
@@ -1003,6 +1173,7 @@ class _ProductCard extends StatelessWidget {
       rating: item.rating,
       available: item.available,
       icon: Icons.inventory_2_rounded,
+      isBackendProduct: item.isBackendData,
       variants: item.variants,
       relatedProducts: related.map((relatedItem) {
         return ProductDetailsProduct(
@@ -1022,9 +1193,13 @@ class _ProductCard extends StatelessWidget {
           rating: relatedItem.rating,
           available: relatedItem.available,
           icon: Icons.inventory_2_rounded,
+          isBackendProduct: relatedItem.isBackendData,
           variants: relatedItem.variants,
         );
       }).toList(),
     );
   }
+
+  String _formatPrice(double price) =>
+      price.toStringAsFixed(price % 1 == 0 ? 0 : 2);
 }

@@ -1,17 +1,34 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../models/order_record.dart';
 import 'order_details_page.dart';
 import 'order_tracking_page.dart';
 
 export '../models/order_record.dart' show OrdersTab;
 
-class OrdersPage extends StatelessWidget {
+class OrdersPage extends StatefulWidget {
   const OrdersPage({super.key, this.initialTab = OrdersTab.ongoing});
 
   final OrdersTab initialTab;
 
+  static ValueNotifier<int> get ongoingOrderCount =>
+      _OrdersPageState.ongoingOrderCount;
+
+  static void updateDemoOrderTab(String orderId, OrdersTab tab) =>
+      _OrdersPageState.updateDemoOrderTab(orderId, tab);
+
+  static void refreshOrderCounts() =>
+      _OrdersPageState.refreshOrderCounts();
+
+  @override
+  State<OrdersPage> createState() => _OrdersPageState();
+}
+
+class _OrdersPageState extends State<OrdersPage> {
   static const _background = AppTheme.lightBackground;
   static const _green = AppTheme.primaryGreen;
   static const _lightGreen = AppTheme.lightBackground;
@@ -179,6 +196,75 @@ class OrdersPage extends StatelessWidget {
 
   static const _tabs = ['Ongoing', 'Delivered', 'Cancelled'];
 
+  List<OrderRecord> _backendOrders = [];
+  bool _ordersLoading = false;
+  String? _ordersError;
+
+  bool get _backendMode => CustomerApi.instance.isConfigured;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_backendMode) unawaited(_loadOrders());
+  }
+
+  Future<void> _loadOrders() async {
+    setState(() {
+      _ordersLoading = true;
+      _ordersError = null;
+    });
+    try {
+      final orders = await CustomerApi.instance.getOrders();
+      if (mounted) {
+        setState(() {
+          _backendOrders = orders.map(_toOrderRecord).toList(growable: false);
+        });
+      }
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _backendOrders = [];
+          _ordersError = error.message;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _ordersLoading = false);
+    }
+  }
+
+  OrderRecord _toOrderRecord(ApiCustomerOrder order) {
+    final status = order.status.toLowerCase();
+    final tab = switch (status) {
+      'delivered' => OrdersTab.delivered,
+      'cancelled' || 'rejected' => OrdersTab.cancelled,
+      _ => OrdersTab.ongoing,
+    };
+    return OrderRecord(
+      storeName: order.shopName,
+      icon: Icons.storefront_outlined,
+      orderId: order.id,
+      dateTime: order.placedAt,
+      itemSummary:
+          '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}',
+      totalInPaise: order.totalMinor,
+      status: order.status,
+      statusMessage: '',
+      orderTab: tab,
+      serviceType: '',
+      items: const [],
+      deliveryAddress: '',
+      paymentMethod: '',
+      paymentStatus: '',
+      deliveryChargeInPaise: order.deliveryFeeMinor,
+      discountInPaise: order.discountMinor,
+      isBackendData: true,
+      itemCount: order.itemCount,
+    );
+  }
+
+  List<OrderRecord> _backendOrdersForTab(OrdersTab tab) =>
+      _backendOrders.where((order) => order.orderTab == tab).toList();
+
   static int _countOrdersForTab(OrdersTab tab) =>
       _demoOrders.where((order) => order.orderTab == tab).length;
 
@@ -217,7 +303,7 @@ class OrdersPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: _tabs.length,
-      initialIndex: initialTab.index,
+      initialIndex: widget.initialTab.index,
       child: Scaffold(
         backgroundColor: _background,
         appBar: AppBar(
@@ -234,19 +320,97 @@ class OrdersPage extends StatelessWidget {
             indicatorColor: AppTheme.brandYellow,
             indicatorSize: TabBarIndicatorSize.label,
             labelStyle: const TextStyle(fontWeight: FontWeight.w600),
-            tabs: [for (final tab in _tabs) Tab(text: tab)],
-          ),
-        ),
-        body: ValueListenableBuilder<int>(
-          valueListenable: ongoingOrderCount,
-          builder: (context, count, child) => TabBarView(
-            children: [
-              for (final tab in OrdersTab.values)
-                _buildOrderList(context, _ordersForTab(tab)),
+            tabs: [
+              for (var index = 0; index < _tabs.length; index++)
+                Tab(
+                  text: _backendMode && index == OrdersTab.cancelled.index
+                      ? 'Cancelled / Rejected'
+                      : _tabs[index],
+                ),
             ],
           ),
         ),
+        body: _backendMode
+            ? _buildBackendOrderBody(context)
+            : ValueListenableBuilder<int>(
+                valueListenable: ongoingOrderCount,
+                builder: (context, count, child) => Column(
+                  children: [
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        child: Text(
+                          'Demo order history · sample data',
+                          style: TextStyle(
+                            color: _secondaryText,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          for (final tab in OrdersTab.values)
+                            _buildOrderList(context, _ordersForTab(tab)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
       ),
+    );
+  }
+
+  Widget _buildBackendOrderBody(BuildContext context) {
+    if (_ordersLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_ordersError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _ordersError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _secondaryText),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _ordersLoading ? null : _loadOrders,
+                child: const Text('Retry orders'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
+            child: Text(
+              'Backend order history',
+              style: TextStyle(color: _secondaryText, fontSize: 11),
+            ),
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            children: [
+              for (final tab in OrdersTab.values)
+                _buildOrderList(context, _backendOrdersForTab(tab)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -366,14 +530,15 @@ class OrdersPage extends StatelessWidget {
             style: const TextStyle(color: _mainText, fontSize: 14, height: 1.4),
           ),
           const SizedBox(height: 12),
-          Text(
-            order.statusMessage,
-            style: TextStyle(
-              color: statusColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
+          if (order.statusMessage.isNotEmpty)
+            Text(
+              order.statusMessage,
+              style: TextStyle(
+                color: statusColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -406,6 +571,14 @@ class OrdersPage extends StatelessWidget {
     BuildContext context,
     OrderRecord order,
   ) async {
+    if (order.isBackendData) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (context) => BackendOrderDetailsPage(order: order),
+        ),
+      );
+      return;
+    }
     final cancelled = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (context) => OrderDetailsPage(order: order),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../data/demo_product_reviews.dart';
 import '../data/product_availability_store.dart';
@@ -33,6 +34,9 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
 
   bool _isDescriptionExpanded = true;
   String? _selectedVariantId;
+  ProductDetailsProduct? _freshCatalogProduct;
+  String? _catalogLoadError;
+  bool _catalogLoading = false;
 
   @override
   void initState() {
@@ -49,11 +53,15 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
       _selectedVariantId = selectedVariant.id;
     }
     RecentlyViewedStore.instance.addViewedProduct(widget.product);
+    if (widget.product.isBackendProduct && CustomerApi.instance.isConfigured) {
+      _catalogLoading = true;
+      Future<void>.delayed(Duration.zero, _loadCatalogProduct);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final product = widget.product;
+    final product = _freshCatalogProduct ?? widget.product;
     final selectedVariant = _selectedVariant(product);
     return Scaffold(
       backgroundColor: _page,
@@ -86,6 +94,22 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (product.isBackendProduct)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _catalogLoadError ??
+                        (_catalogLoading
+                            ? 'Backend catalog · refreshing product details'
+                            : 'Backend catalog product'),
+                    style: TextStyle(
+                      color: _catalogLoadError == null
+                          ? _muted
+                          : const Color(0xFFA85B5B),
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
               _buildProductImage(product, selectedVariant),
               const SizedBox(height: 18),
               _buildProductInformation(product, selectedVariant),
@@ -170,6 +194,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
                       priceInPaise: selectedPrice,
                       imageUrl: selectedVariant?.imageUrl ?? product.imageUrl,
                       icon: product.icon,
+                      backendCatalogItem: product.isBackendProduct,
                       width: double.infinity,
                       height: 48,
                       unavailableLabel: 'OUT OF STOCK',
@@ -181,6 +206,40 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _loadCatalogProduct() async {
+    try {
+      final current = widget.product;
+      final latest = await CustomerApi.instance.getProduct(current.id);
+      if (!mounted) return;
+      setState(() {
+        _freshCatalogProduct = ProductDetailsProduct(
+          id: latest.id,
+          serviceType: current.serviceType,
+          name: latest.name,
+          icon: current.icon,
+          available: latest.available,
+          merchantId: current.merchantId,
+          merchantName: current.merchantName,
+          categoryId: latest.categoryId,
+          description: latest.description,
+          imageUrl: current.imageUrl,
+          priceInPaise: latest.priceMinor,
+          isVegetarian: current.isVegetarian,
+          isBackendProduct: true,
+          relatedProducts: current.relatedProducts,
+        );
+        _catalogLoading = false;
+      });
+    } on CustomerApiException {
+      if (!mounted) return;
+      setState(() {
+        _catalogLoading = false;
+        _catalogLoadError =
+            'Latest product details unavailable; showing catalog list data.';
+      });
+    }
   }
 
   Widget _buildProductImage(

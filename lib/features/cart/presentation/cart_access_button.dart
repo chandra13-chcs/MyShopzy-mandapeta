@@ -1,9 +1,10 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
- import '../../../app/theme/app_theme.dart';
+import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../data/cart_store.dart';
- import '../../product_details/data/product_availability_store.dart';
- import 'cart_page.dart';
+import '../../product_details/data/product_availability_store.dart';
+import 'cart_page.dart';
 
 class CartAccessButton extends StatelessWidget {
   const CartAccessButton({super.key});
@@ -222,6 +223,7 @@ class CartProductControl extends StatelessWidget {
     this.variantLabel,
     this.categoryId,
     this.imageUrl,
+    this.backendCatalogItem = false,
     this.width = 88,
     this.height = 34,
     this.unavailableLabel = 'OUT OF STOCK',
@@ -238,6 +240,7 @@ class CartProductControl extends StatelessWidget {
   final String description;
   final int priceInPaise;
   final String? imageUrl;
+  final bool backendCatalogItem;
   final IconData icon;
   final bool available;
   final double width;
@@ -274,7 +277,7 @@ class CartProductControl extends StatelessWidget {
               width: width,
               height: height,
               child: quantity == 0
-              ? _buildAddButton(context, store, isAvailable)
+                  ? _buildAddButton(context, store, isAvailable)
                   : _buildQuantityControl(
                       context,
                       store,
@@ -296,35 +299,53 @@ class CartProductControl extends StatelessWidget {
     return _controlSurface(
       isAvailable: isAvailable,
       onTap: isAvailable
-          ? () {
-              final added = store.addItem(
-                productId: productId,
-                serviceType: serviceType,
-                merchantId: merchantId,
-                serviceVariant: serviceVariant,
-                productVariantId: productVariantId,
-                categoryId: categoryId,
-                variantLabel: variantLabel,
-                name: name,
-                description: description,
-                priceInPaise: priceInPaise,
-                imageUrl: imageUrl,
-                icon: icon,
-              );
-              if (!added) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      store.incompatibilityMessage(
-                            serviceType: serviceType,
-                            merchantId: merchantId,
-                            serviceVariant: serviceVariant,
-                          ) ??
-                          'Please complete or clear your current order before '
-                              'adding these items.',
+          ? () async {
+              try {
+                final added = backendCatalogItem
+                    ? await store.addCatalogItem(
+                        productId: productId,
+                        serviceType: serviceType,
+                        merchantId: merchantId!,
+                        categoryId: categoryId ?? '',
+                        name: name,
+                        description: description,
+                        priceInPaise: priceInPaise,
+                        icon: icon,
+                      )
+                    : store.addItem(
+                        productId: productId,
+                        serviceType: serviceType,
+                        merchantId: merchantId,
+                        serviceVariant: serviceVariant,
+                        productVariantId: productVariantId,
+                        categoryId: categoryId,
+                        variantLabel: variantLabel,
+                        name: name,
+                        description: description,
+                        priceInPaise: priceInPaise,
+                        imageUrl: imageUrl,
+                        icon: icon,
+                      );
+                if (!added && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        store.incompatibilityMessage(
+                              serviceType: serviceType,
+                              merchantId: merchantId,
+                              serviceVariant: serviceVariant,
+                            ) ??
+                            'Please complete or clear your current order before '
+                                'adding these items.',
+                      ),
                     ),
-                  ),
-                );
+                  );
+                }
+              } on CustomerApiException catch (error) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(error.message)));
+                }
               }
             }
           : null,
@@ -369,7 +390,12 @@ class CartProductControl extends StatelessWidget {
             label: 'Decrease quantity',
             onPressed: () {
               if (quantity == 1) {
-                store.removeItem(_cartKey);
+                _runCartMutation(context, store.removeItemFromUi(_cartKey));
+              } else if (backendCatalogItem) {
+                _runCartMutation(
+                  context,
+                  store.decreaseQuantityFromUi(_cartKey),
+                );
               } else {
                 store.decreaseQuantity(_cartKey);
               }
@@ -399,21 +425,7 @@ class CartProductControl extends StatelessWidget {
                 );
                 return;
               }
-              if (!store.increaseQuantity(_cartKey)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      store.incompatibilityMessage(
-                            serviceType: serviceType,
-                            merchantId: merchantId,
-                            serviceVariant: serviceVariant,
-                          ) ??
-                          'Please complete or clear your current order before '
-                              'adding these items.',
-                    ),
-                  ),
-                );
-              }
+              _runIncrease(context, store);
             },
           ),
         ],
@@ -476,4 +488,43 @@ class CartProductControl extends StatelessWidget {
     productId: productId,
     productVariantId: productVariantId,
   );
+
+  Future<void> _runIncrease(BuildContext context, CartStore store) async {
+    try {
+      if (!await store.increaseQuantityFromUi(_cartKey) && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              store.incompatibilityMessage(
+                    serviceType: serviceType,
+                    merchantId: merchantId,
+                    serviceVariant: serviceVariant,
+                  ) ??
+                  'Please complete or clear your current order before '
+                      'adding these items.',
+            ),
+          ),
+        );
+      }
+    } on CustomerApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
+
+  Future<void> _runCartMutation(
+    BuildContext context,
+    Future<void> mutation,
+  ) async {
+    try {
+      await mutation;
+    } on CustomerApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 
 export '../models/local_store.dart';
 
@@ -8,14 +9,16 @@ import '../data/local_store_session.dart';
 import '../models/local_store.dart';
 import 'local_store_catalog_page.dart';
 
-class LocalStoresPage extends StatelessWidget {
+class LocalStoresPage extends StatefulWidget {
   const LocalStoresPage({
     super.key,
-    this.stores = sampleLocalStores,
+    List<LocalStore>? stores,
     this.initialCategoryId,
-  });
+  }) : stores = stores ?? sampleLocalStores,
+       useDefaultStores = stores == null;
 
   final List<LocalStore> stores;
+  final bool useDefaultStores;
   final String? initialCategoryId;
 
   static const _ink = AppTheme.primaryText;
@@ -30,18 +33,93 @@ class LocalStoresPage extends StatelessWidget {
   ];
 
   @override
+  State<LocalStoresPage> createState() => _LocalStoresPageState();
+}
+
+class _LocalStoresPageState extends State<LocalStoresPage> {
+  static const _ink = LocalStoresPage._ink;
+  static const _muted = LocalStoresPage._muted;
+  static const _green = LocalStoresPage._green;
+  static const _page = LocalStoresPage._page;
+
+  late final Future<List<ApiShop>>? _storesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    final api = CustomerApi.instance;
+    _storesFuture = api.isConfigured && widget.useDefaultStores
+        ? api.getShops(partnerType: 'grocery')
+        : null;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final nearbyStores = eligibleLocalStores(stores);
+    final storesFuture = _storesFuture;
+    if (storesFuture == null) {
+      return _buildPage(
+        widget.stores,
+        sourceLabel: 'Demo catalog · sample shops and details',
+      );
+    }
+    return FutureBuilder<List<ApiShop>>(
+      future: storesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Scaffold(
+            backgroundColor: _page,
+            body: const SafeArea(
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return _buildPage(
+            widget.stores,
+            sourceLabel: 'Demo catalog · backend unavailable',
+          );
+        }
+        final stores = snapshot.data!
+            .map(
+              (shop) => LocalStore(
+                id: shop.id,
+                name: shop.name,
+                rating: 0,
+                deliveryTime: 'Not provided',
+                distance: '—',
+                locality: shop.address ?? 'Address not provided',
+                isOpen: false,
+                isBackendData: true,
+              ),
+            )
+            .toList(growable: false);
+        return _buildPage(stores, sourceLabel: 'Backend catalog');
+      },
+    );
+  }
+
+  Widget _buildPage(List<LocalStore> stores, {required String sourceLabel}) {
+    final nearbyStores = stores.any((store) => store.isBackendData)
+        ? stores
+        : eligibleLocalStores(stores);
     return Scaffold(
       backgroundColor: _page,
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(context),
+            _buildHeader(
+              context,
+              showRadius: !stores.any((store) => store.isBackendData),
+            ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 19, 16, 24),
                 children: [
+                  Text(
+                    sourceLabel,
+                    style: const TextStyle(color: _muted, fontSize: 11),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       const Expanded(
@@ -69,9 +147,10 @@ class LocalStoresPage extends StatelessWidget {
                   for (var index = 0; index < nearbyStores.length; index++) ...[
                     _StoreCard(
                       store: nearbyStores[index],
-                      recommended: index == 0,
-                      placeholderColor:
-                          _coverColors[index % _coverColors.length],
+                      recommended: !nearbyStores[index].isBackendData &&
+                          index == 0,
+                      placeholderColor: LocalStoresPage._coverColors[
+                          index % LocalStoresPage._coverColors.length],
                       onTap: () {
                         final store = nearbyStores[index];
                         LocalStoreSession.instance.select(store);
@@ -79,7 +158,7 @@ class LocalStoresPage extends StatelessWidget {
                           MaterialPageRoute<void>(
                             builder: (context) => LocalStoreCatalogPage(
                               store: store,
-                              initialCategoryId: initialCategoryId,
+                              initialCategoryId: widget.initialCategoryId,
                             ),
                           ),
                         );
@@ -88,6 +167,11 @@ class LocalStoresPage extends StatelessWidget {
                     if (index < nearbyStores.length - 1)
                       const SizedBox(height: 14),
                   ],
+                  if (nearbyStores.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: Center(child: Text('No stores available.')),
+                    ),
                 ],
               ),
             ),
@@ -97,7 +181,7 @@ class LocalStoresPage extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, {required bool showRadius}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 16, 0),
       child: Column(
@@ -145,7 +229,8 @@ class LocalStoresPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 7),
-              Container(
+              if (showRadius)
+                Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE8F3E9),
@@ -227,7 +312,7 @@ class _StoreCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   _buildCover(),
-                  if (!store.isOpen)
+                  if (!store.isOpen && !store.isBackendData)
                     ColoredBox(color: Colors.black.withValues(alpha: 0.38)),
                   if (store.offer != null)
                     Positioned(
@@ -293,7 +378,7 @@ class _StoreCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (!store.isOpen)
+                  if (!store.isOpen && !store.isBackendData)
                     Center(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -338,7 +423,8 @@ class _StoreCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      Container(
+                      if (!store.isBackendData)
+                        Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 6,
                           vertical: 4,
@@ -408,7 +494,11 @@ class _StoreCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        store.isOpen ? 'Open' : 'Closed',
+                        store.isBackendData
+                            ? 'Hours not provided'
+                            : store.isOpen
+                            ? 'Open'
+                            : 'Closed',
                         style: TextStyle(
                           color: store.isOpen ? _green : _muted,
                           fontSize: 10,
