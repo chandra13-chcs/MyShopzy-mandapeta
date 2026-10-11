@@ -6,13 +6,17 @@ import 'package:flutter/services.dart';
 import '../../../app/theme/app_theme.dart';
 import 'auth_visuals.dart';
 
+enum OtpVerificationPurpose { accountRegistration, login, passwordReset }
+
 class OtpVerificationPage extends StatefulWidget {
   const OtpVerificationPage({
     required this.phoneNumber,
+    this.purpose = OtpVerificationPurpose.accountRegistration,
     super.key,
   });
 
   final String phoneNumber;
+  final OtpVerificationPurpose purpose;
 
   @override
   State<OtpVerificationPage> createState() => _OtpVerificationPageState();
@@ -116,8 +120,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                             children: [
                               const SizedBox(height: 22),
                               MyShopzyBrand(
-                                compact:
-                                    MediaQuery.sizeOf(context).width < 360,
+                                compact: MediaQuery.sizeOf(context).width < 360,
                               ),
                               const SizedBox(height: 39),
                               const Text(
@@ -127,6 +130,17 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                                   color: AppTheme.secondaryText,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 15),
+                              Text(
+                                _verificationReason,
+                                key: const ValueKey('otp-verification-reason'),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: AppTheme.darkGreen,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                               const SizedBox(height: 15),
@@ -202,7 +216,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                               TextButton.icon(
                                 onPressed: () => Navigator.of(context).pop(),
                                 icon: const Icon(Icons.arrow_back_rounded),
-                                label: const Text('Back to Login'),
+                                label: Text(_backLabel),
                                 style: TextButton.styleFrom(
                                   foregroundColor: AppTheme.primaryGreen,
                                   textStyle: const TextStyle(
@@ -237,8 +251,10 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
           children: [
             Row(
               children: List.generate(6, (index) {
-                final active = _otpFocusNode.hasFocus &&
-                    (index == digits.length || (digits.length == 6 && index == 5));
+                final active =
+                    _otpFocusNode.hasFocus &&
+                    (index == digits.length ||
+                        (digits.length == 6 && index == 5));
                 return Expanded(
                   child: Container(
                     height: 56,
@@ -310,10 +326,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
         if (_resendSeconds > 0)
           Text(
             'Resend SMS in ${_resendSeconds}s',
-            style: const TextStyle(
-              color: AppTheme.secondaryText,
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: AppTheme.secondaryText, fontSize: 14),
           )
         else
           TextButton(
@@ -332,10 +345,28 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
       return;
     }
     setState(() {
-      _message =
-          'OTP verification is unavailable in this UI demo. No account was verified.';
+      _message = switch (widget.purpose) {
+        OtpVerificationPurpose.accountRegistration =>
+          'OTP verification is not connected. No account was created or verified.',
+        OtpVerificationPurpose.login =>
+          'OTP verification is not connected. You are not signed in.',
+        OtpVerificationPurpose.passwordReset =>
+          'OTP verification and password reset are not connected. No password was changed.',
+      };
     });
   }
+
+  String get _verificationReason => switch (widget.purpose) {
+    OtpVerificationPurpose.accountRegistration => 'Account registration',
+    OtpVerificationPurpose.login => 'Login verification',
+    OtpVerificationPurpose.passwordReset => 'Password recovery',
+  };
+
+  String get _backLabel => switch (widget.purpose) {
+    OtpVerificationPurpose.accountRegistration => 'Back to registration',
+    OtpVerificationPurpose.login => 'Back to Login',
+    OtpVerificationPurpose.passwordReset => 'Back to recovery',
+  };
 
   void _resend() {
     setState(() {
@@ -354,7 +385,9 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
   }
 
   String _maskedPhoneNumber(String number) {
-    final visibleDigits = number.length > 4 ? number.substring(number.length - 4) : number;
+    final visibleDigits = number.length > 4
+        ? number.substring(number.length - 4)
+        : number;
     return '+91 •••••• $visibleDigits';
   }
 }

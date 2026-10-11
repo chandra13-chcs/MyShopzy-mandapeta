@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../privacy_policy/presentation/privacy_policy_page.dart';
-import '../../terms_conditions/presentation/terms_conditions_page.dart';
 import 'auth_visuals.dart';
 import 'otp_verification_page.dart';
 
@@ -17,70 +14,112 @@ class PhoneEntryPage extends StatefulWidget {
 class _PhoneEntryPageState extends State<PhoneEntryPage> {
   final _formKey = GlobalKey<FormState>();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _rememberLogin = true;
+  String? _phoneError;
 
   @override
   void dispose() {
     _phoneController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.white,
-      body: Stack(
-        children: [
-          const Positioned.fill(child: AuthCornerDecoration()),
-          SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(22, 20, 22, 28),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight - 48,
+      backgroundColor: AuthPalette.canvas,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                children: [
+                  AuthEntrance(
+                    scale: true,
+                    child: const AuthFormHeader(
+                      title: 'Log in or sign up',
+                      backKey: ValueKey('login-back'),
                     ),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 8),
-                          const SizedBox(height: 120),
-                          const SizedBox(height: 28),
-                          const _ServiceCategories(),
-                          const SizedBox(height: 35),
-                          const Text(
-                            'Log in or sign up',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppTheme.darkGreen,
-                              fontSize: 27,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.7,
-                            ),
+                  ),
+                  AuthEntrance(
+                    slideUp: true,
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 22),
+                      padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                      decoration: BoxDecoration(
+                        color: AppTheme.white,
+                        borderRadius: BorderRadius.circular(26),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x16002211),
+                            blurRadius: 22,
+                            offset: Offset(0, 8),
                           ),
-                          const SizedBox(height: 20),
-                          _phoneNumberField(),
-                          const SizedBox(height: 13),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(8),
-                              onTap: () => setState(
-                                () => _rememberLogin = !_rememberLogin,
+                        ],
+                      ),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'Welcome back',
+                              style: TextStyle(
+                                color: AuthPalette.darkGreen,
+                                fontSize: 21,
+                                fontWeight: FontWeight.w800,
                               ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 3,
-                                ),
-                                child: Row(
+                            ),
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Sign in to continue shopping',
+                              style: TextStyle(
+                                color: AppTheme.secondaryText,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            AuthPhoneField(
+                              fieldKey: const ValueKey('phone-number-field'),
+                              controller: _phoneController,
+                              validator: (_) => null,
+                              errorText: _phoneError,
+                              onChanged: (_) {
+                                if (_phoneError != null) {
+                                  setState(() => _phoneError = null);
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 13),
+                            AuthPasswordField(
+                              controller: _passwordController,
+                              label: 'Password',
+                              fieldKey: const ValueKey('login-password-field'),
+                              toggleKey:
+                                  const ValueKey('login-password-toggle'),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Enter your password.';
+                                }
+                                return null;
+                              },
+                              textInputAction: TextInputAction.done,
+                            ),
+                            const SizedBox(height: 4),
+                            LayoutBuilder(
+                              builder: (context, rowConstraints) {
+                                final checkbox = Row(
                                   children: [
                                     Checkbox(
+                                      key: const ValueKey(
+                                        'remember-login-checkbox',
+                                      ),
                                       value: _rememberLogin,
-                                      activeColor: AppTheme.primaryGreen,
+                                      activeColor: AuthPalette.green,
                                       onChanged: (value) => setState(
                                         () => _rememberLogin = value ?? false,
                                       ),
@@ -89,254 +128,125 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
                                       child: Text(
                                         'Remember my login for faster sign-in',
                                         style: TextStyle(
-                                          color: AppTheme.darkGreen,
-                                          fontSize: 14,
+                                          color: AuthPalette.darkGreen,
+                                          fontSize: 13,
                                         ),
                                       ),
                                     ),
                                   ],
+                                );
+                                final forgotPassword = TextButton(
+                                  key: const ValueKey('forgot-password-link'),
+                                  onPressed: () => Navigator.of(
+                                    context,
+                                  ).pushNamed('/forgot-password'),
+                                  child: const Text('Forgot Password?'),
+                                );
+
+                                if (rowConstraints.maxWidth < 370) {
+                                  return Column(
+                                    children: [
+                                      checkbox,
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: forgotPassword,
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  children: [
+                                    Expanded(child: checkbox),
+                                    forgotPassword,
+                                  ],
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 54,
+                              child: FilledButton(
+                                key: const ValueKey('login-submit'),
+                                onPressed: _login,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AuthPalette.green,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Login',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 56,
-                            child: FilledButton(
-                              key: const ValueKey('phone-entry-continue'),
-                              onPressed: _continue,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppTheme.primaryGreen,
-                                foregroundColor: AppTheme.white,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: const Text(
-                                'Continue',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
+                            const SizedBox(height: 4),
+                            TextButton(
+                              key: const ValueKey('login-with-otp'),
+                              onPressed: _loginWithOtp,
+                              child: const Text('Or log in with OTP'),
                             ),
-                          ),
-                          const SizedBox(height: 18),
-                          const Text(
-                            'UI demo only · no SMS will be sent',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppTheme.secondaryText,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 17),
-                          const Text(
-                            'By continuing, you agree to our',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: AppTheme.secondaryText,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 8,
-                            children: [
-                              _LegalLink(
-                                label: 'Terms of Service',
-                                page: const TermsConditionsPage(),
-                              ),
-                              const Text(
-                                'and',
+                            const Center(
+                              child: Text(
+                                'UI demo only · sign-in is not connected',
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: AppTheme.secondaryText,
-                                  fontSize: 12,
+                                  fontSize: 11,
                                 ),
                               ),
-                              _LegalLink(
-                                label: 'Privacy Policy',
-                                page: const PrivacyPolicyPage(),
-                              ),
-                            ],
-                          ),
-                        ],
+                            ),
+                            const SizedBox(height: 15),
+                            const AuthLegalLinks(),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                );
-              },
+                ],
+              ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _phoneNumberField() {
-    return TextFormField(
-      key: const ValueKey('phone-number-field'),
-      controller: _phoneController,
-      keyboardType: TextInputType.phone,
-      textInputAction: TextInputAction.done,
-      autofillHints: const [AutofillHints.telephoneNumberNational],
-      inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
-        LengthLimitingTextInputFormatter(10),
-      ],
-      validator: (value) {
-        final number = value ?? '';
-        if (!RegExp(r'^[6-9]\d{9}$').hasMatch(number)) {
-          return 'Enter a valid 10-digit Indian mobile number.';
-        }
-        return null;
-      },
-      onFieldSubmitted: (_) => _continue(),
-      decoration: InputDecoration(
-        hintText: 'Enter Phone Number',
-        hintStyle: const TextStyle(color: Color(0xFF90989A)),
-        prefixIcon: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('🇮🇳', style: TextStyle(fontSize: 22)),
-              SizedBox(width: 9),
-              Text(
-                '+91',
-                style: TextStyle(
-                  color: AppTheme.darkGreen,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              SizedBox(width: 10),
-              Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: AppTheme.darkGreen,
-              ),
-            ],
-          ),
-        ),
-        prefixIconConstraints: const BoxConstraints(minWidth: 126),
-        filled: true,
-        fillColor: AppTheme.white,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 13,
-          vertical: 17,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(color: Color(0xFFD6DEDD), width: 1.3),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(
-            color: AppTheme.primaryGreen,
-            width: 1.6,
-          ),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(color: Color(0xFFB63E32)),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(11),
-          borderSide: const BorderSide(color: Color(0xFFB63E32), width: 1.6),
         ),
       ),
     );
   }
 
-  void _continue() {
-    if (!_formKey.currentState!.validate()) return;
+  void _login() {
     FocusScope.of(context).unfocus();
+    final phoneError = AuthPhoneField.validateIndianMobile(
+      _phoneController.text,
+    );
+    setState(() => _phoneError = phoneError);
+    if (phoneError != null) return;
+    if (!_formKey.currentState!.validate()) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Sign-in is not connected yet. No account was authenticated.',
+        ),
+      ),
+    );
+  }
+
+  void _loginWithOtp() {
+    FocusScope.of(context).unfocus();
+    final error = AuthPhoneField.validateIndianMobile(_phoneController.text);
+    if (error != null) {
+      setState(() => _phoneError = error);
+      return;
+    }
+    _passwordController.clear();
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) =>
-            OtpVerificationPage(phoneNumber: _phoneController.text),
-      ),
-    );
-  }
-}
-
-class _ServiceCategories extends StatelessWidget {
-  const _ServiceCategories();
-
-  static const _services = [
-    ('Parcels', 'assets/category_tiles/parcel.jpg'),
-    ('Restaurants', 'assets/category_tiles/restaurants.jpg'),
-    ('Groceries', 'assets/category_tiles/fruits_vegetables.jpg'),
-    ('Meat', 'assets/category_tiles/meat_only_chicken.jpg'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        for (var index = 0; index < _services.length; index++) ...[
-          if (index > 0)
-            Container(
-              width: 1,
-              height: 60,
-              margin: const EdgeInsets.symmetric(horizontal: 5),
-              color: const Color(0xFFB7D9C2),
-            ),
-          Expanded(
-            child: Column(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
-                  child: Image.asset(
-                    _services[index].$2,
-                    width: 58,
-                    height: 58,
-                    fit: BoxFit.cover,
-                    semanticLabel: _services[index].$1,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _services[index].$1,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppTheme.darkGreen,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _LegalLink extends StatelessWidget {
-  const _LegalLink({required this.label, required this.page});
-
-  final String label;
-  final Widget page;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () =>
-          Navigator.of(context)
-              .push(MaterialPageRoute<void>(builder: (context) => page)),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppTheme.primaryGreen,
-          fontSize: 12,
-          decoration: TextDecoration.underline,
-          fontWeight: FontWeight.w600,
+        builder: (context) => OtpVerificationPage(
+          phoneNumber: _phoneController.text,
+          purpose: OtpVerificationPurpose.login,
         ),
       ),
     );
