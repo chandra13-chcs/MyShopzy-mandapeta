@@ -283,12 +283,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
         builder: (context, child) {
           final hasItems = _cartStore.items.isNotEmpty;
           final hasConfirmedAddress = _confirmedDeliveryAddress != null;
+          final orderOutcomeUnknown =
+              _isBackendCart && CustomerApi.instance.orderOutcomeUnknown;
           final canPlaceOrder =
               hasItems &&
               hasConfirmedAddress &&
               (!_isBackendCart || _backendQuote != null) &&
               (!_isBackendCart || (!_quoteLoading && _quoteError == null)) &&
-              !_placingOrder;
+              !_placingOrder &&
+              !orderOutcomeUnknown;
           if (!hasItems) return const SizedBox.shrink();
           return SafeArea(
             top: false,
@@ -311,6 +314,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         style: TextStyle(color: _secondaryText, fontSize: 12),
                       ),
                     ),
+                  if (orderOutcomeUnknown)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Order status is unknown. Your cart has been kept. '
+                        'Do not submit again until you have checked with '
+                        'customer support.',
+                        key: ValueKey('checkout-order-outcome-unknown'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFFA85B5B),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                   SizedBox(
                     height: 52,
                     width: double.infinity,
@@ -325,7 +343,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         ),
                       ),
                       child: Text(
-                        _placingOrder ? 'Submitting…' : 'Place Order',
+                        _placingOrder
+                            ? 'Submitting…'
+                            : orderOutcomeUnknown
+                            ? 'Order Status Unknown'
+                            : 'Place Order',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
@@ -1664,7 +1686,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      ).showSnackBar(
+        SnackBar(
+          content: Text(
+            CustomerApi.instance.orderOutcomeUnknown
+                ? 'Order status is unknown. Do not submit again until checked.'
+                : error.message,
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _placingOrder = false);
     }

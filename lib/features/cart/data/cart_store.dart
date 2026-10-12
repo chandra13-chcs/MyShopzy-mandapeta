@@ -9,8 +9,25 @@ class CartStore extends ChangeNotifier {
   static final instance = CartStore._();
 
   final List<CartItem> _items = [];
+  final Set<String> _pendingQuantityMutations = {};
+  final Set<String> _pendingCatalogAdds = {};
 
   List<CartItem> get items => List.unmodifiable(_items);
+
+  bool isQuantityMutationPending(String key) =>
+      _pendingQuantityMutations.contains(key);
+
+  bool isCatalogItemAddPending({
+    required String productId,
+    required String serviceType,
+    required String merchantId,
+  }) => _pendingCatalogAdds.contains(
+    CartItem.keyFor(
+      serviceType: serviceType,
+      merchantId: merchantId,
+      productId: productId,
+    ),
+  );
 
   bool get hasBackendCart =>
       _items.isNotEmpty && _items.every((item) => item.isBackendProduct);
@@ -137,38 +154,59 @@ class CartStore extends ChangeNotifier {
       serviceType: serviceType,
       merchantId: merchantId,
     );
-    final restoredBackendContext = _items.isNotEmpty &&
+    final restoredBackendContext =
+        _items.isNotEmpty &&
         _items.every(
-          (item) =>
-              item.isBackendProduct && item.merchantId == merchantId,
+          (item) => item.isBackendProduct && item.merchantId == merchantId,
         );
-    if (!restoredBackendContext && !canAddContext(incomingContext)) return false;
-
-    await api.addCartItem(productId);
-    for (final item in _items) {
-      if (item.isBackendProduct &&
-          item.productId == productId &&
-          item.merchantId == merchantId) {
-        item.quantity++;
-        item.name = name;
-        item.description = description;
-        item.priceInPaise = priceInPaise;
-        item.categoryId = categoryId;
-        notifyListeners();
-        return true;
-      }
+    if (!restoredBackendContext && !canAddContext(incomingContext)) {
+      return false;
     }
-    return addItem(
-      productId: productId,
+
+    final pendingKey = CartItem.keyFor(
       serviceType: serviceType,
       merchantId: merchantId,
-      categoryId: categoryId,
-      name: name,
-      description: description,
-      priceInPaise: priceInPaise,
-      icon: icon,
-      isBackendProduct: true,
+      productId: productId,
     );
+    if (_pendingCatalogAdds.contains(pendingKey)) return false;
+    _pendingCatalogAdds.add(pendingKey);
+    notifyListeners();
+    try {
+      final updatedQuantity = await api.addCartItem(productId);
+      for (final item in _items) {
+        if (item.isBackendProduct &&
+            item.productId == productId &&
+            item.merchantId == merchantId) {
+          item.quantity = updatedQuantity;
+          item.name = name;
+          item.description = description;
+          item.priceInPaise = priceInPaise;
+          item.categoryId = categoryId;
+          notifyListeners();
+          return true;
+        }
+      }
+      final added = addItem(
+        productId: productId,
+        serviceType: serviceType,
+        merchantId: merchantId,
+        categoryId: categoryId,
+        name: name,
+        description: description,
+        priceInPaise: priceInPaise,
+        icon: icon,
+        isBackendProduct: true,
+      );
+      final addedItem = _findItem(pendingKey);
+      if (added && addedItem != null) {
+        addedItem.quantity = updatedQuantity;
+        notifyListeners();
+      }
+      return added;
+    } finally {
+      _pendingCatalogAdds.remove(pendingKey);
+      notifyListeners();
+    }
   }
 
   Future<void> refreshBackendCart() async {
@@ -273,15 +311,7 @@ class CartStore extends ChangeNotifier {
   Future<bool> increaseQuantityFromUi(String key) async {
     final item = _findItem(key);
     if (item == null || !canAddContext(item.orderContext)) return false;
-    if (item.isBackendProduct) {
-      await CustomerApi.instance.updateCartItem(
-        item.productId,
-        item.quantity + 1,
-      );
-    }
-    item.quantity++;
-    notifyListeners();
-    return true;
+    return _updateQuantityFromUi(item, item.quantity + 1);
   }
 
   void decreaseQuantity(String key) {
@@ -294,14 +324,32 @@ class CartStore extends ChangeNotifier {
   Future<void> decreaseQuantityFromUi(String key) async {
     final item = _findItem(key);
     if (item == null || item.quantity <= 1) return;
-    if (item.isBackendProduct) {
-      await CustomerApi.instance.updateCartItem(
-        item.productId,
-        item.quantity - 1,
-      );
+    await _updateQuantityFromUi(item, item.quantity - 1);
+  }
+
+  Future<bool> _updateQuantityFromUi(CartItem item, int quantity) async {
+    final key = item.key;
+    if (_pendingQuantityMutations.contains(key)) return false;
+    if (!item.isBackendProduct) {
+      item.quantity = quantity;
+      notifyListeners();
+      return true;
     }
-    item.quantity--;
+
+    _pendingQuantityMutations.add(key);
     notifyListeners();
+    try {
+      final updatedQuantity = await CustomerApi.instance.updateCartItem(
+        item.productId,
+        quantity,
+      );
+      final currentItem = _findItem(key);
+      if (currentItem != null) currentItem.quantity = updatedQuantity;
+      return true;
+    } finally {
+      _pendingQuantityMutations.remove(key);
+      notifyListeners();
+    }
   }
 
   void removeItem(String key) {

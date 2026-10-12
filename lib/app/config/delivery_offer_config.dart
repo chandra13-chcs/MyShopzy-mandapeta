@@ -14,6 +14,6 @@ class DeliveryOfferConfig {
     final remaining = remainingInPaise(eligibleSubtotalInPaise);
     if (remaining == 0) return 'Free delivery unlocked!';
     final remainingRupees = (remaining + 99) ~/ 100;
-    return 'Add ₹$remainingRupees more for free delivery';
+    return 'Add ₹$remainingRupees more to unlock FREE DELIVERY';
   }
 }

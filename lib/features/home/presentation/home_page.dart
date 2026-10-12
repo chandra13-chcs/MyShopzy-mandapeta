@@ -13,7 +13,6 @@ import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../profile/models/saved_address.dart';
 import '../../profile/presentation/saved_addresses_page.dart';
 import 'delivery_location_bottom_sheet.dart';
-import 'free_delivery_progress_strip.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../local_stores/data/local_store_session.dart';
@@ -41,7 +40,7 @@ class HomePage extends StatelessWidget {
   static const _green = AppTheme.primaryGreen;
   static const _page = AppTheme.lightBackground;
   static const _recentlyViewedViewAllThreshold = 4;
-  static const _homeIntroChildCount = 10;
+  static const _homeIntroChildCount = 8;
 
   static final _discoverySearchResults = _buildSearchDiscoveryResults();
   static final _homeSliverChildCount =
@@ -70,13 +69,7 @@ class HomePage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const FreeDeliveryOfferBanner(),
-          _buildBottomNavigation(context),
-        ],
-      ),
+      bottomNavigationBar: _buildBottomNavigation(context),
     );
   }
 
@@ -85,14 +78,12 @@ class HomePage extends StatelessWidget {
       return switch (index) {
         0 => _buildHeader(context),
         1 => const SizedBox(height: 10),
-        2 => const FreeDeliveryProgressStrip(),
-        3 => const SizedBox(height: 18),
-        4 => _buildSearchBar(context),
+        2 => _buildSearchBar(context),
+        3 => const SizedBox(height: 22),
+        4 => _buildServiceGrid(),
         5 => const SizedBox(height: 22),
-        6 => _buildServiceGrid(),
-        7 => const SizedBox(height: 22),
-        8 => _buildPromotions(),
-        9 => AnimatedBuilder(
+        6 => _buildPromotions(),
+        7 => AnimatedBuilder(
           animation: RecentlyViewedStore.instance,
           builder: (context, child) {
             final products = RecentlyViewedStore.instance.products;

@@ -1,4 +1,4 @@
- import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -53,7 +53,7 @@ void main() {
     expect(find.text('Backend Apples'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 700));
     await tester.pumpAndSettle();
-    expect(find.text('Demo offer · not verified by backend'), findsNWidgets(2));
+    expect(find.text('Demo offer · not verified by backend'), findsNothing);
     expect(
       find.text('Demo home catalog · sample shops and products'),
       findsNothing,

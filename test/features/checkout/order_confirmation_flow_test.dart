@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -132,8 +133,10 @@ void main() {
   testWidgets('401 order failure stays at checkout and preserves cart', (
     tester,
   ) async {
+    var orderRequests = 0;
     _configureBackend((request) async {
       if (request.url.path.endsWith('/orders')) {
+        orderRequests++;
         return _response({
           'error': {
             'code': 'AUTHENTICATION_REQUIRED',
@@ -155,7 +158,77 @@ void main() {
       findsOneWidget,
     );
     expect(cart.totalQuantity, 1);
+    final placeOrder = find.widgetWithText(FilledButton, 'Place Order');
+    expect(tester.widget<FilledButton>(placeOrder).onPressed, isNotNull);
+    await tester.ensureVisible(placeOrder);
+    await tester.tap(placeOrder);
+    await tester.pumpAndSettle();
+    expect(orderRequests, 2);
+    expect(cart.totalQuantity, 1);
+    expect(CustomerApi.instance.orderOutcomeUnknown, isFalse);
   });
+
+  testWidgets(
+    'timed out backend order keeps cart and prevents a duplicate submission',
+    (tester) async {
+      var orderRequests = 0;
+      _configureBackend((request) async {
+        if (request.url.path.endsWith('/orders')) {
+          orderRequests++;
+          throw TimeoutException('simulated order response timeout');
+        }
+        return _backendSetupResponse(request);
+      });
+      _addBackendCartItem();
+
+      await _openBackendCheckout(tester);
+      await _selectBackendAddressAndPlaceOrder(tester);
+
+      expect(find.byType(OrderSuccessPage), findsNothing);
+      expect(find.byType(CheckoutPage), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('checkout-order-outcome-unknown')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Order status is unknown. Your cart has been kept. Do not submit again until you have checked with customer support.',
+        ),
+        findsOneWidget,
+      );
+      expect(cart.totalQuantity, 1);
+      expect(CustomerApi.instance.orderOutcomeUnknown, isTrue);
+      expect(orderRequests, 1);
+
+      final disabledButton = find.widgetWithText(
+        FilledButton,
+        'Order Status Unknown',
+      );
+      expect(tester.widget<FilledButton>(disabledButton).onPressed, isNull);
+      await expectLater(
+        CustomerApi.instance.placeOrder({'formattedAddress': 'Main Road'}),
+        throwsA(
+          isA<CustomerApiException>().having(
+            (error) => error.code,
+            'code',
+            'ORDER_OUTCOME_UNKNOWN',
+          ),
+        ),
+      );
+      await expectLater(
+        cart.refreshBackendCart(),
+        throwsA(
+          isA<CustomerApiException>().having(
+            (error) => error.code,
+            'code',
+            'ORDER_OUTCOME_UNKNOWN',
+          ),
+        ),
+      );
+      expect(orderRequests, 1);
+      expect(cart.totalQuantity, 1);
+    },
+  );
 
   testWidgets('invalid successful response does not confirm or clear cart', (
     tester,
@@ -176,9 +249,14 @@ void main() {
     expect(find.byType(OrderSuccessPage), findsNothing);
     expect(find.byType(CheckoutPage), findsOneWidget);
     expect(
-      find.text('The server returned an invalid response.'),
+      find.text('Order status is unknown. Do not submit again until checked.'),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('checkout-order-outcome-unknown')),
+      findsOneWidget,
+    );
+    expect(CustomerApi.instance.orderOutcomeUnknown, isTrue);
     expect(cart.totalQuantity, 1);
   });
 
@@ -199,9 +277,14 @@ void main() {
     expect(find.byType(OrderSuccessPage), findsNothing);
     expect(find.byType(CheckoutPage), findsOneWidget);
     expect(
-      find.text('Could not connect to the server. Please try again.'),
+      find.text('Order status is unknown. Do not submit again until checked.'),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const ValueKey('checkout-order-outcome-unknown')),
+      findsOneWidget,
+    );
+    expect(CustomerApi.instance.orderOutcomeUnknown, isTrue);
     expect(cart.totalQuantity, 1);
   });
 }

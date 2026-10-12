@@ -8,6 +8,8 @@ test('uses development defaults and permits health-only configuration', () => {
     port: 3000,
     nodeEnv: 'development',
     database: null,
+    developmentCustomerOtp: null,
+    developmentCustomerSessionSecret: null,
   });
 });
 
@@ -20,10 +22,17 @@ test('parses a complete PostgreSQL configuration without changing values', () =>
     PGDATABASE: 'myshopzy_test',
     PGUSER: 'app_user',
     PGPASSWORD: 'test-only-password',
+    DEVELOPMENT_CUSTOMER_OTP: '123456',
+    DEVELOPMENT_CUSTOMER_SESSION_SECRET: 'test-session-secret-at-least-32-bytes-long',
   });
 
   assert.equal(config.port, 3100);
   assert.equal(config.nodeEnv, 'test');
+  assert.equal(config.developmentCustomerOtp, '123456');
+  assert.equal(
+    config.developmentCustomerSessionSecret,
+    'test-session-secret-at-least-32-bytes-long',
+  );
   assert.deepEqual(config.database, {
     host: 'db.example.test',
     port: 5433,

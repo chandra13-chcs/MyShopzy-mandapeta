@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class CustomerApiException implements Exception {
@@ -625,9 +626,54 @@ class CustomerApi {
   final Duration timeout;
   String? _cartToken;
   Future<void>? _cartInitialization;
+  bool _orderOutcomeUnknown = false;
+  String? _customerAccessToken;
 
   bool get isConfigured => _baseUrl.isNotEmpty;
   bool get hasCartToken => _cartToken != null;
+  bool get hasCustomerSession => _customerAccessToken != null;
+  bool get orderOutcomeUnknown => _orderOutcomeUnknown;
+  CustomerApiException get _unknownOrderOutcomeException =>
+      const CustomerApiException(
+        statusCode: null,
+        code: 'ORDER_OUTCOME_UNKNOWN',
+        message: 'The previous order outcome is still unknown.',
+      );
+
+  Future<void> verifyDevelopmentOtp({
+    required String phoneNumber,
+    required String otp,
+  }) async {
+    if (!kDebugMode) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'DEVELOPMENT_AUTH_DISABLED',
+        message: 'Development customer authentication is unavailable.',
+      );
+    }
+    _customerAccessToken = null;
+    final payload = await _request(
+      'POST',
+      '/auth/development/verify-otp',
+      body: {'phoneNumber': phoneNumber, 'otp': otp},
+    );
+    try {
+      final session = _dataObject(payload);
+      final accessToken = _requiredString(session, 'accessToken');
+      final tokenType = _requiredString(session, 'tokenType');
+      final expiresIn = _requiredInteger(session, 'expiresIn', minimum: 1);
+      if (tokenType != 'Bearer' || expiresIn > 15 * 60) {
+        throw const FormatException('Invalid customer session.');
+      }
+      _customerAccessToken = accessToken;
+    } on FormatException {
+      throw _invalidResponse();
+    }
+  }
+
+  void clearCustomerSession() {
+    _customerAccessToken = null;
+  }
 
   Future<List<ApiShop>> getShops({String? partnerType, String? query}) async {
     final payload = await _request(
@@ -783,6 +829,7 @@ class CustomerApi {
   }
 
   Future<ApiCart> getCart() async {
+    if (_orderOutcomeUnknown) throw _unknownOrderOutcomeException;
     await ensureCart();
     final payload = await _request('GET', '/cart', useCartToken: true);
     try {
@@ -792,23 +839,37 @@ class CustomerApi {
     }
   }
 
-  Future<void> addCartItem(String productId, {int quantity = 1}) async {
+  Future<int> addCartItem(String productId, {int quantity = 1}) async {
     await ensureCart();
-    await _request(
+    final payload = await _request(
       'POST',
       '/cart/items',
       body: {'productId': productId, 'quantity': quantity},
       useCartToken: true,
     );
+    try {
+      final item = _dataObject(payload);
+      if (_requiredString(item, 'productId') != productId) {
+        throw const FormatException('Cart response product did not match.');
+      }
+      return _requiredInteger(item, 'quantity', minimum: 1);
+    } on FormatException {
+      throw _invalidResponse();
+    }
   }
 
-  Future<void> updateCartItem(String productId, int quantity) async {
-    await _request(
+  Future<int> updateCartItem(String productId, int quantity) async {
+    final payload = await _request(
       'PATCH',
       '/cart/items/$productId',
       body: {'quantity': quantity},
       useCartToken: true,
     );
+    try {
+      return _requiredInteger(_dataObject(payload), 'quantity', minimum: 1);
+    } on FormatException {
+      throw _invalidResponse();
+    }
   }
 
   Future<void> removeCartItem(String productId) async {
@@ -836,15 +897,25 @@ class CustomerApi {
   Future<ApiOrderResult> placeOrder(
     Map<String, Object?> deliveryAddress,
   ) async {
-    final payload = await _request(
-      'POST',
-      '/orders',
-      body: {'deliveryAddress': deliveryAddress},
-      useCartToken: true,
-    );
+    if (_orderOutcomeUnknown) throw _unknownOrderOutcomeException;
     try {
+      final payload = await _request(
+        'POST',
+        '/orders',
+        body: {'deliveryAddress': deliveryAddress},
+        useCartToken: true,
+      );
       return ApiOrderResult.fromJson(_dataObject(payload));
+    } on CustomerApiException catch (error) {
+      if (error.code == 'REQUEST_TIMEOUT' ||
+          error.code == 'NETWORK_ERROR' ||
+          error.code == 'INVALID_RESPONSE' ||
+          (error.statusCode != null && error.statusCode! >= 500)) {
+        _orderOutcomeUnknown = true;
+      }
+      rethrow;
     } on FormatException {
+      _orderOutcomeUnknown = true;
       throw _invalidResponse();
     }
   }
@@ -994,6 +1065,8 @@ class CustomerApi {
       final headers = <String, String>{
         'Accept': 'application/json',
         if (body != null) 'Content-Type': 'application/json',
+        if (_customerAccessToken != null)
+          'Authorization': 'Bearer $_customerAccessToken',
         if (useCartToken && _cartToken != null) 'X-Cart-Token': _cartToken!,
       };
       final request = http.Request(method, uri)

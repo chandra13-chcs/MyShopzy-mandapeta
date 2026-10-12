@@ -4,7 +4,11 @@ const { createCatalogRouter } = require('./modules/catalog/routes');
 const { createCartCheckoutRouter } = require('./modules/cart-checkout/routes');
 const { createCustomerAccountRouter } = require('./modules/customer-account/routes');
 
-function createApp({ databasePool = null, authenticateCustomer = null } = {}) {
+function createApp({
+  databasePool = null,
+  authenticateCustomer = null,
+  developmentCustomerAuthRouter = null,
+} = {}) {
   const app = express();
 
   app.use(express.json());
@@ -20,6 +24,9 @@ function createApp({ databasePool = null, authenticateCustomer = null } = {}) {
     });
   });
 
+  if (developmentCustomerAuthRouter) {
+    app.use('/api/v1', developmentCustomerAuthRouter);
+  }
   app.use('/api/v1', createCatalogRouter({ databasePool }));
   app.use(
     '/api/v1',

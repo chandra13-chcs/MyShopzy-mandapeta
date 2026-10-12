@@ -5,7 +5,7 @@ import '../features/auth/presentation/welcome_page.dart';
 import '../features/home/presentation/home_page.dart';
 
 class AppRouter {
-  static const welcome = '/';
+  static const welcome = '/welcome';
   static const phoneEntry = '/login';
   static const home = '/home';
   static const registration = '/register';

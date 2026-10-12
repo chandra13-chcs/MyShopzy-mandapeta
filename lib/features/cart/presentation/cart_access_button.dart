@@ -273,16 +273,31 @@ class CartProductControl extends StatelessWidget {
               serviceVariant: serviceVariant,
               productVariantId: productVariantId,
             );
+            final quantityPending = store.isQuantityMutationPending(_cartKey);
+            final addPending =
+                backendCatalogItem &&
+                merchantId != null &&
+                store.isCatalogItemAddPending(
+                  productId: productId,
+                  serviceType: serviceType,
+                  merchantId: merchantId!,
+                );
             return SizedBox(
               width: width,
               height: height,
               child: quantity == 0
-                  ? _buildAddButton(context, store, isAvailable)
+                  ? _buildAddButton(
+                      context,
+                      store,
+                      isAvailable,
+                      isPending: addPending,
+                    )
                   : _buildQuantityControl(
                       context,
                       store,
                       quantity,
                       isAvailable,
+                      isPending: quantityPending,
                     ),
             );
           },
@@ -294,11 +309,13 @@ class CartProductControl extends StatelessWidget {
   Widget _buildAddButton(
     BuildContext context,
     CartStore store,
-    bool isAvailable,
+    bool isAvailable, {
+    required bool isPending,
+  }
   ) {
     return _controlSurface(
       isAvailable: isAvailable,
-      onTap: isAvailable
+      onTap: isAvailable && !isPending
           ? () async {
               try {
                 final added = backendCatalogItem
@@ -349,17 +366,23 @@ class CartProductControl extends StatelessWidget {
               }
             }
           : null,
-      child: Text(
-        isAvailable ? 'ADD' : unavailableLabel,
-        maxLines: 1,
-        overflow: TextOverflow.clip,
-        style: TextStyle(
-          color: isAvailable ? _green : const Color(0xFF929892),
-          fontSize: isAvailable ? 11 : 8,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.4,
-        ),
-      ),
+      child: isPending
+          ? const SizedBox(
+              width: 13,
+              height: 13,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(
+              isAvailable ? 'ADD' : unavailableLabel,
+              maxLines: 1,
+              overflow: TextOverflow.clip,
+              style: TextStyle(
+                color: isAvailable ? _green : const Color(0xFF929892),
+                fontSize: isAvailable ? 11 : 8,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.4,
+              ),
+            ),
     );
   }
 
@@ -367,7 +390,9 @@ class CartProductControl extends StatelessWidget {
     BuildContext context,
     CartStore store,
     int quantity,
-    bool isAvailable,
+    bool isAvailable, {
+    required bool isPending,
+  }
   ) {
     return Container(
       decoration: BoxDecoration(
@@ -388,7 +413,7 @@ class CartProductControl extends StatelessWidget {
           _stepButton(
             icon: Icons.remove_rounded,
             label: 'Decrease quantity',
-            onPressed: () {
+            onPressed: isPending ? null : () {
               if (quantity == 1) {
                 _runCartMutation(context, store.removeItemFromUi(_cartKey));
               } else if (backendCatalogItem) {
@@ -403,7 +428,7 @@ class CartProductControl extends StatelessWidget {
           ),
           Flexible(
             child: Text(
-              '$quantity',
+              isPending ? '…' : '$quantity',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: _green,
@@ -416,7 +441,7 @@ class CartProductControl extends StatelessWidget {
             icon: Icons.add_rounded,
             label: 'Increase quantity',
             color: isAvailable ? _green : const Color(0xFF929892),
-            onPressed: () {
+            onPressed: isPending ? null : () {
               if (!isAvailable) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -436,7 +461,7 @@ class CartProductControl extends StatelessWidget {
   Widget _stepButton({
     required IconData icon,
     required String label,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
     Color color = _green,
   }) {
     return IconButton(

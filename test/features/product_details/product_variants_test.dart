@@ -66,38 +66,66 @@ void main() {
     expect(cart.items, isEmpty);
   });
 
-  testWidgets('selecting a size updates price and cart variant', (
+  testWidgets('listing variant selection adds and synchronizes cart quantity', (
     tester,
   ) async {
     await tester.pumpWidget(MaterialApp(home: _catalogPage()));
 
-    await tester.ensureVisible(find.text('OPTIONS'));
-    await tester.tap(find.text('OPTIONS'));
-    await tester.pumpAndSettle();
-    expect(find.text('Select Size'), findsOneWidget);
-    expect(find.text('₹70'), findsOneWidget);
+    expect(find.text('OPTIONS'), findsNothing);
+    expect(find.widgetWithText(ChoiceChip, '1 KG'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, '2 KG'), findsOneWidget);
     final fiveKg = find.widgetWithText(ChoiceChip, '5 KG');
     await tester.ensureVisible(fiveKg);
     await tester.tap(fiveKg);
     await tester.pumpAndSettle();
     expect(find.text('₹310'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('ADD'));
-    await tester.tap(find.text('ADD'));
+    final addButton = find.text('ADD').last;
+    await tester.ensureVisible(addButton);
+    await tester.tap(addButton);
     await tester.pump();
 
     expect(cart.items, hasLength(1));
     expect(cart.items.single.productVariantId, '5-kg');
     expect(cart.items.single.variantLabel, '5 KG');
     expect(cart.items.single.priceInPaise, 31000);
+
+    final increaseButton = find.byTooltip('Increase quantity').last;
+    await tester.ensureVisible(increaseButton);
+    await tester.tap(increaseButton);
+    await tester.pumpAndSettle();
+
+    expect(cart.items.single.quantity, 2);
+    expect(cart.totalQuantity, 2);
+
+    await tester.pumpWidget(const MaterialApp(home: CartPage()));
+    expect(find.text('5 KG'), findsOneWidget);
+    expect(find.text('Ashirvad Atta'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+  });
+
+  testWidgets('Product Details keeps variant pricing and visible wishlist', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(home: ProductDetailsPage(product: _detailsProduct())),
+    );
+
+    expect(find.text('₹70'), findsOneWidget);
+    final saveButton = find.byTooltip('Add to wishlist');
+    expect(saveButton, findsOneWidget);
+    final saveIcon = tester.widget<Icon>(find.byIcon(Icons.bookmark_border_rounded));
+    expect(saveIcon.color, Colors.white);
+
+    final fiveKg = find.widgetWithText(ChoiceChip, '5 KG');
+    await tester.tap(fiveKg);
+    await tester.pumpAndSettle();
+    expect(find.text('₹310'), findsOneWidget);
   });
 
   testWidgets('unavailable variant cannot be added', (tester) async {
     await tester.pumpWidget(MaterialApp(home: _catalogPage()));
 
-    await tester.ensureVisible(find.text('OPTIONS'));
-    await tester.tap(find.text('OPTIONS'));
-    await tester.pumpAndSettle();
     final twoKg = find.widgetWithText(ChoiceChip, '2 KG');
     await tester.ensureVisible(twoKg);
     await tester.tap(twoKg);
@@ -246,6 +274,16 @@ Widget _catalogPage() => LocalStoreCatalogPage(
       variants: _testVariants,
     ),
   ],
+);
+
+ProductDetailsProduct _detailsProduct() => const ProductDetailsProduct(
+  id: 'slgs-ashirvad-atta',
+  serviceType: 'local_store',
+  merchantId: 'sri-lakshmi-general-store',
+  name: 'Ashirvad Atta',
+  icon: Icons.inventory_2_rounded,
+  available: true,
+  variants: _testVariants,
 );
 
 const _testVariants = [

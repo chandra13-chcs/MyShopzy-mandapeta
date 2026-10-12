@@ -74,7 +74,7 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
         ),
         actions: [
-          SaveListButton(product: product, color: _ink, size: 23),
+          SaveListButton(product: product, color: AppTheme.white, size: 23),
           IconButton(
             onPressed: () =>
                 _showDemoMessage('Sharing is unavailable in this demo.'),

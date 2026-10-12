@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../checkout/presentation/checkout_page.dart';
+import '../../home/presentation/free_delivery_progress_strip.dart';
 import '../data/cart_store.dart';
 import '../../product_details/data/product_availability_store.dart';
 
@@ -120,6 +121,8 @@ class _CartPageState extends State<CartPage> {
           ),
         ),
         const SizedBox(height: 14),
+        const FreeDeliveryProgressStrip(),
+        const SizedBox(height: 14),
         for (final item in items) ...[
           _buildCartItem(item),
           const SizedBox(height: 12),
@@ -199,9 +202,11 @@ class _CartPageState extends State<CartPage> {
           ),
           const SizedBox(width: 4),
           IconButton(
-            onPressed: () => _runCartMutation(
-              _cartStore.removeItemFromUi(item.key),
-            ),
+            onPressed: _cartStore.isQuantityMutationPending(item.key)
+                ? null
+                : () => _runCartMutation(
+                    _cartStore.removeItemFromUi(item.key),
+                  ),
             tooltip: 'Remove item',
             visualDensity: VisualDensity.compact,
             icon: const Icon(
@@ -226,6 +231,7 @@ class _CartPageState extends State<CartPage> {
           variantId: item.productVariantId,
           defaultAvailable: item.available,
         );
+        final quantityPending = _cartStore.isQuantityMutationPending(item.key);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -252,14 +258,16 @@ class _CartPageState extends State<CartPage> {
                   _quantityButton(
                     icon: Icons.remove_rounded,
                     label: 'Decrease quantity',
-                    onPressed: () => _runCartMutation(
-                      _cartStore.decreaseQuantityFromUi(item.key),
-                    ),
+                    onPressed: quantityPending
+                        ? null
+                        : () => _runCartMutation(
+                            _cartStore.decreaseQuantityFromUi(item.key),
+                          ),
                   ),
                   SizedBox(
                     width: 25,
                     child: Text(
-                      '${item.quantity}',
+                      quantityPending ? '…' : '${item.quantity}',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: _mainText,
@@ -272,19 +280,21 @@ class _CartPageState extends State<CartPage> {
                     icon: Icons.add_rounded,
                     label: 'Increase quantity',
                     color: available ? _green : _secondaryText,
-                    onPressed: () {
-                      if (!available) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'This product is currently out of stock.',
-                            ),
-                          ),
-                        );
-                        return;
-                      }
-                      _increaseQuantity(item);
-                    },
+                    onPressed: quantityPending
+                        ? null
+                        : () {
+                            if (!available) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'This product is currently out of stock.',
+                                  ),
+                                ),
+                              );
+                              return;
+                            }
+                            _increaseQuantity(item);
+                          },
                   ),
                 ],
               ),
@@ -336,7 +346,7 @@ class _CartPageState extends State<CartPage> {
   Widget _quantityButton({
     required IconData icon,
     required String label,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
     Color color = _green,
   }) {
     return IconButton(
@@ -440,12 +450,19 @@ class _CartPageState extends State<CartPage> {
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+    return Column(
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+          child: FreeDeliveryProgressStrip(),
+        ),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(30),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
             Container(
               width: 82,
               height: 82,
@@ -491,9 +508,12 @@ class _CartPageState extends State<CartPage> {
               ),
               child: const Text('Continue Shopping'),
             ),
-          ],
+                ],
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 

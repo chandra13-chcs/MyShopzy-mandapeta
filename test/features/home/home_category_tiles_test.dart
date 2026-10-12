@@ -30,19 +30,7 @@ void main() {
     expect(find.byType(GridView), findsOneWidget);
     expect(
       find.byKey(const ValueKey('free-delivery-progress-strip')),
-      findsOneWidget,
-    );
-    expect(
-      tester
-          .getTopLeft(
-            find.byKey(const ValueKey('free-delivery-progress-strip')),
-          )
-          .dy,
-      lessThan(
-        tester
-            .getTopLeft(find.byKey(const ValueKey('home-category-restaurants')))
-            .dy,
-      ),
+      findsNothing,
     );
     expect(
       find.byKey(const ValueKey('home-category-arrow-meat_only_chicken')),

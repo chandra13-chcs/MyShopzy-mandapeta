@@ -1,12 +1,27 @@
-import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../app/router.dart';
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import 'auth_visuals.dart';
 
+const _configuredDevelopmentOtp = String.fromEnvironment(
+  'MYSHOPZY_DEVELOPMENT_CUSTOMER_OTP',
+);
+
 enum OtpVerificationPurpose { accountRegistration, login, passwordReset }
+
+String? developmentOtpHintForBuild({
+  required bool isDebugBuild,
+  required String configuredOtp,
+}) {
+  if (!isDebugBuild || !RegExp(r'^\d{6}$').hasMatch(configuredOtp)) {
+    return null;
+  }
+  return configuredOtp;
+}
 
 class OtpVerificationPage extends StatefulWidget {
   const OtpVerificationPage({
@@ -23,32 +38,20 @@ class OtpVerificationPage extends StatefulWidget {
 }
 
 class _OtpVerificationPageState extends State<OtpVerificationPage> {
-  static const _resendDelaySeconds = 30;
-
   final _otpController = TextEditingController();
   final _otpFocusNode = FocusNode();
-  Timer? _countdownTimer;
-  int _resendSeconds = _resendDelaySeconds;
   String? _message;
+  bool _verifying = false;
 
   @override
   void initState() {
     super.initState();
     _otpController.addListener(_handleOtpChanged);
     _otpFocusNode.addListener(_handleFocusChanged);
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_resendSeconds <= 1) {
-        _countdownTimer?.cancel();
-        setState(() => _resendSeconds = 0);
-      } else {
-        setState(() => _resendSeconds--);
-      }
-    });
   }
 
   @override
   void dispose() {
-    _countdownTimer?.cancel();
     _otpController
       ..removeListener(_handleOtpChanged)
       ..dispose();
@@ -129,8 +132,8 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                             ),
                             const SizedBox(height: 8),
                             const Text(
-                              'Real SMS OTP verification is not connected. '
-                              'No SMS was sent.',
+                              'Development-only verification · no SMS or '
+                              'WhatsApp message is sent.',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: AppTheme.secondaryText,
@@ -201,7 +204,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                               height: 52,
                               child: FilledButton(
                                 key: const ValueKey('otp-verify'),
-                                onPressed: _verify,
+                                onPressed: _verifying ? null : _verify,
                                 style: FilledButton.styleFrom(
                                   backgroundColor: AppTheme.primaryGreen,
                                   foregroundColor: AppTheme.white,
@@ -209,8 +212,8 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                                     borderRadius: BorderRadius.circular(12),
                                   ),
                                 ),
-                                child: const Text(
-                                  'Verify',
+                                child: Text(
+                                  _verifying ? 'Verifying…' : 'Verify',
                                   style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w700,
@@ -316,30 +319,28 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
   }
 
   Widget _resendRow() {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        const Text(
-          'Didn’t get the OTP? ',
-          style: TextStyle(
-            color: AppTheme.darkGreen,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        if (_resendSeconds > 0)
-          Text(
-            'Resend SMS in ${_resendSeconds}s',
-            style: const TextStyle(color: AppTheme.secondaryText, fontSize: 14),
-          )
-        else
-          TextButton(
-            key: const ValueKey('otp-resend'),
-            onPressed: _resend,
-            child: const Text('Resend SMS'),
-          ),
-      ],
+    final developmentOtpHint = developmentOtpHintForBuild(
+      isDebugBuild: kDebugMode,
+      configuredOtp: _configuredDevelopmentOtp,
+    );
+    final notice = switch (widget.purpose) {
+      OtpVerificationPurpose.accountRegistration =>
+        'No SMS or WhatsApp message was sent. Account registration is not connected.',
+      OtpVerificationPurpose.login =>
+        developmentOtpHint == null
+            ? 'Development-only login: no SMS or WhatsApp message was sent. Enter the code configured for this backend.'
+            : 'Development-only OTP hint: $developmentOtpHint. No SMS or WhatsApp message is sent.',
+      OtpVerificationPurpose.passwordReset =>
+        'No SMS or WhatsApp message was sent. Password recovery is not connected.',
+    };
+    return Text(
+      notice,
+      textAlign: TextAlign.center,
+      style: const TextStyle(
+        color: AppTheme.secondaryText,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
     );
   }
 
@@ -347,6 +348,12 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     FocusScope.of(context).unfocus();
     if (!RegExp(r'^\d{6}$').hasMatch(_otpController.text)) {
       setState(() => _message = 'Enter the complete 6-digit OTP.');
+      return;
+    }
+    if (widget.purpose == OtpVerificationPurpose.login &&
+        kDebugMode &&
+        CustomerApi.instance.isConfigured) {
+      _verifyDevelopmentOtp();
       return;
     }
     setState(() {
@@ -357,6 +364,27 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
         OtpVerificationPurpose.passwordReset => 'OTP verification and password reset are not connected. No password was changed.',
       };
     });
+  }
+
+  Future<void> _verifyDevelopmentOtp() async {
+    setState(() {
+      _verifying = true;
+      _message = null;
+    });
+    try {
+      await CustomerApi.instance.verifyDevelopmentOtp(
+        phoneNumber: '+91${widget.phoneNumber}',
+        otp: _otpController.text,
+      );
+      if (!mounted) return;
+      await Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRouter.home, (route) => false);
+    } on CustomerApiException catch (error) {
+      if (mounted) setState(() => _message = error.message);
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
   }
 
   String get _verificationReason => switch (widget.purpose) {
@@ -370,22 +398,6 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     OtpVerificationPurpose.login => 'Back to Login',
     OtpVerificationPurpose.passwordReset => 'Back to recovery',
   };
-
-  void _resend() {
-    setState(() {
-      _resendSeconds = _resendDelaySeconds;
-      _message = 'UI demo only · no SMS was sent.';
-    });
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (_resendSeconds <= 1) {
-        _countdownTimer?.cancel();
-        setState(() => _resendSeconds = 0);
-      } else {
-        setState(() => _resendSeconds--);
-      }
-    });
-  }
 
   String _maskedPhoneNumber(String number) {
     final visibleDigits = number.length > 4

@@ -201,7 +201,7 @@ void main() {
       );
       addTearDown(api.close);
 
-      await api.addCartItem('product-id', quantity: 2);
+      expect(await api.addCartItem('product-id', quantity: 2), 2);
       final quote = await api.getCheckoutQuote();
 
       expect(api.hasCartToken, isTrue);
@@ -231,16 +231,25 @@ void main() {
               201,
             );
           }
+          if (request.method == 'PATCH') {
+            return http.Response(
+              jsonEncode({
+                'data': {'productId': 'product-id', 'quantity': 3},
+              }),
+              200,
+            );
+          }
           return http.Response('', 204);
         }),
       );
       addTearDown(api.close);
       await api.ensureCart();
 
-      await api.updateCartItem('product-id', 3);
+      final quantity = await api.updateCartItem('product-id', 3);
       await api.removeCartItem('product-id');
       await api.clearCart();
 
+      expect(quantity, 3);
       expect(requests.map((request) => request.method), [
         'POST',
         'PATCH',

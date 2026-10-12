@@ -898,7 +898,7 @@ class _ToolbarPill extends StatelessWidget {
   }
 }
 
-class _ProductCard extends StatelessWidget {
+class _ProductCard extends StatefulWidget {
   const _ProductCard({
     required this.product,
     required this.placeholderIndex,
@@ -911,6 +911,11 @@ class _ProductCard extends StatelessWidget {
   final String storeName;
   final List<StoreProduct> relatedProducts;
 
+  @override
+  State<_ProductCard> createState() => _ProductCardState();
+}
+
+class _ProductCardState extends State<_ProductCard> {
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
   static const _imageColors = [
@@ -920,8 +925,62 @@ class _ProductCard extends StatelessWidget {
     [Color(0xFFE3E6F1), Color(0xFFB7BED5)],
   ];
 
+  StoreProduct get product => widget.product;
+  int get placeholderIndex => widget.placeholderIndex;
+  String get storeName => widget.storeName;
+  List<StoreProduct> get relatedProducts => widget.relatedProducts;
+
+  String? _selectedVariantId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedVariantId = _defaultVariantId(product);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProductCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.product.id != product.id ||
+        !_sameVariantIds(oldWidget.product.variants, product.variants)) {
+      _selectedVariantId = _defaultVariantId(product);
+    }
+  }
+
+  String? _defaultVariantId(StoreProduct item) {
+    if (item.variants.isEmpty) return null;
+    for (final variant in item.variants) {
+      if (variant.available) return variant.id;
+    }
+    return item.variants.first.id;
+  }
+
+  bool _sameVariantIds(List<ProductVariant> first, List<ProductVariant> second) {
+    if (first.length != second.length) return false;
+    for (var index = 0; index < first.length; index++) {
+      if (first[index].id != second[index].id) return false;
+    }
+    return true;
+  }
+
+  ProductVariant? get _selectedVariant {
+    for (final variant in product.variants) {
+      if (variant.id == _selectedVariantId) return variant;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedVariant = _selectedVariant;
+    final displayPrice = selectedVariant == null
+        ? product.price
+        : selectedVariant.priceInPaise / 100;
+    final displayMrp = selectedVariant?.mrpInPaise == null
+        ? product.mrp
+        : selectedVariant!.mrpInPaise! / 100;
+    final displayDiscount =
+        selectedVariant?.discountPercent ?? product.discount;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -978,12 +1037,11 @@ class _ProductCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Positioned(
-                  bottom: 6,
-                  right: 6,
-                  child: product.variants.isNotEmpty
-                      ? _variantOptionsButton(context)
-                      : CartProductControl(
+                if (product.variants.isEmpty)
+                  Positioned(
+                    bottom: 6,
+                    right: 6,
+                    child: CartProductControl(
                           available: product.available,
                           productId: product.id,
                           serviceType: 'local_store',
@@ -1001,8 +1059,8 @@ class _ProductCard extends StatelessWidget {
                           width: 96,
                           height: 31,
                           unavailableLabel: 'OUT OF STOCK',
-                        ),
-                ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1017,7 +1075,9 @@ class _ProductCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(5),
             ),
             child: Text(
-              product.variants.isNotEmpty ? 'From' : product.packSize,
+              product.variants.isNotEmpty
+                  ? selectedVariant?.label ?? 'Select size'
+                  : product.packSize,
               style: const TextStyle(
                 color: _ink,
                 fontSize: 9,
@@ -1029,9 +1089,7 @@ class _ProductCard extends StatelessWidget {
         Row(
           children: [
             Text(
-              product.variants.isNotEmpty
-                  ? 'From ₹${_formatPrice(product.price)}'
-                  : '₹${_formatPrice(product.price)}',
+              '₹${_formatPrice(displayPrice)}',
               style: const TextStyle(
                 color: _ink,
                 fontSize: 14,
@@ -1039,9 +1097,9 @@ class _ProductCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 4),
-            if (product.mrp > product.price)
+            if (displayMrp > displayPrice)
               Text(
-                '₹${product.mrp.toStringAsFixed(0)}',
+                '₹${_formatPrice(displayMrp)}',
                 style: const TextStyle(
                   color: _muted,
                   fontSize: 9,
@@ -1050,10 +1108,10 @@ class _ProductCard extends StatelessWidget {
               ),
           ],
         ),
-        if (product.discount > 0) ...[
+        if (displayDiscount > 0) ...[
           const SizedBox(height: 2),
           Text(
-            '${product.discount}% OFF',
+            '$displayDiscount% OFF',
             style: const TextStyle(
               color: AppTheme.primaryGreen,
               fontSize: 10,
@@ -1061,7 +1119,6 @@ class _ProductCard extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 2),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _openDetails(context),
@@ -1113,27 +1170,61 @@ class _ProductCard extends StatelessWidget {
               ),
             ],
           ),
+        if (product.variants.isNotEmpty) ...[
+          const SizedBox(height: 3),
+          _buildVariantSelector(),
+          const SizedBox(height: 3),
+          _buildVariantCartControl(selectedVariant),
+        ],
       ],
     );
   }
 
-  Widget _variantOptionsButton(BuildContext context) {
-    return SizedBox(
-      width: 96,
-      height: 31,
-      child: FilledButton(
-        onPressed: () => _openDetails(context),
-        style: FilledButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: AppTheme.primaryGreen,
-          padding: EdgeInsets.zero,
-          side: BorderSide(color: AppTheme.primaryGreen),
-        ),
-        child: const Text(
-          'OPTIONS',
-          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-        ),
-      ),
+  Widget _buildVariantSelector() {
+    return Wrap(
+      spacing: 3,
+      runSpacing: 0,
+      children: [
+        for (final variant in product.variants)
+          ChoiceChip(
+            label: Text(variant.label),
+            selected: variant.id == _selectedVariantId,
+            onSelected: (_) => setState(() => _selectedVariantId = variant.id),
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+            labelPadding: const EdgeInsets.symmetric(horizontal: 3),
+            padding: EdgeInsets.zero,
+            labelStyle: const TextStyle(fontSize: 9),
+            selectedColor: const Color(0xFFE8F3E9),
+            side: BorderSide(
+              color: variant.id == _selectedVariantId
+                  ? AppTheme.primaryGreen
+                  : const Color(0xFFE5E9E3),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildVariantCartControl(ProductVariant? variant) {
+    if (variant == null) return const SizedBox.shrink();
+    return CartProductControl(
+      available: variant.available,
+      productId: product.id,
+      serviceType: 'local_store',
+      merchantId: product.storeId,
+      productVariantId: variant.id,
+      variantLabel: variant.label,
+      categoryId: product.categoryId,
+      name: product.name,
+      description: '${product.brand} · ${variant.label} · ${product.description}',
+      priceInPaise: variant.priceInPaise,
+      imageUrl: variant.imageUrl ?? product.imageUrl,
+      icon: Icons.inventory_2_rounded,
+      backendCatalogItem: product.isBackendData,
+      width: double.infinity,
+      height: 29,
+      unavailableLabel: 'OUT OF STOCK',
     );
   }
 

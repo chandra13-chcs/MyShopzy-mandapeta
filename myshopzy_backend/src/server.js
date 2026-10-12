@@ -1,6 +1,9 @@
 const { createApp } = require('./app');
 const { createDatabasePool } = require('./config/database');
 const { loadConfig } = require('./config/env');
+const {
+  createDevelopmentCustomerAuth,
+} = require('./modules/customer-auth/development-auth');
 
 function shutdownServer(server, pool) {
   return new Promise((resolve, reject) => {
@@ -33,7 +36,15 @@ function startServer({
     ...(PoolClass ? { PoolClass } : {}),
     onError: () => logger.error('Unexpected PostgreSQL pool error.'),
   });
-  const app = createApp({ databasePool: pool });
+  const developmentCustomerAuth = createDevelopmentCustomerAuth({
+    databasePool: pool,
+    config,
+  });
+  const app = createApp({
+    databasePool: pool,
+    authenticateCustomer: developmentCustomerAuth.authenticateCustomer,
+    developmentCustomerAuthRouter: developmentCustomerAuth.router,
+  });
   const server = app.listen(config.port, () => {
     logger.log(`MyShopzy backend listening on port ${config.port}`);
   });

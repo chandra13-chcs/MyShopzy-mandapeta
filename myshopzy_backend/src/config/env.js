@@ -52,6 +52,9 @@ function loadConfig(env = process.env) {
     port,
     nodeEnv: env.NODE_ENV || 'development',
     database,
+    developmentCustomerOtp: env.DEVELOPMENT_CUSTOMER_OTP || null,
+    developmentCustomerSessionSecret:
+      env.DEVELOPMENT_CUSTOMER_SESSION_SECRET || null,
   });
 }
 

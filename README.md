@@ -26,6 +26,31 @@ app (do not include `/api/v1`):
 flutter run --dart-define=MYSHOPZY_API_BASE_URL=http://localhost:3000
 ```
 
+### Development-only OTP login
+
+For local debug login only, the OTP screen can display the configured test OTP
+without adding an endpoint that reveals it. Create an untracked
+`development.local.json` in the project root (it is ignored by Git):
+
+```json
+{
+  "MYSHOPZY_API_BASE_URL": "http://localhost:3000",
+  "MYSHOPZY_DEVELOPMENT_CUSTOMER_OTP": "your-local-six-digit-test-code"
+}
+```
+
+Set the OTP value to match `DEVELOPMENT_CUSTOMER_OTP` in the backend's local
+environment. Do not put `DEVELOPMENT_CUSTOMER_SESSION_SECRET` or other backend
+secrets in this Flutter file. Run the app with:
+
+```sh
+flutter run --dart-define-from-file=development.local.json
+```
+
+The hint is rendered only in debug builds and only for a valid six-digit value;
+release builds never display it. No SMS or WhatsApp message is sent. The
+backend remains responsible for verifying the entered OTP and issuing a
+customer session.
 Use a host address reachable from the target device or emulator in place of
 `localhost` when needed; non-loopback backend URLs must use HTTPS. Restaurant
 and grocery/local-store shops, their

@@ -3,8 +3,9 @@
 CommonJS/Express backend for the MyShopzy Mandapeta delivery platform.
 Customer catalog read APIs are implemented against the initial PostgreSQL
 schema. Cart and checkout foundations are also implemented; order placement
-requires a trusted authentication middleware which is not yet configured.
-The backend is not production-ready.
+requires trusted customer authentication. The only configured customer
+authentication is an explicitly development-only OTP path. The backend is not
+production-ready.
 
 ## Structure
 
@@ -43,8 +44,7 @@ Implemented customer catalog endpoints:
 
 Catalog endpoints require PostgreSQL and only return active shops/products
 belonging to approved partners. They do not expose customer-specific records.
-Login/signup, JWT authentication, and customer-scoped APIs are intentionally
-deferred; do not accept a client-supplied customer ID as authorization.
+Do not accept a client-supplied customer ID as authorization.
 
 Cart and checkout endpoints:
 
@@ -68,8 +68,9 @@ credential. The existing Flutter cart is demo-only and still uses local
 product IDs/prices; it has not been wired to these APIs. Order placement is
 disabled unless `createApp` receives a trusted `authenticateCustomer`
 middleware which sets `req.auth.customerUserId` from verified authentication.
-No authentication mechanism is implemented here, request bodies cannot choose
-the customer, and private customer APIs return `401` by default.
+The running server injects the development-only customer authenticator described
+below. Request bodies cannot choose the customer, and private customer APIs
+remain protected by verified bearer-token authentication.
 
 Authenticated customer API foundations (all return `401` unless a trusted
 `authenticateCustomer` middleware is injected):
@@ -157,16 +158,27 @@ database-backed tests using that exact role.
 
 ## Planned security and integrations
 
-Authentication, role-based authorization, rate limiting, and request logging
-are not implemented yet. Catalog endpoints validate their query/path inputs
+Production authentication, role-based authorization, rate limiting, and request
+logging are not implemented yet. Catalog endpoints validate their query/path inputs
 and return generic errors without leaking PostgreSQL details.
 The PostgreSQL pool uses the validated environment settings. Pool errors and
 readiness responses do not expose database error details or credentials.
 Payment processing, OTP delivery, object storage, and production deployment
-remain unconfigured. The migrations do not model coupons, refunds, reviews,
+remain unconfigured. For local development only, `POST
+/api/v1/auth/development/verify-otp` accepts a six-digit code configured through
+`DEVELOPMENT_CUSTOMER_OTP` and signs a 15-minute customer bearer token using
+`DEVELOPMENT_CUSTOMER_SESSION_SECRET` (at least 32 bytes). No SMS or WhatsApp is
+sent. The code is shared development configuration, not real identity
+verification; only an existing active customer whose phone matches can receive
+a session. The endpoint returns 404 in production, and customer authentication
+fails closed there. The Flutter app exposes this flow only in debug builds and
+keeps the token in memory; it is lost when the app restarts. Do not use this
+mechanism in production or treat it as provider-backed OTP authentication.
+The migrations do not model coupons, refunds, reviews,
 support requests, notifications, or payment verification. Coupon
 eligibility/redemption, notification delivery, support ticketing, payment
 verification/provider references, and review/rating records need separately
 designed schema and integrations before those APIs can be implemented. Order
 creation is available only when a trusted authentication middleware is
-injected; no login/signup/JWT implementation is included.
+injected; production login/signup and provider-backed OTP/JWT authentication
+are not implemented.

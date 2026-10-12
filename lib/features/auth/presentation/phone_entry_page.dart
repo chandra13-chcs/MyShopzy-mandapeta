@@ -1,6 +1,8 @@
+ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import 'auth_visuals.dart';
 import 'otp_verification_page.dart';
 
@@ -104,8 +106,9 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
                                 ),
                                 const SizedBox(height: 20),
                                 AuthPhoneField(
-                                  fieldKey:
-                                      const ValueKey('phone-number-field'),
+                                  fieldKey: const ValueKey(
+                                    'phone-number-field',
+                                  ),
                                   controller: _phoneController,
                                 ),
                                 const SizedBox(height: 16),
@@ -132,9 +135,14 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                const Text(
-                                  'OTP verification is not connected yet. '
-                                  'No SMS will be sent.',
+                                Text(
+                                  _developmentOtpAvailable
+                                      ? 'Development-only login can be tested '
+                                            'for existing customers. No SMS or WhatsApp '
+                                            'message will be sent.'
+                                      : 'OTP verification is not connected. '
+                                            'No SMS or WhatsApp message will '
+                                            'be sent.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: AppTheme.secondaryText,
@@ -171,4 +179,7 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
       ),
     );
   }
+
+  bool get _developmentOtpAvailable =>
+      kDebugMode && CustomerApi.instance.isConfigured;
 }
