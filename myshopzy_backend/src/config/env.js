@@ -17,6 +17,7 @@ function loadConfig(env = process.env) {
   const configuredPostgresKeys = POSTGRES_ENV_KEYS.filter(
     (key) => env[key] !== undefined && env[key] !== '',
   );
+
   let database = null;
 
   if (configuredPostgresKeys.length > 0) {

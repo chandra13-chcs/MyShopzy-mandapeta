@@ -16,6 +16,7 @@ import 'delivery_location_bottom_sheet.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../local_stores/data/local_store_session.dart';
+import '../../local_stores/models/local_store.dart';
 import '../../meat/presentation/meat_page.dart';
 import '../../parcel/presentation/parcel_page.dart';
 import '../../restaurants/presentation/restaurants_page.dart';
@@ -300,124 +301,28 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildServiceGrid() {
-    const services = [
-      _Service(
-        'Meat Only Chicken',
-        'meat_only_chicken',
-        'assets/category_tiles/meat_only_chicken.jpg',
-      ),
-      _Service('Bakery', 'bakery', 'assets/category_tiles/bakery.jpg'),
-      _Service('Parcel', 'parcel', 'assets/category_tiles/parcel.jpg'),
-      _Service(
-        'Local Stores',
-        'local_stores',
-        'assets/category_tiles/local_stores.jpg',
-      ),
-      _Service(
-        'Fruits & Vegetables',
-        'fruits_vegetables',
-        'assets/category_tiles/fruits_vegetables.jpg',
-      ),
-      _Service(
-        'Restaurants',
-        'restaurants',
-        'assets/category_tiles/restaurants.jpg',
-      ),
-    ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final crossAxisCount = constraints.maxWidth < 310 ? 2 : 3;
-        final tileWidth =
-            (constraints.maxWidth - 8 * (crossAxisCount - 1)) / crossAxisCount;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: services.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            childAspectRatio: 1,
-          ),
-          itemBuilder: (context, index) {
-            final service = services[index];
-            final onTap = switch (service.key) {
-              'restaurants' => () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const RestaurantsPage(),
+    return _HomeServiceGrid(
+      onServiceTap: (context, service) {
+        final destination = service.partnerType == null
+            ? switch (service.key) {
+                'restaurants' => const RestaurantsPage(),
+                'bakery' => const BakeryPage(),
+                'meat_only_chicken' => const MeatPage(),
+                'parcel' => const ParcelPage(),
+                'local_stores' => const LocalStoresPage(),
+                'fruits_vegetables' => const VegetablesFruitsPage(),
+                _ => const LocalStoresPage(),
+              }
+            : switch (service.partnerType) {
+                'restaurant' => const RestaurantsPage(),
+                'meat_shop' => const MeatPage(),
+                final partnerType => LocalStoresPage(
+                  partnerType: partnerType,
+                  categoryName: service.name,
                 ),
-              ),
-              'bakery' => () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const BakeryPage(),
-                ),
-              ),
-              'meat_only_chicken' => () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (context) => const MeatPage()),
-              ),
-              'parcel' => () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const ParcelPage(),
-                ),
-              ),
-              'local_stores' => () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const LocalStoresPage(),
-                ),
-              ),
-              'fruits_vegetables' => () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const VegetablesFruitsPage(),
-                ),
-              ),
-              _ => null,
-            };
-            return PressScaleFeedback(
-              child: Material(
-                color: AppTheme.white,
-                borderRadius: BorderRadius.circular(12),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  key: ValueKey('home-category-${service.key}'),
-                  onTap: onTap,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.asset(
-                        service.assetPath,
-                        fit: BoxFit.cover,
-                        cacheWidth:
-                            (tileWidth * MediaQuery.devicePixelRatioOf(context))
-                                .round(),
-                        semanticLabel: service.name,
-                      ),
-                      Positioned(
-                        right: 6,
-                        bottom: 6,
-                        child: IgnorePointer(
-                          child: Container(
-                            key: ValueKey('home-category-arrow-${service.key}'),
-                            width: 26,
-                            height: 26,
-                            decoration: const BoxDecoration(
-                              color: AppTheme.brandYellow,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.arrow_forward_rounded,
-                              color: AppTheme.darkGreen,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+              };
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (context) => destination),
         );
       },
     );
@@ -2445,11 +2350,264 @@ const _groceryDiscoverySections = [
 ];
 
 class _Service {
-  const _Service(this.name, this.key, this.assetPath);
+  const _Service(
+    this.name,
+    this.key,
+    this.assetPath, {
+    this.partnerType,
+    this.isDynamic = false,
+  });
+
+  factory _Service.forPartnerCategory(ApiPartnerCategory category) {
+    final partnerType = category.partnerType;
+    final assetPath = switch (partnerType) {
+      'restaurant' => 'assets/category_tiles/restaurants.jpg',
+      'grocery' => 'assets/category_tiles/auth_groceries.png',
+      'meat_shop' => 'assets/category_tiles/meat_only_chicken.jpg',
+      'other' => 'assets/category_tiles/local_stores.jpg',
+      'bakery' => 'assets/category_tiles/bakery.jpg',
+      'vegetables_fruits' => 'assets/category_tiles/fruits_vegetables.jpg',
+      _ => 'assets/category_tiles/local_stores.jpg',
+    };
+    return _Service(
+      category.displayName,
+      'partner-${category.partnerType}',
+      assetPath,
+      partnerType: category.partnerType,
+      isDynamic: true,
+    );
+  }
 
   final String name;
   final String key;
   final String assetPath;
+  final String? partnerType;
+  final bool isDynamic;
+}
+
+const _demoHomeServices = [
+  _Service(
+    'Meat Only Chicken',
+    'meat_only_chicken',
+    'assets/category_tiles/meat_only_chicken.jpg',
+  ),
+  _Service('Bakery', 'bakery', 'assets/category_tiles/bakery.jpg'),
+  _Service('Parcel', 'parcel', 'assets/category_tiles/parcel.jpg'),
+  _Service(
+    'Local Stores',
+    'local_stores',
+    'assets/category_tiles/local_stores.jpg',
+  ),
+  _Service(
+    'Fruits & Vegetables',
+    'fruits_vegetables',
+    'assets/category_tiles/fruits_vegetables.jpg',
+  ),
+  _Service(
+    'Restaurants',
+    'restaurants',
+    'assets/category_tiles/restaurants.jpg',
+  ),
+];
+
+class _HomeServiceGrid extends StatefulWidget {
+  const _HomeServiceGrid({required this.onServiceTap});
+
+  final void Function(BuildContext context, _Service service) onServiceTap;
+
+  @override
+  State<_HomeServiceGrid> createState() => _HomeServiceGridState();
+}
+
+class _HomeServiceGridState extends State<_HomeServiceGrid> {
+  late Future<List<_Service>> _servicesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadServices();
+  }
+
+  void _loadServices() {
+    final api = CustomerApi.instance;
+    _servicesFuture = api.isConfigured
+        ? _loadPartnerServices(api)
+        : Future<List<_Service>>.value(_demoHomeServices);
+  }
+
+  Future<List<_Service>> _loadPartnerServices(CustomerApi api) async {
+    final categories = await api.getPartnerCategories();
+    return categories
+        .map(_Service.forPartnerCategory)
+        .toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<_Service>>(
+      future: _servicesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 28),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError) {
+          final error = snapshot.error;
+          final message = error is CustomerApiException
+              ? error.message
+              : 'Please try again.';
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Partner categories unavailable',
+                  style: TextStyle(
+                    color: HomePage._ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: HomePage._muted,
+                    fontSize: 12,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => setState(_loadServices),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry categories'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final services = snapshot.data!;
+        if (services.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+              'No partner categories are available right now.',
+              style: TextStyle(color: HomePage._muted, fontSize: 13),
+            ),
+          );
+        }
+
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final crossAxisCount = constraints.maxWidth < 310 ? 2 : 3;
+            final tileWidth =
+                (constraints.maxWidth - 8 * (crossAxisCount - 1)) /
+                crossAxisCount;
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: services.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 1,
+              ),
+              itemBuilder: (context, index) {
+                final service = services[index];
+                return PressScaleFeedback(
+                  child: Material(
+                    color: AppTheme.white,
+                    borderRadius: BorderRadius.circular(12),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      key: ValueKey('home-category-${service.key}'),
+                      onTap: () => widget.onServiceTap(context, service),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.asset(
+                            service.assetPath,
+                            fit: BoxFit.cover,
+                            cacheWidth:
+                                (tileWidth *
+                                        MediaQuery.devicePixelRatioOf(context))
+                                    .round(),
+                            semanticLabel: service.name,
+                          ),
+                          if (service.isDynamic)
+                            Positioned(
+                              left: 8,
+                              right: 38,
+                              bottom: 11,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.black.withValues(alpha: 0),
+                                      Colors.black.withValues(alpha: 0.7),
+                                    ],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    5,
+                                    12,
+                                    5,
+                                    5,
+                                  ),
+                                  child: Text(
+                                    service.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Positioned(
+                            right: 6,
+                            bottom: 6,
+                            child: IgnorePointer(
+                              child: Container(
+                                key: ValueKey(
+                                  'home-category-arrow-${service.key}',
+                                ),
+                                width: 26,
+                                height: 26,
+                                decoration: const BoxDecoration(
+                                  color: AppTheme.brandYellow,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.arrow_forward_rounded,
+                                  color: AppTheme.darkGreen,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
 }
 
 class _RestaurantDiscoverySection {

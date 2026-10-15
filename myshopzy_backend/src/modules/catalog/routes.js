@@ -1,6 +1,6 @@
 const express = require('express');
 
-const PARTNER_TYPES = new Set(['restaurant', 'grocery', 'meat_shop', 'other']);
+const PARTNER_TYPE_PATTERN = /^[a-z][a-z0-9_]{0,39}$/;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const UUID_PATTERN =
@@ -74,22 +74,60 @@ function sendDatabaseUnavailable(res) {
   });
 }
 
+function partnerTypeDisplayName(partnerType) {
+  const knownNames = {
+    restaurant: 'Restaurants',
+    grocery: 'Groceries',
+    meat_shop: 'Meat',
+    other: 'Local Stores',
+    vegetables_fruits: 'Fruits & Vegetables',
+  };
+  if (knownNames[partnerType]) return knownNames[partnerType];
+  return partnerType
+    .split('_')
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 function createCatalogRouter({ databasePool }) {
   const router = express.Router();
 
+  router.get('/partner-categories', async (req, res, next) => {
+    if (!databasePool) return sendDatabaseUnavailable(res);
+
+    try {
+      const result = await databasePool.query(
+        `SELECT partner_type, COUNT(*)::integer AS partner_count
+         FROM app.partners
+         WHERE is_active = true
+         GROUP BY partner_type
+         ORDER BY partner_type`,
+      );
+      return res.status(200).json({
+        data: result.rows.map((row) => ({
+          partner_type: row.partner_type,
+          display_name: partnerTypeDisplayName(row.partner_type),
+          partner_count: row.partner_count,
+        })),
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   router.get('/shops', async (req, res, next) => {
     const partnerType = queryString(req.query.partnerType, 'partnerType', {
-      maxLength: 20,
+      maxLength: 40,
     });
     const search = queryString(req.query.q, 'q');
     const page = pagination(req.query);
     const validationError = partnerType.error || search.error || page.error;
 
     if (validationError) return sendValidationError(res, validationError);
-    if (partnerType.value && !PARTNER_TYPES.has(partnerType.value)) {
+    if (partnerType.value && !PARTNER_TYPE_PATTERN.test(partnerType.value)) {
       return sendValidationError(
         res,
-        'partnerType must be restaurant, grocery, meat_shop, or other.',
+        'partnerType must be a lowercase identifier using letters, digits, or underscores.',
       );
     }
     if (!databasePool) return sendDatabaseUnavailable(res);
@@ -175,7 +213,7 @@ function createCatalogRouter({ databasePool }) {
     const shopId = queryUuid(req.query.shopId, 'shopId');
     const categoryId = queryUuid(req.query.categoryId, 'categoryId');
     const partnerType = queryString(req.query.partnerType, 'partnerType', {
-      maxLength: 20,
+      maxLength: 40,
     });
     const search = queryString(req.query.q, 'q');
     const page = pagination(req.query);
@@ -187,10 +225,10 @@ function createCatalogRouter({ databasePool }) {
       page.error;
 
     if (validationError) return sendValidationError(res, validationError);
-    if (partnerType.value && !PARTNER_TYPES.has(partnerType.value)) {
+    if (partnerType.value && !PARTNER_TYPE_PATTERN.test(partnerType.value)) {
       return sendValidationError(
         res,
-        'partnerType must be restaurant, grocery, meat_shop, or other.',
+        'partnerType must be a lowercase identifier using letters, digits, or underscores.',
       );
     }
     if (!databasePool) return sendDatabaseUnavailable(res);

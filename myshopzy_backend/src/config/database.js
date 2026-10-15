@@ -9,6 +9,9 @@ function createDatabasePool(databaseConfig, { PoolClass = Pool, onError } = {}) 
     database: databaseConfig.database,
     user: databaseConfig.user,
     password: databaseConfig.password,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
   });
 
   if (onError) {

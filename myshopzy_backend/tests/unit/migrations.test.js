@@ -21,6 +21,10 @@ const customerAccountSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/003_customer_account_parcels.sql',
 );
+const dynamicCategoriesSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/004_dynamic_partner_categories_and_delivery_zones.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -95,23 +99,39 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const schema = await readFile(schemaPath, 'utf8');
   const cartsSchema = await readFile(cartsSchemaPath, 'utf8');
   const customerAccountSchema = await readFile(customerAccountSchemaPath, 'utf8');
+  const dynamicCategoriesSchema = await readFile(dynamicCategoriesSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
-  assert.equal(appliedCount, 3);
+  assert.equal(appliedCount, 4);
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
   assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
   assert.equal(
     pool.applied.get('003').name,
     '003_customer_account_parcels.sql',
   );
+  assert.equal(
+    pool.applied.get('004').name,
+    '004_dynamic_partner_categories_and_delivery_zones.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
   assert.ok(calls.includes(customerAccountSchema.trim()));
+  assert.ok(calls.includes(dynamicCategoriesSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
   assert.equal(pool.released, true);
+});
+
+test('dynamic category and serviceability migration supports live partner types', async () => {
+  const schema = await readFile(dynamicCategoriesSchemaPath, 'utf8');
+
+  assert.match(schema, /DROP CONSTRAINT partners_partner_type_check/);
+  assert.match(schema, /partner_type_format_check/);
+  assert.match(schema, /GENERATED ALWAYS AS \(status = 'approved'\) STORED/);
+  assert.match(schema, /CREATE TABLE app\.serviceable_pincodes\b/);
+  assert.match(schema, /pincode ~ '\^\[0-9\]\{6\}\$'/);
 });
 
 test('customer account migration adds address, wishlist, and parcel foundations', async () => {
@@ -143,7 +163,7 @@ test('skips matching applied migrations and refuses checksum drift', async () =>
   const alreadyApplied = createMockPool({
     applied: new Map([['001', { checksum: migration.checksum }]]),
   });
-  assert.equal(await runMigrations(alreadyApplied), 3);
+  assert.equal(await runMigrations(alreadyApplied), 4);
   assert.equal(
     alreadyApplied.calls.some((call) => call.sql === migration.sql.trim()),
     false,

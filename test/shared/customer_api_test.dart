@@ -19,6 +19,7 @@ void main() {
                 'data': [
                   {
                     'id': 'shop-id',
+                    'partner_id': 'partner-id',
                     'name': 'Kitchen',
                     'partner_type': 'restaurant',
                     'address': 'Main Road',
@@ -82,6 +83,7 @@ void main() {
 
       expect(api.isConfigured, isTrue);
       expect(shops.single.name, 'Kitchen');
+      expect(shops.single.partnerId, 'partner-id');
       expect(shops.single.address, 'Main Road');
       expect(categories.single.name, 'Meals');
       expect(products.single.priceMinor, 12345);
@@ -132,6 +134,68 @@ void main() {
 
       expect(products, hasLength(101));
       expect(offsets, ['0', '100']);
+    });
+
+    test('loads every shop page within the API page-size limit', () async {
+      final offsets = <String?>[];
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          final offset = request.url.queryParameters['offset'];
+          offsets.add(offset);
+          final start = int.parse(offset!);
+          final count = start == 0 ? 100 : 1;
+          return http.Response(
+            jsonEncode({
+              'data': List.generate(
+                count,
+                (index) => {
+                  'id': 'shop-${start + index}',
+                  'name': 'Shop ${start + index}',
+                  'partner_type': 'grocery',
+                },
+              ),
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(api.close);
+
+      final shops = await api.getAllShops();
+
+      expect(shops, hasLength(101));
+      expect(offsets, ['0', '100']);
+    });
+
+    test('loads dynamic partner categories and their metadata', () async {
+      late http.Request request;
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((value) async {
+          request = value;
+          return http.Response(
+            jsonEncode({
+              'data': [
+                {
+                  'partner_type': 'sweet_shop',
+                  'display_name': 'Sweet Shop',
+                  'partner_count': 2,
+                },
+              ],
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(api.close);
+
+      final categories = await api.getPartnerCategories();
+
+      expect(categories.single.partnerType, 'sweet_shop');
+      expect(categories.single.displayName, 'Sweet Shop');
+      expect(categories.single.partnerCount, 2);
+      expect(request.url.path, '/api/v1/partner-categories');
     });
 
     test('checks delivery serviceability with location and pincode', () async {

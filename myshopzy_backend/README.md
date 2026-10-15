@@ -2,8 +2,9 @@
 
 CommonJS/Express backend for the MyShopzy Mandapeta delivery platform.
 Customer catalog read APIs are implemented against the initial PostgreSQL
-schema. Cart and checkout foundations are also implemented; order placement
-requires trusted customer authentication. The only configured customer
+schema. Customer profile, saved-address, cart, checkout, serviceability, and
+order APIs are backed by PostgreSQL. Order placement and customer-specific
+routes require trusted customer authentication. The only configured customer
 authentication is an explicitly development-only OTP path. The backend is not
 production-ready.
 
@@ -12,6 +13,8 @@ production-ready.
 - `src/app.js` creates the Express application and exposes `GET /health`.
 - `src/modules/catalog/routes.js` implements public shop, category, and product
   catalog reads under `/api/v1`.
+- `GET /api/v1/partner-categories` returns active partner types and counts for
+  the customer Home Page.
 - `src/modules/cart-checkout/routes.js` implements anonymous capability-token
   carts, server-priced checkout quotes, and authenticated order placement.
 - `src/server.js` loads environment variables and starts the HTTP server.
@@ -37,10 +40,12 @@ gaps are documented in `docs/customer-api-mapping.md`.
 
 Implemented customer catalog endpoints:
 
+- `GET /api/v1/partner-categories`
 - `GET /api/v1/shops`
 - `GET /api/v1/shops/:shopId/categories`
 - `GET /api/v1/products`
 - `GET /api/v1/products/:productId`
+- `POST /api/v1/delivery/serviceability`
 
 Catalog endpoints require PostgreSQL and only return active shops/products
 belonging to approved partners. They do not expose customer-specific records.
@@ -52,6 +57,27 @@ is returned by the catalog endpoints. The Flutter catalog recognizes `image_url`
 `pack_size`. Produce listings additionally require `produce_type` set to `fruit`
 or `vegetable`; this keeps unrelated grocery products out of the produce views.
 Prices and MRP values use the product currency's minor units.
+
+The partner-category endpoint reads distinct active partner types and counts
+from `app.partners`. Migration 004 provides the `is_active` projection over the
+existing approval status and permits new normalized partner-type identifiers.
+New types such as `bakery` or `sweet_shop` appear without a Flutter or backend
+code change.
+
+The serviceability endpoint validates coordinates and checks the submitted
+pincode against `app.serviceable_pincodes`. The table is empty until delivery
+areas are configured, so delivery fails closed. Order placement repeats the
+pincode lookup within the order transaction so clients cannot bypass
+checkout's serviceability check. This policy is pincode-only and does not
+verify that coordinates fall inside a delivery polygon.
+Configure an approved delivery pincode with:
+
+```sql
+INSERT INTO app.serviceable_pincodes (pincode)
+VALUES ('533308')
+ON CONFLICT (pincode) DO UPDATE
+SET is_active = true, updated_at = now();
+```
 
 Cart and checkout endpoints:
 
@@ -71,13 +97,17 @@ Cart and checkout endpoints:
 
 Cart tokens are bearer secrets for anonymous carts, not customer identities.
 Anyone with a token can operate that cart; clients must protect it like a
-credential. The existing Flutter cart is demo-only and still uses local
-product IDs/prices; it has not been wired to these APIs. Order placement is
-disabled unless `createApp` receives a trusted `authenticateCustomer`
-middleware which sets `req.auth.customerUserId` from verified authentication.
-The running server injects the development-only customer authenticator described
-below. Request bodies cannot choose the customer, and private customer APIs
-remain protected by verified bearer-token authentication.
+credential. Configured Flutter catalog products, cart operations, checkout
+quotes, and order placement use these APIs. Order placement is disabled unless
+`createApp` receives a trusted `authenticateCustomer` middleware which sets
+`req.auth.customerUserId` from verified authentication. The running server
+injects the development-only customer authenticator described below. Request
+bodies cannot choose the customer, and private customer APIs remain protected
+by verified bearer-token authentication.
+
+The Express JSON body parser rejects request bodies larger than 16 KB. The
+PostgreSQL pool bounds connection wait time to prevent requests and readiness
+checks from hanging indefinitely during database outages.
 
 Authenticated customer API foundations (all return `401` unless a trusted
 `authenticateCustomer` middleware is injected):
@@ -92,11 +122,10 @@ Authenticated customer API foundations (all return `401` unless a trusted
 - `POST /api/v1/me/parcels`, `GET /api/v1/me/parcels`,
   `GET /api/v1/me/parcels/:parcelId`
 
-Migration `003_customer_account_parcels.sql` adds only the saved-address,
-wishlist, and parcel-booking records needed by these APIs. Address, wishlist,
-profile, order, and parcel endpoints are customer-scoped and never accept a
-customer ID in their route or request body. Order history/details are read
-only.
+Migrations 002–004 add cart, customer-account, dynamic partner-category, and
+serviceability storage. Address, wishlist, profile, order, and parcel endpoints
+are customer-scoped and never accept a customer ID in their route or request
+body. Order history/details are read only.
 
 Prepared Super Admin read-only queries cover orders, customers, partners, and
 products. Admin routes mount only when `AUTH0_ISSUER_URL`, `AUTH0_AUDIENCE`,

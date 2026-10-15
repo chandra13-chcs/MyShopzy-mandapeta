@@ -24,6 +24,7 @@ class ApiShop {
     required this.id,
     required this.name,
     required this.partnerType,
+    this.partnerId,
     this.address,
     this.partnerName,
   });
@@ -31,6 +32,7 @@ class ApiShop {
   final String id;
   final String name;
   final String partnerType;
+  final String? partnerId;
   final String? address;
   final String? partnerName;
 
@@ -39,8 +41,29 @@ class ApiShop {
       id: _requiredString(json, 'id'),
       name: _requiredString(json, 'name'),
       partnerType: _requiredString(json, 'partner_type'),
+      partnerId: _optionalString(json['partner_id']),
       address: _optionalString(json['address']),
       partnerName: _optionalString(json['partner_name']),
+    );
+  }
+}
+
+class ApiPartnerCategory {
+  const ApiPartnerCategory({
+    required this.partnerType,
+    required this.displayName,
+    required this.partnerCount,
+  });
+
+  final String partnerType;
+  final String displayName;
+  final int partnerCount;
+
+  factory ApiPartnerCategory.fromJson(Map<String, dynamic> json) {
+    return ApiPartnerCategory(
+      partnerType: _requiredString(json, 'partner_type'),
+      displayName: _requiredString(json, 'display_name'),
+      partnerCount: _requiredInteger(json, 'partner_count', minimum: 1),
     );
   }
 }
@@ -759,16 +782,56 @@ class CustomerApi {
     _customerAccessToken = null;
   }
 
-  Future<List<ApiShop>> getShops({String? partnerType, String? query}) async {
+  Future<List<ApiShop>> getShops({
+    String? partnerType,
+    String? query,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    if (limit < 1 || limit > 100 || offset < 0) {
+      throw ArgumentError.value(
+        '$limit/$offset',
+        'limit/offset',
+        'Catalog pagination must use a limit from 1 to 100 and a '
+            'non-negative offset.',
+      );
+    }
     final payload = await _request(
       'GET',
       '/shops',
       queryParameters: {
         'partnerType': ?partnerType,
         'q': ?_nonEmptyQuery(query),
+        'limit': '$limit',
+        'offset': '$offset',
       },
     );
     return _parseList(payload, ApiShop.fromJson);
+  }
+
+  Future<List<ApiPartnerCategory>> getPartnerCategories() async {
+    final payload = await _request('GET', '/partner-categories');
+    return _parseList(payload, ApiPartnerCategory.fromJson);
+  }
+
+  Future<List<ApiShop>> getAllShops({
+    String? partnerType,
+    String? query,
+  }) async {
+    const pageSize = 100;
+    final shops = <ApiShop>[];
+    var offset = 0;
+    while (true) {
+      final page = await getShops(
+        partnerType: partnerType,
+        query: query,
+        limit: pageSize,
+        offset: offset,
+      );
+      shops.addAll(page);
+      if (page.length < pageSize) return shops;
+      offset += page.length;
+    }
   }
 
   Future<List<ApiCategory>> getCategories(String shopId) async {

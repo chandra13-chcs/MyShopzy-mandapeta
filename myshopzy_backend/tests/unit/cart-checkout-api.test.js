@@ -12,7 +12,10 @@ const otherShopId = '2301e7cc-e405-4148-8cfb-ddd8b59f6179';
 const partnerId = 'bc33d625-bbc1-4589-b2b2-6839d1f358d9';
 const otherPartnerId = '87420ef0-37da-4f82-a664-ce364390ce36';
 const customerId = '27dcad4a-f166-4fc8-a224-3d1c099dd459';
-const deliveryAddress = { formattedAddress: '12 Green Park Road, Mandapeta' };
+const deliveryAddress = {
+  formattedAddress: '12 Green Park Road, Mandapeta',
+  pincode: '533308',
+};
 
 function createDatabase({ failOn } = {}) {
   let state = {
@@ -194,6 +197,11 @@ function createDatabase({ failOn } = {}) {
         ? { rows: [{ user_id: customerId }], rowCount: 1 }
         : { rows: [], rowCount: 0 };
     }
+    if (normalized.startsWith('SELECT 1 FROM app.serviceable_pincodes')) {
+      return params[0] === '533308'
+        ? { rows: [{ '?column?': 1 }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    }
     if (normalized.startsWith('INSERT INTO app.orders')) {
       state.orders.push({ params: [...params] });
       return { rows: [], rowCount: 1 };
@@ -240,7 +248,10 @@ async function startServer(t, databasePool, { authenticated = false } = {}) {
       }
     : null;
   const server = http.createServer(
-    createApp({ databasePool, authenticateCustomer }),
+    createApp({
+      databasePool,
+      authenticateCustomer,
+    }),
   );
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));

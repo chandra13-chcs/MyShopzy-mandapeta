@@ -4,6 +4,9 @@ const { createCatalogRouter } = require('./modules/catalog/routes');
 const { createCartCheckoutRouter } = require('./modules/cart-checkout/routes');
 const { createCustomerAccountRouter } = require('./modules/customer-account/routes');
 const { createAdminReadRouter } = require('./modules/admin-read/routes');
+const {
+  createDeliveryServiceabilityRouter,
+} = require('./modules/delivery-serviceability/routes');
 
 function createApp({
   databasePool = null,
@@ -11,10 +14,11 @@ function createApp({
   authenticateAdmin = null,
   superAdminOrigin = null,
   developmentCustomerAuthRouter = null,
+  logger = console,
 } = {}) {
   const app = express();
 
-  app.use(express.json());
+  app.use(express.json({ limit: '16kb' }));
 
   app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
@@ -30,10 +34,17 @@ function createApp({
   if (developmentCustomerAuthRouter) {
     app.use('/api/v1', developmentCustomerAuthRouter);
   }
+  app.use(
+    '/api/v1',
+    createDeliveryServiceabilityRouter({ databasePool }),
+  );
   app.use('/api/v1', createCatalogRouter({ databasePool }));
   app.use(
     '/api/v1',
-    createCartCheckoutRouter({ databasePool, authenticateCustomer }),
+    createCartCheckoutRouter({
+      databasePool,
+      authenticateCustomer,
+    }),
   );
   app.use(
     '/api/v1',
@@ -81,6 +92,20 @@ function createApp({
       return;
     }
 
+    if (error?.type === 'entity.too.large') {
+      res.status(413).json({
+        error: {
+          code: 'REQUEST_TOO_LARGE',
+          message: 'Request body must not exceed 16 KB.',
+        },
+      });
+      return;
+    }
+
+    logger.error('Unhandled API error.', {
+      method: req.method,
+      errorName: error?.name ?? 'Error',
+    });
     res.status(500).json({
       error: {
         code: 'INTERNAL_SERVER_ERROR',

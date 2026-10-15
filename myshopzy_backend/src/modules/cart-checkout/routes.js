@@ -296,17 +296,23 @@ function validateDeliveryAddress(value) {
   if (Object.keys(value).length === 0) {
     return { error: 'deliveryAddress must not be empty.' };
   }
+  const pincode = typeof value.pincode === 'string' ? value.pincode.trim() : '';
+  if (!/^\d{6}$/.test(pincode)) {
+    return {
+      error: 'deliveryAddress.pincode must be a 6-digit string.',
+    };
+  }
 
   let serialized;
   try {
-    serialized = JSON.stringify(value);
+    serialized = JSON.stringify({ ...value, pincode });
   } catch {
     return { error: 'deliveryAddress must be valid JSON.' };
   }
   if (!serialized || Buffer.byteLength(serialized, 'utf8') > 4096) {
     return { error: 'deliveryAddress must not exceed 4096 bytes.' };
   }
-  return { value: serialized };
+  return { value: serialized, pincode };
 }
 
 function createCartCheckoutRouter({
@@ -628,6 +634,21 @@ function createCartCheckoutRouter({
       try {
         const tokenHash = hashCartToken(getCartToken(req));
         const order = await withTransaction(databasePool, async (client) => {
+          const deliveryZone = await client.query(
+            `SELECT 1
+             FROM app.serviceable_pincodes
+             WHERE pincode = $1
+               AND is_active = true`,
+            [address.pincode],
+          );
+          if (deliveryZone.rows.length === 0) {
+            throw new ApiError(
+              422,
+              'DELIVERY_UNAVAILABLE',
+              'Sorry, we do not deliver to this location.',
+            );
+          }
+
           const customer = await client.query(
             `SELECT c.user_id
              FROM app.customers AS c

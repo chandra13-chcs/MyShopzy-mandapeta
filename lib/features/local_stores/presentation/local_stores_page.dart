@@ -14,12 +14,16 @@ class LocalStoresPage extends StatefulWidget {
     super.key,
     List<LocalStore>? stores,
     this.initialCategoryId,
+    this.partnerType,
+    this.categoryName,
   }) : stores = stores ?? sampleLocalStores,
        useDefaultStores = stores == null;
 
   final List<LocalStore> stores;
   final bool useDefaultStores;
   final String? initialCategoryId;
+  final String? partnerType;
+  final String? categoryName;
 
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
@@ -54,7 +58,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
   }
 
   Future<List<ApiShop>> _loadStores(CustomerApi api) {
-    return api.getShops(partnerType: 'grocery');
+    return api.getAllShops(partnerType: widget.partnerType ?? 'grocery');
   }
 
   @override
@@ -174,9 +178,11 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Stores near you',
+                          widget.categoryName == null
+                              ? 'Stores near you'
+                              : '${widget.categoryName} near you',
                           style: TextStyle(
                             color: _ink,
                             fontSize: 20,
@@ -515,12 +521,16 @@ class _StoreCard extends StatelessWidget {
                         size: 15,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        store.deliveryTime,
-                        style: const TextStyle(
-                          color: _ink,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          store.deliveryTime,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: _ink,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 9),
@@ -530,7 +540,7 @@ class _StoreCard extends StatelessWidget {
                         size: 15,
                       ),
                       const SizedBox(width: 3),
-                      Expanded(
+                      Flexible(
                         child: Text(
                           '${store.distance} · ${store.locality}',
                           maxLines: 1,
@@ -545,16 +555,20 @@ class _StoreCard extends StatelessWidget {
                         size: 7,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        store.isBackendData
-                            ? 'Hours not provided'
-                            : store.isOpen
-                            ? 'Open'
-                            : 'Closed',
-                        style: TextStyle(
-                          color: store.isOpen ? _green : _muted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          store.isBackendData
+                              ? 'Hours not provided'
+                              : store.isOpen
+                              ? 'Open'
+                              : 'Closed',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: store.isOpen ? _green : _muted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],

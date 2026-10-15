@@ -35,7 +35,12 @@ test('creates a pool from validated database settings and reports pool errors sa
     onError: () => reportedErrors++,
   });
 
-  assert.deepEqual(poolOptions, databaseConfig);
+  assert.deepEqual(poolOptions, {
+    ...databaseConfig,
+    max: 10,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
   pool.emit('error', new Error('private database detail'));
   poolErrorHandler = pool.listeners('error')[0];
   assert.equal(typeof poolErrorHandler, 'function');

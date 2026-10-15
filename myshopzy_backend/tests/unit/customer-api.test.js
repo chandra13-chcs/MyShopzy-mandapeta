@@ -14,7 +14,7 @@ async function startTestServer(t, databasePool) {
 test('lists only public shops and passes filters and pagination as SQL parameters', async (t) => {
   const calls = [];
   const databasePool = {
-    async query(sql, params) {
+    async query(sql, params = []) {
       calls.push({ sql, params });
       return {
         rows: [
@@ -46,6 +46,43 @@ test('lists only public shops and passes filters and pagination as SQL parameter
   assert.match(calls[0].sql, /s\.status = 'active'/);
   assert.match(calls[0].sql, /p\.status = 'approved'/);
   assert.deepEqual(calls[0].params, ['restaurant', 'kitchen', 5, 10]);
+});
+
+test('lists active dynamic partner categories from PostgreSQL', async (t) => {
+  const calls = [];
+  const databasePool = {
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      return {
+        rows: [
+          { partner_type: 'bakery', partner_count: 2 },
+          { partner_type: 'sweet_shop', partner_count: 1 },
+        ],
+      };
+    },
+  };
+  const baseUrl = await startTestServer(t, databasePool);
+  const response = await fetch(`${baseUrl}/api/v1/partner-categories`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    data: [
+      {
+        partner_type: 'bakery',
+        display_name: 'Bakery',
+        partner_count: 2,
+      },
+      {
+        partner_type: 'sweet_shop',
+        display_name: 'Sweet Shop',
+        partner_count: 1,
+      },
+    ],
+  });
+  assert.match(calls[0].sql, /FROM app\.partners/);
+  assert.match(calls[0].sql, /WHERE is_active = true/);
+  assert.match(calls[0].sql, /GROUP BY partner_type/);
+  assert.deepEqual(calls[0].params, []);
 });
 
 test('searches catalog products with parameterized filters and pagination', async (t) => {
@@ -131,13 +168,14 @@ test('validates ids and query options before accessing PostgreSQL', async (t) =>
   const baseUrl = await startTestServer(t, databasePool);
 
   const invalidShop = await fetch(
-    `${baseUrl}/api/v1/shops?partnerType=customer`,
+    `${baseUrl}/api/v1/shops?partnerType=bad%2Ftype`,
   );
   assert.equal(invalidShop.status, 400);
   assert.deepEqual(await invalidShop.json(), {
     error: {
       code: 'INVALID_REQUEST',
-      message: 'partnerType must be restaurant, grocery, meat_shop, or other.',
+      message:
+        'partnerType must be a lowercase identifier using letters, digits, or underscores.',
     },
   });
 
@@ -163,8 +201,36 @@ test('validates ids and query options before accessing PostgreSQL', async (t) =>
   assert.equal(queryCount, 0);
 });
 
+test('filters catalog using partner types introduced after deployment', async (t) => {
+  const calls = [];
+  const databasePool = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [] };
+    },
+  };
+  const baseUrl = await startTestServer(t, databasePool);
+  const response = await fetch(
+    `${baseUrl}/api/v1/shops?partnerType=sweet_shop`,
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls[0].params, ['sweet_shop', null, 20, 0]);
+});
+
 test('returns generic unavailable and database error responses', async (t) => {
   const unavailableUrl = await startTestServer(t, null);
+  const unavailableCategories = await fetch(
+    `${unavailableUrl}/api/v1/partner-categories`,
+  );
+  assert.equal(unavailableCategories.status, 503);
+  assert.deepEqual(await unavailableCategories.json(), {
+    error: {
+      code: 'DATABASE_UNAVAILABLE',
+      message: 'The catalog is temporarily unavailable.',
+    },
+  });
+
   const unavailable = await fetch(`${unavailableUrl}/api/v1/shops`);
   assert.equal(unavailable.status, 503);
   assert.deepEqual(await unavailable.json(), {
