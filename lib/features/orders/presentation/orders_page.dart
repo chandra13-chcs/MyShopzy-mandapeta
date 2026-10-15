@@ -24,6 +24,9 @@ class OrdersPage extends StatefulWidget {
   static void refreshOrderCounts() =>
       _OrdersPageState.refreshOrderCounts();
 
+  static void addDemoOrder(OrderRecord order) =>
+      _OrdersPageState.addDemoOrder(order);
+
   @override
   State<OrdersPage> createState() => _OrdersPageState();
 }
@@ -239,6 +242,19 @@ class _OrdersPageState extends State<OrdersPage> {
       'cancelled' || 'rejected' => OrdersTab.cancelled,
       _ => OrdersTab.ongoing,
     };
+    final trackingStatus = switch (status) {
+      'placed' || 'order placed' => OrderTrackingStatus.orderPlaced,
+      'confirmed' || 'order confirmed' => OrderTrackingStatus.orderConfirmed,
+      'preparing' => OrderTrackingStatus.preparing,
+      'packed' => OrderTrackingStatus.packed,
+      'finding_delivery_partner' => OrderTrackingStatus.findingDeliveryPartner,
+      'rider_assigned' => OrderTrackingStatus.riderAssigned,
+      'picked_up' => OrderTrackingStatus.pickedUp,
+      'on_the_way' || 'out_for_delivery' => OrderTrackingStatus.onTheWay,
+      'arriving' => OrderTrackingStatus.arriving,
+      'delivered' => OrderTrackingStatus.delivered,
+      _ => null,
+    };
     return OrderRecord(
       storeName: order.shopName,
       icon: Icons.storefront_outlined,
@@ -259,6 +275,7 @@ class _OrdersPageState extends State<OrdersPage> {
       discountInPaise: order.discountMinor,
       isBackendData: true,
       itemCount: order.itemCount,
+      trackingStatus: trackingStatus,
     );
   }
 
@@ -297,6 +314,11 @@ class _OrdersPageState extends State<OrdersPage> {
 
   static void refreshOrderCounts() {
     ongoingOrderCount.value = _countOrdersForTab(OrdersTab.ongoing);
+  }
+
+  static void addDemoOrder(OrderRecord order) {
+    _demoOrders.insert(0, order);
+    refreshOrderCounts();
   }
 
   @override

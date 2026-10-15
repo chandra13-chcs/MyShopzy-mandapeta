@@ -46,6 +46,13 @@ Catalog endpoints require PostgreSQL and only return active shops/products
 belonging to approved partners. They do not expose customer-specific records.
 Do not accept a client-supplied customer ID as authorization.
 
+Product presentation metadata can be stored in the product `attributes` JSON and
+is returned by the catalog endpoints. The Flutter catalog recognizes `image_url`,
+`rating` (0-5), `mrp_minor`, `discount_percent`, `badge`, `brand`, and
+`pack_size`. Produce listings additionally require `produce_type` set to `fruit`
+or `vegetable`; this keeps unrelated grocery products out of the produce views.
+Prices and MRP values use the product currency's minor units.
+
 Cart and checkout endpoints:
 
 - `POST /api/v1/carts` creates a cart and returns a random bearer capability
@@ -90,6 +97,21 @@ wishlist, and parcel-booking records needed by these APIs. Address, wishlist,
 profile, order, and parcel endpoints are customer-scoped and never accept a
 customer ID in their route or request body. Order history/details are read
 only.
+
+Prepared Super Admin read-only queries cover orders, customers, partners, and
+products. Admin routes mount only when `AUTH0_ISSUER_URL`, `AUTH0_AUDIENCE`,
+`AUTH0_ADMIN_USER_ID_CLAIM`, `SUPER_ADMIN_ORIGIN`, and PostgreSQL are
+configured. The Auth0 access token is
+verified against the issuer's remote JWKS, RS256 signature, issuer, audience,
+expiry, and not-before claims. The configured namespaced
+`AUTH0_ADMIN_USER_ID_CLAIM` must carry a manually provisioned
+`app_metadata` mapping to an existing database user UUID. An approved Auth0
+Post-Login Action must set this claim from that managed metadata; users must
+not be able to edit the mapping. Backend authorization still checks the mapped
+database record's role and active status on every request. The origin setting permits only the
+configured frontend origin for browser requests. Keep these settings unset
+until the Auth0 application/API, claim namespace, and manual identity mappings
+have been configured and reviewed.
 
 ## Setup and run
 

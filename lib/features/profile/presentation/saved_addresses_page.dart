@@ -60,6 +60,9 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
       address: address.formattedAddress,
       icon: _addressIcon(address.label),
       isBackendData: true,
+      latitude: address.latitude,
+      longitude: address.longitude,
+      pincode: address.pincode,
     );
   }
 
@@ -323,6 +326,9 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
             label: result.label,
             address: result.address,
             icon: _addressIcon(result.label),
+            latitude: result.latitude,
+            longitude: result.longitude,
+            pincode: result.pincode,
           ),
         ];
       });
@@ -331,7 +337,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
     await _runAddressMutation(() async {
       final saved = await CustomerApi.instance.createSavedAddress(
         label: result.label,
-        address: {'formattedAddress': result.address},
+        address: _addressPayload(result),
       );
       if (mounted) {
         setState(() => _addresses = [..._addresses, _toSavedAddress(saved)]);
@@ -352,6 +358,9 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
                       label: result.label,
                       address: result.address,
                       icon: _addressIcon(result.label),
+                      latitude: result.latitude,
+                      longitude: result.longitude,
+                      pincode: result.pincode,
                     )
                   : item,
             )
@@ -363,7 +372,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
       final updated = await CustomerApi.instance.updateSavedAddress(
         address.id,
         label: result.label,
-        address: {'formattedAddress': result.address},
+        address: _addressPayload(result),
       );
       if (!mounted) return;
       setState(() {
@@ -375,6 +384,13 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
       });
     });
   }
+
+  Map<String, Object?> _addressPayload(_AddressFormResult result) => {
+    'formattedAddress': result.address,
+    if (result.pincode.isNotEmpty) 'pincode': result.pincode,
+    if (result.latitude != null) 'latitude': result.latitude,
+    if (result.longitude != null) 'longitude': result.longitude,
+  };
 
   Future<void> _deleteAddress(SavedAddress address) async {
     final confirmed = await showDialog<bool>(
@@ -438,10 +454,19 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
 }
 
 class _AddressFormResult {
-  const _AddressFormResult({required this.label, required this.address});
+  const _AddressFormResult({
+    required this.label,
+    required this.address,
+    required this.pincode,
+    required this.latitude,
+    required this.longitude,
+  });
 
   final String label;
   final String address;
+  final String pincode;
+  final double? latitude;
+  final double? longitude;
 }
 
 class _AddressEditorDialog extends StatefulWidget {
@@ -457,18 +482,33 @@ class _AddressEditorDialogState extends State<_AddressEditorDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _labelController;
   late final TextEditingController _addressController;
+  late final TextEditingController _pincodeController;
+  late final TextEditingController _latitudeController;
+  late final TextEditingController _longitudeController;
 
   @override
   void initState() {
     super.initState();
     _labelController = TextEditingController(text: widget.existing?.label);
     _addressController = TextEditingController(text: widget.existing?.address);
+    _pincodeController = TextEditingController(
+      text: widget.existing?.pincode ?? '',
+    );
+    _latitudeController = TextEditingController(
+      text: widget.existing?.latitude?.toString() ?? '',
+    );
+    _longitudeController = TextEditingController(
+      text: widget.existing?.longitude?.toString() ?? '',
+    );
   }
 
   @override
   void dispose() {
     _labelController.dispose();
     _addressController.dispose();
+    _pincodeController.dispose();
+    _latitudeController.dispose();
+    _longitudeController.dispose();
     super.dispose();
   }
 
@@ -509,6 +549,50 @@ class _AddressEditorDialogState extends State<_AddressEditorDialog> {
                 return null;
               },
             ),
+            TextFormField(
+              key: const ValueKey('saved-address-pincode'),
+              controller: _pincodeController,
+              keyboardType: TextInputType.number,
+              maxLength: 6,
+              decoration: const InputDecoration(labelText: '6-digit Pincode'),
+              validator: (value) {
+                final pincode = value?.trim() ?? '';
+                if (pincode.isNotEmpty &&
+                    !RegExp(r'^\d{6}$').hasMatch(pincode)) {
+                  return 'Enter a valid 6-digit pincode.';
+                }
+                return null;
+              },
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: const ValueKey('saved-address-latitude'),
+                    controller: _latitudeController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'Latitude'),
+                    validator: _validateLatitude,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    key: const ValueKey('saved-address-longitude'),
+                    controller: _longitudeController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                      signed: true,
+                    ),
+                    decoration: const InputDecoration(labelText: 'Longitude'),
+                    validator: _validateLongitude,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -532,7 +616,36 @@ class _AddressEditorDialogState extends State<_AddressEditorDialog> {
       _AddressFormResult(
         label: _labelController.text.trim(),
         address: _addressController.text.trim(),
+        pincode: _pincodeController.text.trim(),
+        latitude: double.tryParse(_latitudeController.text.trim()),
+        longitude: double.tryParse(_longitudeController.text.trim()),
       ),
     );
+  }
+
+  String? _validateLatitude(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+    final latitude = double.tryParse(text);
+    if (latitude == null ||
+        !latitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90) {
+      return 'Invalid latitude';
+    }
+    return null;
+  }
+
+  String? _validateLongitude(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return null;
+    final longitude = double.tryParse(text);
+    if (longitude == null ||
+        !longitude.isFinite ||
+        longitude < -180 ||
+        longitude > 180) {
+      return 'Invalid longitude';
+    }
+    return null;
   }
 }

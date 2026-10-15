@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myshopzy/features/cart/data/cart_store.dart';
 import 'package:myshopzy/features/checkout/presentation/checkout_page.dart';
+import 'package:myshopzy/features/checkout/presentation/delivery_unavailable_page.dart';
 import 'package:myshopzy/features/orders/presentation/order_details_page.dart';
 import 'package:myshopzy/features/orders/presentation/order_success_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
@@ -26,42 +27,38 @@ void main() {
     cart.clear();
   });
 
-  testWidgets(
-    'demo Place Order does not confirm, navigate, or clear cart on repeated taps',
-    (tester) async {
-      cart.addItem(
-        productId: 'order-confirmation-test-item',
-        serviceType: 'local_store',
-        merchantId: 'order-confirmation-test-store',
-        name: 'Test item',
-        description: '',
-        priceInPaise: 12000,
-        icon: Icons.shopping_bag_outlined,
-      );
-      await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+  testWidgets('demo Place Order confirms once and clears the cart', (
+    tester,
+  ) async {
+    cart.addItem(
+      productId: 'order-confirmation-test-item',
+      serviceType: 'local_store',
+      merchantId: 'order-confirmation-test-store',
+      name: 'Test item',
+      description: '',
+      priceInPaise: 12000,
+      icon: Icons.shopping_bag_outlined,
+    );
+    await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
 
-      final placeOrder = find.widgetWithText(FilledButton, 'Place Order');
-      expect(tester.widget<FilledButton>(placeOrder).onPressed, isNull);
+    final placeOrder = find.widgetWithText(FilledButton, 'Place Order');
+    expect(tester.widget<FilledButton>(placeOrder).onPressed, isNull);
 
-      await tester.ensureVisible(find.text('Change'));
-      await tester.tap(find.text('Change'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Home').last);
-      await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Change'));
+    await tester.tap(find.text('Change'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Home').last);
+    await tester.pumpAndSettle();
 
-      expect(tester.widget<FilledButton>(placeOrder).onPressed, isNotNull);
-      await tester.ensureVisible(placeOrder);
-      await tester.tap(placeOrder);
-      await tester.tap(placeOrder);
-      await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(placeOrder).onPressed, isNotNull);
+    await tester.ensureVisible(placeOrder);
+    await tester.tap(placeOrder);
+    await tester.pumpAndSettle();
 
-      expect(find.text('Order flow will be connected next.'), findsOneWidget);
-      expect(find.byType(OrderSuccessPage), findsNothing);
-      expect(find.byType(CheckoutPage), findsOneWidget);
-      expect(cart.totalQuantity, 1);
-      expect(cart.subtotalInPaise, 12000);
-    },
-  );
+    expect(find.byType(OrderSuccessPage), findsOneWidget);
+    expect(find.text('Order placed for'), findsOneWidget);
+    expect(cart.items, isEmpty);
+  });
 
   testWidgets('successful backend order opens success page with server data', (
     tester,
@@ -102,8 +99,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(OrderSuccessPage), findsOneWidget);
-    expect(find.text('Order placed successfully'), findsOneWidget);
-    expect(find.text('Your order has been placed.'), findsOneWidget);
+    expect(find.text('Order placed for'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
     expect(find.text('Order ID: confirmed-order-id'), findsOneWidget);
     final successPage = tester.widget<OrderSuccessPage>(
       find.byType(OrderSuccessPage),
@@ -119,6 +116,9 @@ void main() {
       'deliveryAddress': {
         'label': 'Home',
         'formattedAddress': 'Home · 12 Green Park Road, Ravulapalem',
+        'pincode': '533308',
+        'latitude': 16.87,
+        'longitude': 81.93,
       },
     });
 
@@ -129,6 +129,44 @@ void main() {
     expect(find.text('Payment status'), findsNothing);
     expect(find.text('Track Order'), findsNothing);
   });
+
+  testWidgets(
+    'unserviceable addresses stop checkout and allow changing location',
+    (tester) async {
+      var orderRequests = 0;
+      _configureBackend((request) async {
+        if (request.url.path.endsWith('/orders')) {
+          orderRequests++;
+        }
+        if (request.url.path.endsWith('/delivery/serviceability')) {
+          return _response({
+            'data': {
+              'isDeliverable': false,
+              'message': 'Instamart is unavailable in your location.',
+            },
+          });
+        }
+        return _backendSetupResponse(request);
+      });
+      _addBackendCartItem();
+
+      await _openBackendCheckout(tester);
+      await tester.ensureVisible(find.text('Change'));
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Home').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ServiceabilityUnavailablePage), findsOneWidget);
+      expect(find.text('Sorry! We don’t deliver here'), findsOneWidget);
+      expect(orderRequests, 0);
+      expect(cart.totalQuantity, 1);
+
+      await tester.tap(find.byKey(const ValueKey('change-delivery-location')));
+      await tester.pumpAndSettle();
+      expect(find.byType(CheckoutPage), findsOneWidget);
+    },
+  );
 
   testWidgets('401 order failure stays at checkout and preserves cart', (
     tester,
@@ -322,6 +360,14 @@ http.Response _backendSetupResponse(http.Request request) {
       },
     });
   }
+  if (request.url.path.endsWith('/delivery/serviceability')) {
+    return _response({
+      'data': {
+        'isDeliverable': true,
+        'message': 'Delivery is available at this location.',
+      },
+    });
+  }
   if (request.url.path.endsWith('/me/addresses')) {
     return _response({
       'data': [
@@ -330,6 +376,9 @@ http.Response _backendSetupResponse(http.Request request) {
           'label': 'Home',
           'address_snapshot': {
             'formattedAddress': 'Home · 12 Green Park Road, Ravulapalem',
+            'pincode': '533308',
+            'latitude': 16.87,
+            'longitude': 81.93,
           },
         },
       ],

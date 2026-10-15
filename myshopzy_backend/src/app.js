@@ -3,10 +3,13 @@ const { isDatabaseReady } = require('./config/database');
 const { createCatalogRouter } = require('./modules/catalog/routes');
 const { createCartCheckoutRouter } = require('./modules/cart-checkout/routes');
 const { createCustomerAccountRouter } = require('./modules/customer-account/routes');
+const { createAdminReadRouter } = require('./modules/admin-read/routes');
 
 function createApp({
   databasePool = null,
   authenticateCustomer = null,
+  authenticateAdmin = null,
+  superAdminOrigin = null,
   developmentCustomerAuthRouter = null,
 } = {}) {
   const app = express();
@@ -36,6 +39,28 @@ function createApp({
     '/api/v1',
     createCustomerAccountRouter({ databasePool, authenticateCustomer }),
   );
+  if (typeof authenticateAdmin === 'function') {
+    if (superAdminOrigin) {
+      app.use('/api/v1/admin', (req, res, next) => {
+        if (req.get('origin') !== superAdminOrigin) return next();
+        res.set('Access-Control-Allow-Origin', superAdminOrigin);
+        res.vary('Origin');
+        if (req.method === 'OPTIONS') {
+          res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.set(
+            'Access-Control-Allow-Headers',
+            'Authorization, Content-Type, X-Request-ID',
+          );
+          return res.status(204).end();
+        }
+        return next();
+      });
+    }
+    app.use(
+      '/api/v1',
+      createAdminReadRouter({ databasePool, authenticateAdmin }),
+    );
+  }
 
   app.use('/api/v1', (req, res) => {
     res.status(404).json({

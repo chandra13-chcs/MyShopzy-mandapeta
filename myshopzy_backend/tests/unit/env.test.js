@@ -10,6 +10,8 @@ test('uses development defaults and permits health-only configuration', () => {
     database: null,
     developmentCustomerOtp: null,
     developmentCustomerSessionSecret: null,
+    auth0Admin: null,
+    superAdminOrigin: null,
   });
 });
 
@@ -78,5 +80,55 @@ test('rejects partial PostgreSQL configuration and only names missing keys', () 
       assert.equal(error.message.includes('sensitive-test-value'), false);
       return true;
     },
+  );
+});
+
+test('enables Auth0 admin configuration only when issuer, audience and origin are set', () => {
+  assert.throws(
+    () => loadConfig({ AUTH0_ISSUER_URL: 'https://tenant.example.test/' }),
+    /AUTH0_AUDIENCE, SUPER_ADMIN_ORIGIN/,
+  );
+
+  const config = loadConfig({
+    AUTH0_ISSUER_URL: 'https://tenant.example.test/',
+    AUTH0_AUDIENCE: 'https://api.example.test',
+    AUTH0_ADMIN_USER_ID_CLAIM: 'https://claims.example.test/admin_user_id',
+    SUPER_ADMIN_ORIGIN: 'http://localhost:5173',
+  });
+  assert.deepEqual(config.auth0Admin, {
+    issuerUrl: 'https://tenant.example.test/',
+    audience: 'https://api.example.test',
+    adminUserIdClaim: 'https://claims.example.test/admin_user_id',
+  });
+  assert.equal(config.superAdminOrigin, 'http://localhost:5173');
+});
+
+test('keeps admin authentication disabled until the namespaced identity claim is configured', () => {
+  const config = loadConfig({
+    AUTH0_ISSUER_URL: 'https://tenant.example.test/',
+    AUTH0_AUDIENCE: 'https://api.example.test',
+    SUPER_ADMIN_ORIGIN: 'http://localhost:5173',
+  });
+  assert.equal(config.auth0Admin, null);
+});
+
+test('rejects insecure Auth0 issuers and non-origin Super Admin URLs', () => {
+  assert.throws(
+    () => loadConfig({
+      AUTH0_ISSUER_URL: 'http://tenant.example.test/',
+      AUTH0_AUDIENCE: 'https://api.example.test',
+      AUTH0_ADMIN_USER_ID_CLAIM: 'https://claims.example.test/admin_user_id',
+      SUPER_ADMIN_ORIGIN: 'https://admin.example.test',
+    }),
+    /AUTH0_ISSUER_URL must be an HTTPS Auth0 issuer origin/,
+  );
+  assert.throws(
+    () => loadConfig({
+      AUTH0_ISSUER_URL: 'https://tenant.example.test/',
+      AUTH0_AUDIENCE: 'https://api.example.test',
+      AUTH0_ADMIN_USER_ID_CLAIM: 'https://claims.example.test/admin_user_id',
+      SUPER_ADMIN_ORIGIN: 'https://admin.example.test/path',
+    }),
+    /SUPER_ADMIN_ORIGIN must be a valid HTTPS origin/,
   );
 });

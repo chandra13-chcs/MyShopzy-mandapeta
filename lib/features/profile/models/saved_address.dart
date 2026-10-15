@@ -7,6 +7,9 @@ class SavedAddress {
     required this.address,
     required this.icon,
     this.isBackendData = false,
+    this.latitude,
+    this.longitude,
+    this.pincode,
   });
 
   final String id;
@@ -14,6 +17,9 @@ class SavedAddress {
   final String address;
   final IconData icon;
   final bool isBackendData;
+  final double? latitude;
+  final double? longitude;
+  final String? pincode;
 }
 
 const demoSavedAddresses = [

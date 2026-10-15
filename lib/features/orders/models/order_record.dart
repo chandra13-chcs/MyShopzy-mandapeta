@@ -50,6 +50,7 @@ class OrderRecord {
     required this.serviceType,
     required this.items,
     required this.deliveryAddress,
+    this.deliveryAddressLabel = 'Home',
     required this.paymentMethod,
     required this.paymentStatus,
     required this.deliveryChargeInPaise,
@@ -71,6 +72,7 @@ class OrderRecord {
   final String serviceType;
   final List<OrderLineItem> items;
   final String deliveryAddress;
+  final String deliveryAddressLabel;
   final String paymentMethod;
   final String paymentStatus;
   final int deliveryChargeInPaise;

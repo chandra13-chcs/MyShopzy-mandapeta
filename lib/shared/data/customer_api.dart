@@ -80,6 +80,14 @@ class ApiProduct {
     this.categoryId,
     this.partnerType,
     this.shopName,
+    this.imageUrl,
+    this.rating,
+    this.mrpMinor,
+    this.discountPercent = 0,
+    this.badge,
+    this.brand,
+    this.packSize,
+    this.produceType,
   });
 
   final String id;
@@ -92,6 +100,14 @@ class ApiProduct {
   final String? categoryId;
   final String? partnerType;
   final String? shopName;
+  final String? imageUrl;
+  final double? rating;
+  final int? mrpMinor;
+  final int discountPercent;
+  final String? badge;
+  final String? brand;
+  final String? packSize;
+  final String? produceType;
 
   factory ApiProduct.fromJson(Map<String, dynamic> json) {
     final priceValue = json['price_minor'];
@@ -106,6 +122,15 @@ class ApiProduct {
     if (json['is_available'] is! bool) {
       throw const FormatException('Invalid product availability.');
     }
+    final attributes = _optionalObject(json['attributes']) ?? const {};
+    final mrpMinor = _optionalMinorMetadata(attributes, const [
+      'mrp_minor',
+      'mrpMinor',
+    ]);
+    final discountPercent = _optionalIntMetadata(attributes, const [
+      'discount_percent',
+      'discountPercent',
+    ]);
     return ApiProduct(
       id: _requiredString(json, 'id'),
       shopId: _requiredString(json, 'shop_id'),
@@ -117,6 +142,30 @@ class ApiProduct {
       categoryId: _optionalString(json['category_id']),
       partnerType: _optionalString(json['partner_type']),
       shopName: _optionalString(json['shop_name']),
+      imageUrl: _optionalStringMetadata(attributes, const [
+        'image_url',
+        'imageUrl',
+      ]),
+      rating: _optionalDoubleMetadata(attributes, const ['rating']),
+      mrpMinor: mrpMinor,
+      discountPercent:
+          discountPercent != null &&
+              discountPercent >= 0 &&
+              discountPercent <= 100
+          ? discountPercent
+          : mrpMinor != null && mrpMinor > priceMinor
+          ? ((mrpMinor - priceMinor) * 100 / mrpMinor).round()
+          : 0,
+      badge: _optionalStringMetadata(attributes, const ['badge']),
+      brand: _optionalStringMetadata(attributes, const ['brand']),
+      packSize: _optionalStringMetadata(attributes, const [
+        'pack_size',
+        'packSize',
+      ]),
+      produceType: _optionalStringMetadata(attributes, const [
+        'produce_type',
+        'produceType',
+      ]),
     );
   }
 }
@@ -147,12 +196,14 @@ class ApiCartQuote {
       deliveryFeeMinor: _requiredMinor(json, 'deliveryFeeMinor'),
       discountMinor: _requiredMinor(json, 'discountMinor'),
       totalMinor: _requiredMinor(json, 'totalMinor'),
-      items: rawItems.map((item) {
-        if (item is! Map<String, dynamic>) {
-          throw const FormatException('Invalid quote item.');
-        }
-        return ApiCartQuoteItem.fromJson(item);
-      }).toList(growable: false),
+      items: rawItems
+          .map((item) {
+            if (item is! Map<String, dynamic>) {
+              throw const FormatException('Invalid quote item.');
+            }
+            return ApiCartQuoteItem.fromJson(item);
+          })
+          .toList(growable: false),
     );
   }
 }
@@ -235,12 +286,14 @@ class ApiCart {
     final rawItems = json['items'];
     if (rawItems is! List) throw const FormatException('Invalid cart items.');
     return ApiCart(
-      items: rawItems.map((item) {
-        if (item is! Map<String, dynamic>) {
-          throw const FormatException('Invalid cart item.');
-        }
-        return ApiCartItem.fromJson(item);
-      }).toList(growable: false),
+      items: rawItems
+          .map((item) {
+            if (item is! Map<String, dynamic>) {
+              throw const FormatException('Invalid cart item.');
+            }
+            return ApiCartItem.fromJson(item);
+          })
+          .toList(growable: false),
       itemSubtotalMinor: _requiredMinor(json, 'itemSubtotalMinor'),
     );
   }
@@ -261,6 +314,11 @@ class ApiSavedAddress {
     final value = address['formattedAddress'] ?? address['address'];
     return value is String ? value : '';
   }
+
+  double? get latitude => _optionalDouble(address['latitude']);
+  double? get longitude => _optionalDouble(address['longitude']);
+  String? get pincode =>
+      _optionalString(address['pincode'] ?? address['postalCode']);
 
   factory ApiSavedAddress.fromJson(Map<String, dynamic> json) {
     final snapshot = json['address_snapshot'];
@@ -372,6 +430,28 @@ class ApiOrderResult {
   }
 }
 
+class ServiceabilityResponse {
+  const ServiceabilityResponse({
+    required this.isDeliverable,
+    required this.message,
+  });
+
+  final bool isDeliverable;
+  final String message;
+
+  factory ServiceabilityResponse.fromJson(Map<String, dynamic> json) {
+    if (json['isDeliverable'] is! bool ||
+        json['message'] is! String ||
+        (json['message'] as String).trim().isEmpty) {
+      throw const FormatException('Invalid serviceability response.');
+    }
+    return ServiceabilityResponse(
+      isDeliverable: json['isDeliverable'] as bool,
+      message: (json['message'] as String).trim(),
+    );
+  }
+}
+
 class ApiCustomerOrder {
   const ApiCustomerOrder({
     required this.id,
@@ -449,7 +529,9 @@ class ApiCustomerOrderItem {
       sku: _nullableString(json, 'sku_snapshot'),
       variantSnapshot: rawVariant == null
           ? null
-          : Map<String, dynamic>.unmodifiable(rawVariant as Map<String, dynamic>),
+          : Map<String, dynamic>.unmodifiable(
+              rawVariant as Map<String, dynamic>,
+            ),
     );
   }
 }
@@ -497,12 +579,14 @@ class ApiCustomerOrderDetail extends ApiCustomerOrder {
       totalMinor: order.totalMinor,
       placedAt: order.placedAt,
       deliveryAddressSnapshot: Map<String, dynamic>.unmodifiable(rawAddress),
-      items: rawItems.map((item) {
-        if (item is! Map<String, dynamic>) {
-          throw const FormatException('Invalid order item.');
-        }
-        return ApiCustomerOrderItem.fromJson(item);
-      }).toList(growable: false),
+      items: rawItems
+          .map((item) {
+            if (item is! Map<String, dynamic>) {
+              throw const FormatException('Invalid order item.');
+            }
+            return ApiCustomerOrderItem.fromJson(item);
+          })
+          .toList(growable: false),
     );
   }
 }
@@ -697,7 +781,17 @@ class CustomerApi {
     String? categoryId,
     String? partnerType,
     String? query,
+    int limit = 100,
+    int offset = 0,
   }) async {
+    if (limit < 1 || limit > 100 || offset < 0) {
+      throw ArgumentError.value(
+        '$limit/$offset',
+        'limit/offset',
+        'Catalog pagination must use a limit from 1 to 100 and a '
+            'non-negative offset.',
+      );
+    }
     final payload = await _request(
       'GET',
       '/products',
@@ -706,9 +800,35 @@ class CustomerApi {
         'categoryId': ?categoryId,
         'partnerType': ?partnerType,
         'q': ?_nonEmptyQuery(query),
+        'limit': '$limit',
+        'offset': '$offset',
       },
     );
     return _parseList(payload, ApiProduct.fromJson);
+  }
+
+  Future<List<ApiProduct>> getAllProducts({
+    String? shopId,
+    String? categoryId,
+    String? partnerType,
+    String? query,
+  }) async {
+    const pageSize = 100;
+    final products = <ApiProduct>[];
+    var offset = 0;
+    while (true) {
+      final page = await getProducts(
+        shopId: shopId,
+        categoryId: categoryId,
+        partnerType: partnerType,
+        query: query,
+        limit: pageSize,
+        offset: offset,
+      );
+      products.addAll(page);
+      if (page.length < pageSize) return products;
+      offset += page.length;
+    }
   }
 
   Future<ApiProduct> getProduct(String productId) async {
@@ -889,6 +1009,41 @@ class CustomerApi {
     );
     try {
       return ApiCartQuote.fromJson(_dataObject(payload));
+    } on FormatException {
+      throw _invalidResponse();
+    }
+  }
+
+  Future<ServiceabilityResponse> checkLocationServiceability(
+    double latitude,
+    double longitude,
+    String pincode,
+  ) async {
+    final normalizedPincode = pincode.trim();
+    if (!latitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !longitude.isFinite ||
+        longitude < -180 ||
+        longitude > 180 ||
+        !RegExp(r'^\d{6}$').hasMatch(normalizedPincode)) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'INVALID_REQUEST',
+        message: 'Enter a valid location and 6-digit pincode.',
+      );
+    }
+    final payload = await _request(
+      'POST',
+      '/delivery/serviceability',
+      body: {
+        'latitude': latitude,
+        'longitude': longitude,
+        'pincode': normalizedPincode,
+      },
+    );
+    try {
+      return ServiceabilityResponse.fromJson(_dataObject(payload));
     } on FormatException {
       throw _invalidResponse();
     }
@@ -1183,6 +1338,68 @@ String _requiredString(Map<String, dynamic> json, String key) {
 }
 
 String? _optionalString(Object? value) => value is String ? value : null;
+
+Map<String, dynamic>? _optionalObject(Object? value) {
+  if (value is! Map) return null;
+  return value.map((key, value) => MapEntry(key.toString(), value));
+}
+
+String? _optionalStringMetadata(
+  Map<String, dynamic> metadata,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final value = _optionalString(metadata[key])?.trim();
+    if (value != null && value.isNotEmpty) return value;
+  }
+  return null;
+}
+
+int? _optionalMinorMetadata(Map<String, dynamic> metadata, List<String> keys) {
+  for (final key in keys) {
+    final value = metadata[key];
+    final parsed = switch (value) {
+      int number => number,
+      String number => int.tryParse(number),
+      _ => null,
+    };
+    if (parsed != null && parsed >= 0) return parsed;
+  }
+  return null;
+}
+
+int? _optionalIntMetadata(Map<String, dynamic> metadata, List<String> keys) {
+  for (final key in keys) {
+    final value = metadata[key];
+    final parsed = switch (value) {
+      int number => number,
+      String number => int.tryParse(number),
+      _ => null,
+    };
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
+double? _optionalDoubleMetadata(
+  Map<String, dynamic> metadata,
+  List<String> keys,
+) {
+  for (final key in keys) {
+    final parsed = _optionalDouble(metadata[key]);
+    if (parsed != null && parsed >= 0 && parsed <= 5) return parsed;
+  }
+  return null;
+}
+
+double? _optionalDouble(Object? value) {
+  final number = switch (value) {
+    num value => value.toDouble(),
+    String value => double.tryParse(value),
+    _ => null,
+  };
+  return number != null && number.isFinite ? number : null;
+}
 
 String? _nullableString(Map<String, dynamic> json, String key) {
   final value = json[key];

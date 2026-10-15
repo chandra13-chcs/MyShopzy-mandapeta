@@ -5,11 +5,11 @@ import 'package:flutter/material.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../bakery/presentation/bakery_page.dart';
 import '../../../app/theme/app_theme.dart';
-import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../checkout/presentation/checkout_page.dart';
 import '../../../shared/presentation/dietary_badge.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
+import '../../../shared/presentation/bottom_navigation_bar.dart';
 import '../../profile/models/saved_address.dart';
 import '../../profile/presentation/saved_addresses_page.dart';
 import 'delivery_location_bottom_sheet.dart';
@@ -328,6 +328,8 @@ class HomePage extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final crossAxisCount = constraints.maxWidth < 310 ? 2 : 3;
+        final tileWidth =
+            (constraints.maxWidth - 8 * (crossAxisCount - 1)) / crossAxisCount;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -385,6 +387,9 @@ class HomePage extends StatelessWidget {
                       Image.asset(
                         service.assetPath,
                         fit: BoxFit.cover,
+                        cacheWidth:
+                            (tileWidth * MediaQuery.devicePixelRatioOf(context))
+                                .round(),
                         semanticLabel: service.name,
                       ),
                       Positioned(
@@ -419,119 +424,72 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildPromotions() {
-    const promos = [
-      _Promotion(
-        'Fresh picks',
-        'Goodness for every day',
-        'UP TO 30% OFF',
-        Color(0xFFE0F1D8),
-        Color(0xFF397447),
-        Icons.spa_rounded,
+    const banners = [
+      (
+        key: 'biryani',
+        assetPath: 'assets/category_tiles/biryanii poster .jpeg',
       ),
-      _Promotion(
-        'Meal time, sorted',
-        'Your favourites are near',
-        'FROM ₹99',
-        Color(0xFFFFE8D7),
-        Color(0xFF9A5633),
-        Icons.lunch_dining_rounded,
-      ),
-      _Promotion(
-        'Local love',
-        'Shop your neighbourhood',
-        'DELIVERED FAST',
-        Color(0xFFE5EAF8),
-        Color(0xFF4B5C91),
-        Icons.store_mall_directory_rounded,
-      ),
+      (key: 'cake', assetPath: 'assets/category_tiles/cake poster.jpeg'),
+      (key: 'vegetables', assetPath: 'assets/category_tiles/veg poster.jpeg'),
     ];
 
-    final promotionCards = SizedBox(
-      height: 126,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: promos.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 11),
-        itemBuilder: (context, index) => _buildPromotionCard(promos[index]),
-      ),
-    );
-    if (!CustomerApi.instance.isConfigured) return promotionCards;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(bottom: 6),
-          child: Text(
-            'Demo offers · not verified or redeemable',
-            style: TextStyle(color: _muted, fontSize: 11),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = constraints.maxWidth - 38;
+        final cardHeight = cardWidth / 2.25;
+        final promotionCards = SizedBox(
+          height: cardHeight,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: banners.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 11),
+            itemBuilder: (context, index) {
+              final banner = banners[index];
+              return _buildPromotionCard(
+                context,
+                banner.assetPath,
+                key: banner.key,
+                width: cardWidth,
+                height: cardHeight,
+              );
+            },
           ),
-        ),
-        promotionCards,
-      ],
+        );
+        if (!CustomerApi.instance.isConfigured) return promotionCards;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Demo offers · not verified or redeemable',
+                style: TextStyle(color: _muted, fontSize: 11),
+              ),
+            ),
+            promotionCards,
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildPromotionCard(_Promotion promotion) {
-    return Container(
-      width: 258,
-      padding: const EdgeInsets.fromLTRB(15, 13, 12, 11),
-      decoration: BoxDecoration(
-        color: promotion.background,
-        borderRadius: BorderRadius.circular(17),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  promotion.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: promotion.foreground,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  promotion.subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: promotion.foreground.withValues(alpha: 0.82),
-                    fontSize: 11,
-                  ),
-                ),
-                const SizedBox(height: 9),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.75),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    promotion.offer,
-                    style: TextStyle(
-                      color: promotion.foreground,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 5),
-          Icon(promotion.icon, color: promotion.foreground, size: 50),
-        ],
+  Widget _buildPromotionCard(
+    BuildContext context,
+    String assetPath, {
+    required String key,
+    required double width,
+    required double height,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Image.asset(
+        assetPath,
+        key: ValueKey('home-promotion-banner-$key'),
+        width: width,
+        height: height,
+        fit: BoxFit.contain,
+        cacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
+        semanticLabel: '$key promotion banner',
       ),
     );
   }
@@ -1037,64 +995,29 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildBottomNavigation(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: BottomNavigationBar(
-        currentIndex: 0,
-        onTap: (index) {
-          if (index == 1) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const CategoriesPage(),
-              ),
-            );
-          } else if (index == 2) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (context) => const CartPage()),
-            );
-          } else if (index == 3) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (context) => const OrdersPage()),
-            );
-          } else if (index == 4) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const ProfilePage(),
-              ),
-            );
-          }
-        },
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppTheme.darkGreen,
-        selectedItemColor: AppTheme.brandYellow,
-        unselectedItemColor: AppTheme.white,
-        selectedFontSize: 11,
-        unselectedFontSize: 11,
-        elevation: 10,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.grid_view_rounded),
-            label: 'Categories',
-          ),
-          BottomNavigationBarItem(
-            icon: CartNavigationIcon(),
-            label: '',
-            tooltip: 'Cart',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long_rounded),
-            label: 'Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline_rounded),
-            label: 'Profile',
-          ),
-        ],
-      ),
+    return ShopzyBottomNavigationBar(
+      currentIndex: 0,
+      onTap: (index) {
+        if (index == 1) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) => const CategoriesPage(),
+            ),
+          );
+        } else if (index == 2) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (context) => const CartPage()),
+          );
+        } else if (index == 3) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (context) => const OrdersPage()),
+          );
+        } else if (index == 4) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (context) => const ProfilePage()),
+          );
+        }
+      },
     );
   }
 }
@@ -1325,7 +1248,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
     try {
       final responses = await Future.wait<Object>([
         CustomerApi.instance.getShops(),
-        CustomerApi.instance.getProducts(),
+        CustomerApi.instance.getAllProducts(),
       ]);
       if (!mounted) return;
       setState(() {
@@ -1434,9 +1357,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
                       ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: const Color(0xFFE5E9E3),
-                        ),
+                        border: Border.all(color: const Color(0xFFE5E9E3)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1473,7 +1394,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
           _sectionTitle('Live products'),
           const SizedBox(height: 8),
           SizedBox(
-            height: 98,
+            height: 288,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: _products.length,
@@ -1481,69 +1402,13 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
               itemBuilder: (context, index) {
                 final product = _products[index];
                 return SizedBox(
+                  key: ValueKey('home-live-product-${product.id}'),
                   width: 156,
-                  child: Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      key: ValueKey('home-live-product-${product.id}'),
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (context) => ProductDetailsPage(
-                            product: ProductDetailsProduct(
-                              id: product.id,
-                              serviceType: switch (product.partnerType) {
-                                'restaurant' => 'restaurant',
-                                'grocery' => 'local_store',
-                                'meat_shop' => 'meat',
-                                _ => 'catalog',
-                              },
-                              merchantId: product.shopId,
-                              merchantName: product.shopName,
-                              categoryId: product.categoryId,
-                              name: product.name,
-                              description: product.description,
-                              priceInPaise: product.priceMinor,
-                              available: product.available,
-                              icon: Icons.inventory_2_outlined,
-                              isBackendProduct: true,
-                            ),
-                          ),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              product.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: HomePage._ink,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            if (product.shopName != null) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                product.shopName!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: HomePage._muted,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
+                  child: StoreProductCard(
+                    product: _mapProduct(product),
+                    placeholderIndex: index,
+                    storeName: product.shopName ?? '',
+                    relatedProducts: const [],
                   ),
                 );
               },
@@ -1553,6 +1418,30 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
       ],
     );
   }
+
+  StoreProduct _mapProduct(ApiProduct product) => StoreProduct(
+    id: product.id,
+    storeId: product.shopId,
+    categoryId: product.categoryId ?? 'other',
+    name: product.name,
+    brand: product.brand ?? '',
+    description: product.description,
+    packSize: product.packSize ?? '',
+    price: product.priceMinor / 100,
+    mrp: (product.mrpMinor ?? product.priceMinor) / 100,
+    discount: product.discountPercent,
+    rating: product.rating ?? -1,
+    available: product.available,
+    serviceType: switch (product.partnerType) {
+      'restaurant' => 'restaurant',
+      'meat_shop' => 'meat',
+      'bakery' => 'bakery',
+      _ => 'local_store',
+    },
+    imageUrl: product.imageUrl,
+    badge: product.badge,
+    isBackendData: true,
+  );
 
   Widget _sectionTitle(String title) => Text(
     title,
@@ -2653,22 +2542,4 @@ class _GroceryDiscoveryProduct {
     locality: 'Mandapeta',
     isOpen: true,
   );
-}
-
-class _Promotion {
-  const _Promotion(
-    this.title,
-    this.subtitle,
-    this.offer,
-    this.background,
-    this.foreground,
-    this.icon,
-  );
-
-  final String title;
-  final String subtitle;
-  final String offer;
-  final Color background;
-  final Color foreground;
-  final IconData icon;
 }

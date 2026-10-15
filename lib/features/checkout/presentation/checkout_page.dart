@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -6,7 +8,10 @@ import '../../cart/data/cart_store.dart';
 import '../../coupons/models/demo_coupon.dart';
 import '../../orders/models/order_record.dart';
 import '../../orders/presentation/order_success_page.dart';
+import '../../orders/presentation/orders_page.dart';
+import '../../orders/presentation/order_tracking_page.dart';
 import '../../profile/models/saved_address.dart';
+import 'delivery_unavailable_page.dart';
 
 class CheckoutPage extends StatefulWidget {
   const CheckoutPage({super.key, this.openNewAddressOnLoad = false});
@@ -25,9 +30,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   static const _secondaryText = AppTheme.secondaryText;
   static const _border = Color(0xFFE7EAE8);
 
-  // Later serviceability is shop/store -> confirmed delivery destination,
-  // never buyer GPS -> destination. No distance check is performed here.
-  // Kept isolated as a demo placeholder for future backend pricing.
+  // The backend checks the confirmed destination, not an inferred buyer GPS.
   static const _demoDeliveryChargeInPaise = 3000;
   final _cartStore = CartStore.instance;
   ApiCartQuote? _backendQuote;
@@ -38,9 +41,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _receiverNameController = TextEditingController();
   final _receiverMobileController = TextEditingController();
   final _deliveryAddressController = TextEditingController();
+  final _receiverPincodeController = TextEditingController();
+  final _receiverLatitudeController = TextEditingController();
+  final _receiverLongitudeController = TextEditingController();
   final _landmarkController = TextEditingController();
   final _customDeliveryInstructionController = TextEditingController();
   final _newAddressController = TextEditingController();
+  final _newAddressPincodeController = TextEditingController();
+  final _newAddressLatitudeController = TextEditingController();
+  final _newAddressLongitudeController = TextEditingController();
   final _newAddressLandmarkController = TextEditingController();
   List<CheckoutDeliveryAddress> _savedAddresses = [
     for (final address in demoSavedAddresses)
@@ -52,6 +61,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
   ];
   bool _savedAddressesLoading = false;
   String? _savedAddressesError;
+  bool _serviceabilityChecking = false;
+  ServiceabilityResponse? _serviceabilityResponse;
+  String? _serviceabilityError;
 
   CheckoutDeliveryAddress? _confirmedDeliveryAddress;
   bool _currentLocationSuggested = false;
@@ -81,8 +93,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool get _isBackendCart =>
       CustomerApi.instance.isConfigured && _cartStore.hasBackendCart;
 
-  int get _subtotalInPaise =>
-      _isBackendCart && _backendQuote != null
+  int get _subtotalInPaise => _isBackendCart && _backendQuote != null
       ? _backendQuote!.itemSubtotalMinor
       : _isBackendCart
       ? 0
@@ -104,10 +115,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   int get _totalInPaise => _isBackendCart
       ? _backendQuote?.totalMinor ?? 0
       : DemoCouponValidator.payableTotal(
-    subtotalInPaise: _subtotalInPaise,
-    deliveryFeeInPaise: _deliveryChargeInPaise,
-    coupon: _selectedCoupon,
-  );
+          subtotalInPaise: _subtotalInPaise,
+          deliveryFeeInPaise: _deliveryChargeInPaise,
+          coupon: _selectedCoupon,
+        );
 
   @override
   void initState() {
@@ -145,6 +156,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 addressType: address.label,
                 formattedAddress: address.formattedAddress,
                 isBackendData: true,
+                latitude: address.latitude,
+                longitude: address.longitude,
+                pincode: address.pincode,
               ),
             )
             .toList(growable: false);
@@ -163,9 +177,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
     _receiverNameController.dispose();
     _receiverMobileController.dispose();
     _deliveryAddressController.dispose();
+    _receiverPincodeController.dispose();
+    _receiverLatitudeController.dispose();
+    _receiverLongitudeController.dispose();
     _landmarkController.dispose();
     _customDeliveryInstructionController.dispose();
     _newAddressController.dispose();
+    _newAddressPincodeController.dispose();
+    _newAddressLatitudeController.dispose();
+    _newAddressLongitudeController.dispose();
     _newAddressLandmarkController.dispose();
     super.dispose();
   }
@@ -242,6 +262,62 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     const SizedBox(height: 16),
                   ],
                   _buildDeliverySection(),
+                  if (_serviceabilityChecking)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 10),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 9),
+                          Text(
+                            'Checking delivery availability…',
+                            style: TextStyle(
+                              color: _secondaryText,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (_serviceabilityError != null) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        _serviceabilityError!,
+                        key: const ValueKey('checkout-serviceability-error'),
+                        style: const TextStyle(
+                          color: Color(0xFFA85B5B),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    if (_confirmedDeliveryAddress != null)
+                      TextButton(
+                        onPressed: _serviceabilityChecking
+                            ? null
+                            : () => _checkServiceability(
+                                _confirmedDeliveryAddress!,
+                              ),
+                        child: const Text('Retry delivery check'),
+                      ),
+                  ],
+                  if (_serviceabilityResponse?.isDeliverable ?? false)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(
+                        _serviceabilityResponse!.message,
+                        key: const ValueKey('checkout-serviceable-message'),
+                        style: const TextStyle(
+                          color: _green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 16),
                   _buildDeliveryInstructionsSection(),
                   const SizedBox(height: 16),
@@ -285,9 +361,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
           final hasConfirmedAddress = _confirmedDeliveryAddress != null;
           final orderOutcomeUnknown =
               _isBackendCart && CustomerApi.instance.orderOutcomeUnknown;
+          final serviceabilityRequired = CustomerApi.instance.isConfigured;
           final canPlaceOrder =
               hasItems &&
               hasConfirmedAddress &&
+              (!serviceabilityRequired ||
+                  _serviceabilityResponse?.isDeliverable == true) &&
+              !_serviceabilityChecking &&
               (!_isBackendCart || _backendQuote != null) &&
               (!_isBackendCart || (!_quoteLoading && _quoteError == null)) &&
               !_placingOrder &&
@@ -563,6 +643,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
               mobileController: _receiverMobileController,
               addressController: _deliveryAddressController,
               landmarkController: _landmarkController,
+              pincodeController: _receiverPincodeController,
+              latitudeController: _receiverLatitudeController,
+              longitudeController: _receiverLongitudeController,
             ),
             const SizedBox(height: 10),
             SizedBox(
@@ -802,6 +885,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       _someoneElseSelected = false;
                     });
                     Navigator.of(sheetContext).pop();
+                    unawaited(_checkServiceability(address));
                   },
                 ),
               _deliveryOptionTile(
@@ -862,6 +946,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
     required TextEditingController mobileController,
     required TextEditingController addressController,
     required TextEditingController landmarkController,
+    required TextEditingController pincodeController,
+    required TextEditingController latitudeController,
+    required TextEditingController longitudeController,
   }) {
     return Column(
       children: [
@@ -874,6 +961,32 @@ class _CheckoutPageState extends State<CheckoutPage> {
         ),
         const SizedBox(height: 9),
         _addressField(addressController, 'Delivery Address', maxLines: 2),
+        if (CustomerApi.instance.isConfigured) ...[
+          const SizedBox(height: 9),
+          _addressField(
+            pincodeController,
+            '6-digit Pincode',
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 9),
+          _addressField(
+            latitudeController,
+            'Latitude',
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
+          ),
+          const SizedBox(height: 9),
+          _addressField(
+            longitudeController,
+            'Longitude',
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
+          ),
+        ],
         const SizedBox(height: 9),
         _addressField(landmarkController, 'Landmark (optional)'),
       ],
@@ -939,6 +1052,35 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     maxLines: 2,
                     onChanged: () => setSheetState(() {}),
                   ),
+                  if (CustomerApi.instance.isConfigured) ...[
+                    const SizedBox(height: 10),
+                    _addressField(
+                      _newAddressPincodeController,
+                      '6-digit Pincode',
+                      keyboardType: TextInputType.number,
+                      onChanged: () => setSheetState(() {}),
+                    ),
+                    const SizedBox(height: 10),
+                    _addressField(
+                      _newAddressLatitudeController,
+                      'Latitude',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                        signed: true,
+                      ),
+                      onChanged: () => setSheetState(() {}),
+                    ),
+                    const SizedBox(height: 10),
+                    _addressField(
+                      _newAddressLongitudeController,
+                      'Longitude',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                        signed: true,
+                      ),
+                      onChanged: () => setSheetState(() {}),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   _addressField(
                     _newAddressLandmarkController,
@@ -970,6 +1112,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ),
     ).whenComplete(() {
       _newAddressController.clear();
+      _newAddressPincodeController.clear();
+      _newAddressLatitudeController.clear();
+      _newAddressLongitudeController.clear();
       _newAddressLandmarkController.clear();
       _newAddressType = 'Other';
     });
@@ -1403,8 +1548,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
             'Subtotal',
             _displayPrice(
               _isBackendCart
-            ? _backendQuote?.itemSubtotalMinor
-            : _subtotalInPaise,
+                  ? _backendQuote?.itemSubtotalMinor
+                  : _subtotalInPaise,
             ),
           ),
           const SizedBox(height: 10),
@@ -1412,8 +1557,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
             'Delivery Charge',
             _displayPrice(
               _isBackendCart
-            ? _backendQuote?.deliveryFeeMinor
-            : _deliveryChargeInPaise,
+                  ? _backendQuote?.deliveryFeeMinor
+                  : _deliveryChargeInPaise,
             ),
           ),
           const SizedBox(height: 10),
@@ -1443,9 +1588,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   : 'Delivery charge is a demo value; serviceability and final '
                         'pricing are not checked here.',
               style: const TextStyle(
-                  color: _secondaryText,
-                  fontSize: 11,
-                  height: 1.4,
+                color: _secondaryText,
+                fontSize: 11,
+                height: 1.4,
               ),
             ),
           ),
@@ -1585,15 +1730,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   void _confirmSuggestedCurrentLocation() {
-    setState(() {
-      _confirmedDeliveryAddress = const CheckoutDeliveryAddress(
-        id: 'current-location-demo',
-        addressType: 'Current location',
-        formattedAddress: 'Demo suggested location',
-      );
-      _currentLocationSuggested = false;
-      _someoneElseSelected = false;
-    });
+    final address = CheckoutDeliveryAddress(
+      id: 'current-location-demo',
+      addressType: 'Current location',
+      formattedAddress: 'Demo suggested location',
+    );
+    _confirmAddress(address);
   }
 
   void _confirmSomeoneElseAddress() {
@@ -1606,11 +1748,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
         formattedAddress: formattedAddress,
         receiverName: _receiverNameController.text.trim(),
         receiverMobile: _receiverMobileController.text.trim(),
+        pincode: _receiverPincodeController.text.trim(),
+        latitude: double.tryParse(_receiverLatitudeController.text.trim()),
+        longitude: double.tryParse(_receiverLongitudeController.text.trim()),
         landmark: _landmarkController.text.trim(),
       );
       _someoneElseSelected = false;
       _currentLocationSuggested = false;
     });
+    unawaited(_checkServiceability(_confirmedDeliveryAddress!));
   }
 
   void _saveNewAddress() {
@@ -1618,6 +1764,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
       id: 'new-${DateTime.now().microsecondsSinceEpoch}',
       addressType: _newAddressType,
       formattedAddress: _newAddressController.text.trim(),
+      pincode: _newAddressPincodeController.text.trim(),
+      latitude: double.tryParse(_newAddressLatitudeController.text.trim()),
+      longitude: double.tryParse(_newAddressLongitudeController.text.trim()),
       landmark: _newAddressLandmarkController.text.trim(),
     );
     setState(() {
@@ -1628,22 +1777,91 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _currentLocationSuggested = false;
       _someoneElseSelected = false;
     });
+    unawaited(_checkServiceability(address));
+  }
+
+  void _confirmAddress(CheckoutDeliveryAddress address) {
+    setState(() {
+      _confirmedDeliveryAddress = address;
+      _currentLocationSuggested = false;
+      _someoneElseSelected = false;
+    });
+    unawaited(_checkServiceability(address));
+  }
+
+  Future<ServiceabilityResponse?> _checkServiceability(
+    CheckoutDeliveryAddress address,
+  ) async {
+    if (!CustomerApi.instance.isConfigured) return null;
+    final latitude = address.latitude;
+    final longitude = address.longitude;
+    final pincode = address.pincode?.trim();
+    if (latitude == null ||
+        longitude == null ||
+        pincode == null ||
+        pincode.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _serviceabilityResponse = null;
+          _serviceabilityError =
+              'This address needs a 6-digit pincode and map coordinates '
+              'before delivery can be checked.';
+        });
+      }
+      return null;
+    }
+
+    setState(() {
+      _serviceabilityChecking = true;
+      _serviceabilityError = null;
+      _serviceabilityResponse = null;
+    });
+    try {
+      final result = await CustomerApi.instance.checkLocationServiceability(
+        latitude,
+        longitude,
+        pincode,
+      );
+      if (!mounted) return result;
+      setState(() => _serviceabilityResponse = result);
+      if (!result.isDeliverable) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (context) =>
+                ServiceabilityUnavailablePage(message: result.message),
+          ),
+        );
+      }
+      return result;
+    } on CustomerApiException catch (error) {
+      if (mounted) setState(() => _serviceabilityError = error.message);
+      return null;
+    } finally {
+      if (mounted) setState(() => _serviceabilityChecking = false);
+    }
   }
 
   Future<void> _placeOrder() async {
-    if (!_isBackendCart) {
+    if (_cartStore.items.isEmpty || _confirmedDeliveryAddress == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Order flow will be connected next.')),
+        const SnackBar(
+          content: Text('Choose a delivery address and add items to continue.'),
+        ),
       );
       return;
     }
-    final address = _confirmedDeliveryAddress;
-    if (address == null || _backendQuote == null) return;
+    final address = _confirmedDeliveryAddress!;
+    if (_isBackendCart && _backendQuote == null) return;
     setState(() => _placingOrder = true);
     try {
+      if (CustomerApi.instance.isConfigured) {
+        final serviceability = await _checkServiceability(address);
+        if (serviceability?.isDeliverable != true) return;
+      }
       final deliveryAddress = <String, Object?>{
         'label': address.addressType,
         'formattedAddress': address.formattedAddress,
+        if (address.pincode?.isNotEmpty ?? false) 'pincode': address.pincode,
         if (address.receiverName?.isNotEmpty ?? false)
           'receiverName': address.receiverName,
         if (address.receiverMobile?.isNotEmpty ?? false)
@@ -1652,29 +1870,56 @@ class _CheckoutPageState extends State<CheckoutPage> {
         if (address.latitude != null) 'latitude': address.latitude,
         if (address.longitude != null) 'longitude': address.longitude,
       };
-      final order = await CustomerApi.instance.placeOrder(deliveryAddress);
+      final ApiOrderResult? order;
+      if (_isBackendCart) {
+        order = await CustomerApi.instance.placeOrder(deliveryAddress);
+      } else {
+        order = null;
+      }
       if (!mounted) return;
       final confirmedOrder = OrderRecord(
-        storeName: '',
-        icon: Icons.receipt_long_outlined,
-        orderId: order.orderId,
-        dateTime: '',
-        itemSummary:
-            '${order.itemCount} ${order.itemCount == 1 ? 'item' : 'items'}',
-        totalInPaise: order.totalMinor,
-        status: order.status,
-        statusMessage: '',
+        storeName: _cartStore.items.first.merchantId ?? 'MyShopzy Store',
+        icon: _cartStore.items.first.icon,
+        orderId:
+            order?.orderId ?? 'MSZ-${DateTime.now().millisecondsSinceEpoch}',
+        dateTime: DateTime.now().toLocal().toString(),
+        itemSummary: _cartStore.items
+            .map((item) => '${item.quantity} ${item.name}')
+            .join(', '),
+        totalInPaise: order?.totalMinor ?? _totalInPaise,
+        status: order?.status ?? 'Order Placed',
+        statusMessage: 'We have received your order',
         orderTab: OrdersTab.ongoing,
-        serviceType: '',
-        items: const [],
+        serviceType: _cartStore.items.first.serviceType,
+        items: [
+          for (final item in _cartStore.items)
+            OrderLineItem(
+              name: item.name,
+              quantity: item.quantity,
+              unitPriceInPaise: item.priceInPaise,
+              icon: item.icon,
+              description: item.description,
+              imageUrl: item.imageUrl,
+              productId: item.productId,
+              serviceType: item.serviceType,
+              merchantId: item.merchantId,
+              serviceVariant: item.serviceVariant,
+              productVariantId: item.productVariantId,
+              variantLabel: item.variantLabel,
+            ),
+        ],
         deliveryAddress: address.formattedAddress,
-        paymentMethod: '',
-        paymentStatus: '',
-        deliveryChargeInPaise: order.deliveryFeeMinor,
-        discountInPaise: order.discountMinor,
-        isBackendData: true,
-        itemCount: order.itemCount,
+        deliveryAddressLabel: address.addressType,
+        paymentMethod: _selectedPaymentMethod,
+        paymentStatus: 'Pending',
+        deliveryChargeInPaise:
+            order?.deliveryFeeMinor ?? _deliveryChargeInPaise,
+        discountInPaise: order?.discountMinor ?? _discountInPaise,
+        trackingStatus: OrderTrackingStatus.orderPlaced,
+        isBackendData: order != null,
+        itemCount: order?.itemCount ?? _cartStore.totalQuantity,
       );
+      if (order == null) OrdersPage.addDemoOrder(confirmedOrder);
       _cartStore.clear();
       await Navigator.of(context).pushReplacement<void, void>(
         MaterialPageRoute<void>(
@@ -1684,9 +1929,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
     } on CustomerApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             CustomerApi.instance.orderOutcomeUnknown
@@ -1743,6 +1986,7 @@ class CheckoutDeliveryAddress {
     required this.formattedAddress,
     this.latitude,
     this.longitude,
+    this.pincode,
     this.receiverName,
     this.receiverMobile,
     this.landmark,
@@ -1752,6 +1996,7 @@ class CheckoutDeliveryAddress {
   final String id;
   final double? latitude;
   final double? longitude;
+  final String? pincode;
   final String formattedAddress;
   final String? receiverName;
   final String? receiverMobile;

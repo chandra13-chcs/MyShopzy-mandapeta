@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../cart/presentation/cart_access_button.dart';
+import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
 import 'restaurants_page.dart';
@@ -30,6 +31,12 @@ class MenuItem {
     this.isBackendProduct = false,
     this.dietaryInfoAvailable = true,
     this.imageUrl,
+    this.brand,
+    this.packSize,
+    this.rating,
+    this.mrp,
+    this.discount = 0,
+    this.badge,
   });
 
   final String id;
@@ -44,6 +51,12 @@ class MenuItem {
   final bool available;
   final bool isBackendProduct;
   final bool dietaryInfoAvailable;
+  final String? brand;
+  final String? packSize;
+  final double? rating;
+  final double? mrp;
+  final int discount;
+  final String? badge;
 }
 
 const sampleRestaurantMenuCategories = [
@@ -221,7 +234,7 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     final categoriesFuture = _categoriesFuture ??= api.getCategories(
       widget.restaurant.id,
     );
-    final productsFuture = api.getProducts(
+    final productsFuture = api.getAllProducts(
       shopId: widget.restaurant.id,
       query: query,
     );
@@ -266,6 +279,13 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         available: product.available,
         isBackendProduct: true,
         dietaryInfoAvailable: false,
+        imageUrl: product.imageUrl,
+        brand: product.brand,
+        packSize: product.packSize,
+        rating: product.rating,
+        mrp: product.mrpMinor == null ? null : product.mrpMinor! / 100,
+        discount: product.discountPercent,
+        badge: product.badge,
       );
     }).toList();
     return _RestaurantCatalog(categories: menuCategories, items: items);
@@ -778,32 +798,79 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
               ],
             ),
           ),
-          for (var index = 0; index < items.length; index++) ...[
-            _MenuItemCard(
-              item: items[index],
-              restaurantName: widget.restaurant.name,
-              relatedItems: items
-                  .where(
-                    (related) =>
-                        related.restaurantId == items[index].restaurantId &&
-                        related.categoryId == items[index].categoryId &&
-                        related.id != items[index].id,
-                  )
-                  .toList(),
-            ),
-            if (index < items.length - 1)
-              const Divider(
-                height: 1,
-                indent: 2,
-                endIndent: 2,
-                color: Color(0xFFE8EBE6),
+          if (items.every((item) => item.isBackendProduct))
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 12,
+                mainAxisExtent: 288,
               ),
-          ],
+              itemBuilder: (context, index) => StoreProductCard(
+                key: ValueKey('backend-restaurant-product-${items[index].id}'),
+                product: _asStoreProduct(items[index]),
+                placeholderIndex: index,
+                storeName: widget.restaurant.name,
+                relatedProducts: items
+                    .where(
+                      (related) =>
+                          related.restaurantId == items[index].restaurantId &&
+                          related.categoryId == items[index].categoryId &&
+                          related.id != items[index].id,
+                    )
+                    .map(_asStoreProduct)
+                    .toList(growable: false),
+              ),
+            )
+          else
+            for (var index = 0; index < items.length; index++) ...[
+              _MenuItemCard(
+                item: items[index],
+                restaurantName: widget.restaurant.name,
+                relatedItems: items
+                    .where(
+                      (related) =>
+                          related.restaurantId == items[index].restaurantId &&
+                          related.categoryId == items[index].categoryId &&
+                          related.id != items[index].id,
+                    )
+                    .toList(),
+              ),
+              if (index < items.length - 1)
+                const Divider(
+                  height: 1,
+                  indent: 2,
+                  endIndent: 2,
+                  color: Color(0xFFE8EBE6),
+                ),
+            ],
           const SizedBox(height: 10),
         ],
       ),
     );
   }
+
+  StoreProduct _asStoreProduct(MenuItem item) => StoreProduct(
+    id: item.id,
+    storeId: item.restaurantId,
+    categoryId: item.categoryId,
+    name: item.name,
+    brand: item.brand ?? '',
+    description: item.description,
+    packSize: item.packSize ?? '',
+    price: item.price,
+    mrp: item.mrp ?? item.price,
+    discount: item.discount,
+    rating: item.rating ?? -1,
+    available: item.available,
+    serviceType: 'restaurant',
+    imageUrl: item.imageUrl,
+    badge: item.badge,
+    isBackendData: item.isBackendProduct,
+  );
 }
 
 class _HeaderAction extends StatelessWidget {

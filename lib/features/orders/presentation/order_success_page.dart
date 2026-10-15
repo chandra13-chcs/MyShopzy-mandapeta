@@ -26,70 +26,60 @@ class OrderSuccessPage extends StatelessWidget {
               children: [
                 Container(
                   key: const ValueKey('order-success-mark'),
-                  width: 104,
-                  height: 104,
+                  width: 136,
+                  height: 136,
                   decoration: const BoxDecoration(
-                    color: AppTheme.primaryGreen,
+                    color: Color(0xFF1557E8),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.check_rounded,
                     color: AppTheme.white,
-                    size: 62,
+                    size: 82,
                   ),
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 34),
                 const Text(
-                  'Order placed successfully',
+                  'Order placed for',
                   textAlign: TextAlign.center,
                   style: TextStyle(
+                    color: AppTheme.primaryText,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  confirmedOrder.deliveryAddressLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
                     color: AppTheme.primaryText,
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    confirmedOrder.deliveryAddress,
+                    textAlign: TextAlign.center,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppTheme.secondaryText,
+                      fontSize: 16,
+                      height: 1.4,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Text(
-                  confirmedOrder.isBackendData
-                      ? 'Your order has been placed.'
-                      : 'Your order from ${confirmedOrder.storeName} is confirmed.',
+                  'Order ID: ${confirmedOrder.orderId}',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: AppTheme.secondaryText,
-                    fontSize: 15,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE7EAE8)),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Order ID: ${confirmedOrder.orderId}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: AppTheme.primaryText,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        confirmedOrder.deliveryAddress,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: AppTheme.secondaryText,
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
+                    fontSize: 12,
                   ),
                 ),
                 const SizedBox(height: 26),

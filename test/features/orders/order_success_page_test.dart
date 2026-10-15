@@ -16,7 +16,8 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('order-success-mark')), findsOneWidget);
-    expect(find.text('Order placed successfully'), findsOneWidget);
+    expect(find.text('Order placed for'), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
     expect(find.text('Order ID: ORDER-123'), findsOneWidget);
     expect(find.text('Home · Demo Address'), findsOneWidget);
 

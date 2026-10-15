@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../cart/presentation/cart_access_button.dart';
+import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
 
@@ -443,6 +447,10 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
   static const _green = AppTheme.primaryGreen;
 
   late String _selectedCategoryId;
+  List<ProduceCategory> _backendCategories = const [];
+  List<StoreProduct> _backendProducts = const [];
+  bool _backendLoading = false;
+  String? _backendError;
 
   @override
   void initState() {
@@ -451,10 +459,106 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
         .where((category) => category.type == widget.type)
         .toList();
     _selectedCategoryId = categories.isEmpty ? '' : categories.first.id;
+    if (CustomerApi.instance.isConfigured) {
+      unawaited(_loadBackendCatalog());
+    }
+  }
+
+  Future<void> _loadBackendCatalog() async {
+    setState(() {
+      _backendLoading = true;
+      _backendError = null;
+      _backendCategories = const [];
+      _backendProducts = const [];
+    });
+    try {
+      final shops = await CustomerApi.instance.getShops(
+        partnerType: 'grocery',
+      );
+      final responses = await Future.wait<Object>([
+        CustomerApi.instance.getAllProducts(partnerType: 'grocery'),
+        Future.wait(
+          shops.map((shop) => CustomerApi.instance.getCategories(shop.id)),
+        ),
+      ]);
+      final products = responses[0] as List<ApiProduct>;
+      final shopCategories = (responses[1] as List<List<ApiCategory>>)
+          .expand((categories) => categories)
+          .toList(growable: false);
+      final categoryNames = <String, String>{
+        for (final category in shopCategories) category.id: category.name,
+      };
+      final matchingProducts = products
+          .where((product) => _matchesProduceType(product.produceType))
+          .toList(growable: false);
+      final usedCategoryIds = matchingProducts
+          .map((product) => product.categoryId ?? 'other')
+          .toSet();
+      final categories = usedCategoryIds
+          .map(
+            (id) => ProduceCategory(
+              id: id,
+              name: categoryNames[id] ?? 'Other',
+              type: widget.type,
+              icon: widget.type == ProduceType.fruit
+                  ? Icons.apple_rounded
+                  : Icons.eco_rounded,
+            ),
+          )
+          .toList(growable: false)
+        ..sort((first, second) => first.name.compareTo(second.name));
+      final mappedProducts = matchingProducts
+          .map(
+            (product) => StoreProduct(
+              id: product.id,
+              storeId: product.shopId,
+              categoryId: product.categoryId ?? 'other',
+              name: product.name,
+              brand: product.brand ?? '',
+              description: product.description,
+              packSize: product.packSize ?? '',
+              price: product.priceMinor / 100,
+              mrp: (product.mrpMinor ?? product.priceMinor) / 100,
+              discount: product.discountPercent,
+              rating: product.rating ?? -1,
+              available: product.available,
+              serviceType: 'local_store',
+              imageUrl: product.imageUrl,
+              badge: product.badge,
+              isBackendData: true,
+            ),
+          )
+          .toList(growable: false);
+      if (!mounted) return;
+      setState(() {
+        _backendCategories = categories;
+        _backendProducts = mappedProducts;
+        _selectedCategoryId = categories.isEmpty ? '' : categories.first.id;
+        _backendLoading = false;
+      });
+    } on CustomerApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _backendError = error.message;
+        _backendLoading = false;
+      });
+    }
+  }
+
+  bool _matchesProduceType(String? value) {
+    final normalized = value?.trim().toLowerCase();
+    return switch (widget.type) {
+      ProduceType.fruit => normalized == 'fruit' || normalized == 'fruits',
+      ProduceType.vegetable =>
+        normalized == 'vegetable' || normalized == 'vegetables',
+    };
   }
 
   @override
   Widget build(BuildContext context) {
+    if (CustomerApi.instance.isConfigured) {
+      return _buildBackendCatalog(context);
+    }
     final categories = widget.categories
         .where((category) => category.type == widget.type)
         .toList();
@@ -608,6 +712,199 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: const CartSummaryBar(),
+    );
+  }
+
+  Widget _buildBackendCatalog(BuildContext context) {
+    final title = widget.type == ProduceType.fruit ? 'Fruits' : 'Vegetables';
+    final visibleProducts = _backendProducts
+        .where((product) => product.categoryId == _selectedCategoryId)
+        .toList(growable: false);
+    return Scaffold(
+      backgroundColor: AppTheme.lightBackground,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(context, title),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Live grocery products tagged by produce type.',
+                  style: TextStyle(color: _muted, fontSize: 11),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _backendLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _backendError != null
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _backendError!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFFA85B5B),
+                                fontSize: 12,
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _loadBackendCatalog,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Retry catalog'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _backendCategories.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Text(
+                          'No live $title are available. Add product attributes '
+                          'with produce_type set to "${widget.type.name}".',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: _muted, fontSize: 12),
+                        ),
+                      ),
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          width: 82,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.only(top: 7, bottom: 10),
+                            itemCount: _backendCategories.length,
+                            itemBuilder: (context, index) {
+                              final category = _backendCategories[index];
+                              final selected =
+                                  category.id == _selectedCategoryId;
+                              return InkWell(
+                                onTap: () => setState(
+                                  () => _selectedCategoryId = category.id,
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    7,
+                                    5,
+                                    7,
+                                    10,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 160,
+                                        ),
+                                        width: 62,
+                                        height: 65,
+                                        decoration: BoxDecoration(
+                                          color: selected
+                                              ? const Color(0xFFE9F1E7)
+                                              : Colors.white,
+                                          borderRadius: BorderRadius.circular(
+                                            13,
+                                          ),
+                                          border: Border.all(
+                                            color: selected
+                                                ? const Color(0xFFBBD4B7)
+                                                : const Color(0xFFE9ECE7),
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          category.icon,
+                                          color: selected
+                                              ? _green
+                                              : const Color(0xFF8B948C),
+                                          size: 27,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 5),
+                                      Text(
+                                        category.name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: selected ? _ink : _muted,
+                                          fontSize: 10,
+                                          fontWeight: selected
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          height: 1.2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        Expanded(
+                          child: CustomScrollView(
+                            slivers: [
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  9,
+                                  8,
+                                  12,
+                                  18,
+                                ),
+                                sliver: SliverGrid(
+                                  delegate: SliverChildBuilderDelegate(
+                                    (context, index) => StoreProductCard(
+                                      key: ValueKey(
+                                        'backend-produce-product-'
+                                        '${visibleProducts[index].id}',
+                                      ),
+                                      product: visibleProducts[index],
+                                      placeholderIndex: index,
+                                      storeName: '',
+                                      relatedProducts: const [],
+                                    ),
+                                    childCount: visibleProducts.length,
+                                  ),
+                                  gridDelegate:
+                                      const SliverGridDelegateWithFixedCrossAxisCount(
+                                        crossAxisCount: 2,
+                                        crossAxisSpacing: 9,
+                                        mainAxisSpacing: 12,
+                                        mainAxisExtent: 288,
+                                      ),
+                                ),
+                              ),
+                              if (visibleProducts.isEmpty)
+                                const SliverFillRemaining(
+                                  hasScrollBody: false,
+                                  child: Center(
+                                    child: Text(
+                                      'No products in this category.',
+                                      style: TextStyle(
+                                        color: _muted,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ],
         ),

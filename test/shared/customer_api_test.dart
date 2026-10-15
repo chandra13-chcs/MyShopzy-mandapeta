@@ -57,6 +57,15 @@ void main() {
                   'price_minor': '12345',
                   'currency': 'INR',
                   'is_available': true,
+                  'attributes': {
+                    'image_url': 'https://shop.example/rice.jpg',
+                    'rating': 4.6,
+                    'mrp_minor': 15000,
+                    'discount_percent': 18,
+                    'badge': 'Popular',
+                    'brand': 'Farmhouse',
+                    'pack_size': '1 kg',
+                  },
                 },
               ],
               'pagination': {'limit': 20, 'offset': 0},
@@ -77,8 +86,122 @@ void main() {
       expect(categories.single.name, 'Meals');
       expect(products.single.priceMinor, 12345);
       expect(products.single.priceMinor ~/ 100, 123);
+      expect(products.single.imageUrl, 'https://shop.example/rice.jpg');
+      expect(products.single.rating, 4.6);
+      expect(products.single.mrpMinor, 15000);
+      expect(products.single.discountPercent, 18);
+      expect(products.single.badge, 'Popular');
+      expect(products.single.brand, 'Farmhouse');
+      expect(products.single.packSize, '1 kg');
       expect(requests.first.url.toString(), contains('partnerType=restaurant'));
       expect(requests.last.url.queryParameters['shopId'], 'shop-id');
+      expect(requests.last.url.queryParameters['limit'], '100');
+      expect(requests.last.url.queryParameters['offset'], '0');
+    });
+
+    test('loads every product page within the API page-size limit', () async {
+      final offsets = <String?>[];
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          final offset = request.url.queryParameters['offset'];
+          offsets.add(offset);
+          final start = int.parse(offset!);
+          final count = start == 0 ? 100 : 1;
+          return http.Response(
+            jsonEncode({
+              'data': List.generate(
+                count,
+                (index) => {
+                  'id': 'product-${start + index}',
+                  'shop_id': 'shop-id',
+                  'name': 'Product ${start + index}',
+                  'price_minor': 100,
+                  'currency': 'INR',
+                  'is_available': true,
+                },
+              ),
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(api.close);
+
+      final products = await api.getAllProducts();
+
+      expect(products, hasLength(101));
+      expect(offsets, ['0', '100']);
+    });
+
+    test('checks delivery serviceability with location and pincode', () async {
+      late http.Request request;
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((value) async {
+          request = value;
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'isDeliverable': true,
+                'message': 'Delivery is available.',
+              },
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(api.close);
+
+      final result = await api.checkLocationServiceability(
+        16.87,
+        81.93,
+        '533308',
+      );
+
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/v1/delivery/serviceability');
+      expect(jsonDecode(request.body), {
+        'latitude': 16.87,
+        'longitude': 81.93,
+        'pincode': '533308',
+      });
+      expect(result.isDeliverable, isTrue);
+      expect(result.message, 'Delivery is available.');
+    });
+
+    test('rejects invalid serviceability coordinates and pincodes', () async {
+      var requestSent = false;
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          requestSent = true;
+          return http.Response('{}', 200);
+        }),
+      );
+      addTearDown(api.close);
+
+      await expectLater(
+        api.checkLocationServiceability(91, 81.93, '533308'),
+        throwsA(
+          isA<CustomerApiException>().having(
+            (error) => error.code,
+            'code',
+            'INVALID_REQUEST',
+          ),
+        ),
+      );
+      await expectLater(
+        api.checkLocationServiceability(16.87, 81.93, '53330'),
+        throwsA(
+          isA<CustomerApiException>().having(
+            (error) => error.code,
+            'code',
+            'INVALID_REQUEST',
+          ),
+        ),
+      );
+      expect(requestSent, isFalse);
     });
 
     test(
@@ -338,10 +461,12 @@ void main() {
       expect(created.id, 'created-address-id');
       expect(updated.label, 'Work');
       expect(updated.formattedAddress, '24 Market Street');
-      expect(
-        requests.map((request) => request.method),
-        ['GET', 'POST', 'PATCH', 'DELETE'],
-      );
+      expect(requests.map((request) => request.method), [
+        'GET',
+        'POST',
+        'PATCH',
+        'DELETE',
+      ]);
       expect(requests.map((request) => request.url.path), [
         '/api/v1/me/addresses',
         '/api/v1/me/addresses',
@@ -376,11 +501,7 @@ void main() {
         throwsA(
           isA<CustomerApiException>()
               .having((error) => error.statusCode, 'statusCode', 401)
-              .having(
-                (error) => error.code,
-                'code',
-                'AUTHENTICATION_REQUIRED',
-              )
+              .having((error) => error.code, 'code', 'AUTHENTICATION_REQUIRED')
               .having(
                 (error) => error.message,
                 'message',

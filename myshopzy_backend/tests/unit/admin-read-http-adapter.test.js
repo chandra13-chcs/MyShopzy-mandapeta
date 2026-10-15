@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  toAuthenticationRequiredHttpResponse,
   toDetailHttpResponse,
   toErrorHttpResponse,
   toListHttpResponse,
@@ -8,6 +9,19 @@ const {
 const { QueryValidationError } = require('../../src/modules/admin-read/queries');
 
 const requestId = 'request-123';
+
+test('formats authentication failures with a sanitized error and request ID', () => {
+  assert.deepEqual(toAuthenticationRequiredHttpResponse(requestId), {
+    status: 401,
+    body: {
+      error: {
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Admin authentication is required.',
+      },
+      meta: { requestId },
+    },
+  });
+});
 
 test('accepts request IDs matching the documented format and maximum length', () => {
   const maximumLengthId = `a${'b'.repeat(63)}`;

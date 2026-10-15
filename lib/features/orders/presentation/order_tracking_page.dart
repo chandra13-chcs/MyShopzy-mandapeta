@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 
 enum OrderTrackingStatus {
   orderPlaced,
@@ -22,6 +25,12 @@ class OrderTrackingData {
     required this.items,
     required this.total,
     this.status = OrderTrackingStatus.onTheWay,
+    this.deliveryAddressLabel = 'Home',
+    this.deliveryAddress = 'Address not provided',
+    this.itemNames = const [],
+    this.partnerName,
+    this.etaMinutes,
+    this.isDemo = true,
   });
 
   final String orderId;
@@ -29,13 +38,49 @@ class OrderTrackingData {
   final String items;
   final String total;
   final OrderTrackingStatus status;
+  final String deliveryAddressLabel;
+  final String deliveryAddress;
+  final List<String> itemNames;
+  final String? partnerName;
+  final int? etaMinutes;
+  final bool isDemo;
+
+  OrderTrackingData copyWith({
+    String? storeName,
+    String? items,
+    String? total,
+    OrderTrackingStatus? status,
+    String? deliveryAddressLabel,
+    String? deliveryAddress,
+    List<String>? itemNames,
+    String? partnerName,
+  }) {
+    return OrderTrackingData(
+      orderId: orderId,
+      storeName: storeName ?? this.storeName,
+      items: items ?? this.items,
+      total: total ?? this.total,
+      status: status ?? this.status,
+      deliveryAddressLabel: deliveryAddressLabel ?? this.deliveryAddressLabel,
+      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      itemNames: itemNames ?? this.itemNames,
+      partnerName: partnerName ?? this.partnerName,
+      etaMinutes: etaMinutes,
+      isDemo: isDemo,
+    );
+  }
 }
 
-class OrderTrackingPage extends StatelessWidget {
+class OrderTrackingPage extends StatefulWidget {
   const OrderTrackingPage({required this.order, super.key});
 
   final OrderTrackingData order;
 
+  @override
+  State<OrderTrackingPage> createState() => _OrderTrackingPageState();
+}
+
+class _OrderTrackingPageState extends State<OrderTrackingPage> {
   static const _background = AppTheme.lightBackground;
   static const _green = AppTheme.primaryGreen;
   static const _lightGreen = AppTheme.lightBackground;
@@ -69,16 +114,95 @@ class OrderTrackingPage extends StatelessWidget {
     'Delivered',
   ];
 
+  late OrderTrackingData order;
+  Timer? _refreshTimer;
+  bool _refreshing = false;
+  String? _refreshError;
+
+  @override
+  void initState() {
+    super.initState();
+    order = widget.order;
+    if (!order.isDemo) {
+      unawaited(_refreshStatus());
+      _refreshTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => unawaited(_refreshStatus()),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshStatus() async {
+    if (_refreshing || !mounted) return;
+    setState(() {
+      _refreshing = true;
+      _refreshError = null;
+    });
+    try {
+      final detail = await CustomerApi.instance.getOrderDetails(order.orderId);
+      if (!mounted) return;
+      final address = detail.deliveryAddressSnapshot;
+      final formattedAddress =
+          address['formattedAddress'] ?? address['address'];
+      final label = address['label'];
+      setState(() {
+        order = order.copyWith(
+          storeName: detail.shopName,
+          total: '₹${(detail.totalMinor / 100).toStringAsFixed(0)}',
+          items:
+              '${detail.items.length} '
+              '${detail.items.length == 1 ? 'item' : 'items'}',
+          itemNames: detail.items
+              .map((item) => '${item.name} × ${item.quantity}')
+              .toList(growable: false),
+          deliveryAddress: formattedAddress is String
+              ? formattedAddress
+              : order.deliveryAddress,
+          deliveryAddressLabel: label is String
+              ? label
+              : order.deliveryAddressLabel,
+          status: _statusFromApi(detail.status) ?? order.status,
+        );
+      });
+    } on CustomerApiException catch (error) {
+      if (mounted) setState(() => _refreshError = error.message);
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  OrderTrackingStatus? _statusFromApi(String status) {
+    return switch (status.toLowerCase().replaceAll(' ', '_')) {
+      'placed' || 'order_placed' => OrderTrackingStatus.orderPlaced,
+      'confirmed' || 'order_confirmed' => OrderTrackingStatus.orderConfirmed,
+      'preparing' => OrderTrackingStatus.preparing,
+      'packed' => OrderTrackingStatus.packed,
+      'finding_delivery_partner' => OrderTrackingStatus.findingDeliveryPartner,
+      'rider_assigned' => OrderTrackingStatus.riderAssigned,
+      'picked_up' => OrderTrackingStatus.pickedUp,
+      'on_the_way' || 'out_for_delivery' => OrderTrackingStatus.onTheWay,
+      'arriving' => OrderTrackingStatus.arriving,
+      'delivered' => OrderTrackingStatus.delivered,
+      _ => null,
+    };
+  }
+
   String get _statusTitle => switch (order.status) {
-    OrderTrackingStatus.orderPlaced => 'Order Placed',
-    OrderTrackingStatus.orderConfirmed => 'Order Confirmed',
-    OrderTrackingStatus.preparing => 'Preparing',
-    OrderTrackingStatus.packed => 'Packed',
+    OrderTrackingStatus.orderPlaced ||
+    OrderTrackingStatus.orderConfirmed ||
+    OrderTrackingStatus.preparing ||
+    OrderTrackingStatus.packed => 'Order getting packed!',
     OrderTrackingStatus.findingDeliveryPartner => 'Finding Delivery Partner',
-    OrderTrackingStatus.riderAssigned => 'Rider Assigned',
-    OrderTrackingStatus.pickedUp => 'Picked Up',
-    OrderTrackingStatus.onTheWay => 'On the way',
-    OrderTrackingStatus.arriving => 'Arriving',
+    OrderTrackingStatus.riderAssigned ||
+    OrderTrackingStatus.pickedUp ||
+    OrderTrackingStatus.onTheWay ||
+    OrderTrackingStatus.arriving => 'Out for delivery',
     OrderTrackingStatus.delivered => 'Delivered',
   };
 
@@ -97,6 +221,15 @@ class OrderTrackingPage extends StatelessWidget {
   };
 
   bool get _isDelivered => order.status == OrderTrackingStatus.delivered;
+  bool get _isOutForDelivery => switch (order.status) {
+    OrderTrackingStatus.riderAssigned ||
+    OrderTrackingStatus.pickedUp ||
+    OrderTrackingStatus.onTheWay ||
+    OrderTrackingStatus.arriving => true,
+    _ => false,
+  };
+
+  int get _etaMinutes => order.etaMinutes ?? (_isOutForDelivery ? 3 : 10);
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +248,23 @@ class OrderTrackingPage extends StatelessWidget {
           'Track Order',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
+        actions: [
+          if (!order.isDemo)
+            IconButton(
+              tooltip: 'Refresh tracking',
+              onPressed: _refreshing ? null : _refreshStatus,
+              icon: _refreshing
+                  ? const SizedBox(
+                      width: 19,
+                      height: 19,
+                      child: CircularProgressIndicator(
+                        color: AppTheme.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.refresh_rounded),
+            ),
+        ],
       ),
       body: SafeArea(
         top: false,
@@ -124,6 +274,26 @@ class OrderTrackingPage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildStatusHeader(),
+              if (_refreshError != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _refreshError!,
+                        style: const TextStyle(
+                          color: Color(0xFFA85B5B),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _refreshing ? null : _refreshStatus,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 16),
               _buildEtaCard(),
               const SizedBox(height: 16),
@@ -136,6 +306,8 @@ class OrderTrackingPage extends StatelessWidget {
               _buildDeliveryInformation(),
               const SizedBox(height: 16),
               _buildOrderDetails(),
+              const SizedBox(height: 16),
+              _buildItemList(),
               const SizedBox(height: 16),
               _buildOtpCard(),
             ],
@@ -201,8 +373,8 @@ class OrderTrackingPage extends StatelessWidget {
       children: [
         Expanded(
           child: _InfoCard(
-            label: _isDelivered ? 'Order status' : 'Arriving in',
-            value: _isDelivered ? 'Completed' : '18 mins',
+            label: _isDelivered ? 'Order status' : 'Estimated delivery',
+            value: _isDelivered ? 'Completed' : '$_etaMinutes mins',
             icon: _isDelivered
                 ? Icons.task_alt_rounded
                 : Icons.schedule_rounded,
@@ -211,11 +383,9 @@ class OrderTrackingPage extends StatelessWidget {
         const SizedBox(width: 12),
         Expanded(
           child: _InfoCard(
-            label: _isDelivered ? 'Tracking' : 'Distance',
-            value: _isDelivered ? 'Inactive' : '1.8 km away',
-            icon: _isDelivered
-                ? Icons.location_off_outlined
-                : Icons.near_me_outlined,
+            label: 'Delivering to',
+            value: order.deliveryAddressLabel,
+            icon: Icons.home_outlined,
           ),
         ),
       ],
@@ -224,7 +394,7 @@ class OrderTrackingPage extends StatelessWidget {
 
   Widget _buildMapPlaceholder() {
     return Container(
-      height: 220,
+      height: 390,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: const Color(0xFFEAF1E8),
@@ -243,9 +413,9 @@ class OrderTrackingPage extends StatelessWidget {
                 color: Colors.white.withValues(alpha: 0.94),
                 borderRadius: BorderRadius.circular(9),
               ),
-              child: const Text(
-                'DEMO MAP',
-                style: TextStyle(
+              child: Text(
+                order.isDemo ? 'MAP PREVIEW' : 'DELIVERY MAP',
+                style: const TextStyle(
                   color: _green,
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
@@ -259,8 +429,8 @@ class OrderTrackingPage extends StatelessWidget {
               left: 82,
               top: 100,
               child: _MapMarker(
-                icon: Icons.delivery_dining_rounded,
-                label: 'Rider',
+                icon: Icons.storefront_rounded,
+                label: 'Store',
                 color: _green,
               ),
             ),
@@ -269,7 +439,7 @@ class OrderTrackingPage extends StatelessWidget {
               bottom: 41,
               child: _MapMarker(
                 icon: Icons.location_on_rounded,
-                label: 'You',
+                label: 'Home',
                 color: Color(0xFFB6534B),
               ),
             ),
@@ -286,8 +456,8 @@ class OrderTrackingPage extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.94),
               child: Text(
                 _isDelivered
-                    ? 'Delivery completed · static demo map'
-                    : 'Live tracking map · Rider location will appear here',
+                    ? 'Delivery completed'
+                    : 'Illustrative route · live location is not available',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: _secondaryText,
@@ -303,6 +473,7 @@ class OrderTrackingPage extends StatelessWidget {
   }
 
   Widget _buildPartnerCard(BuildContext context) {
+    if (!_isOutForDelivery) return const SizedBox.shrink();
     return _SectionCard(
       title: 'Delivery Partner',
       child: Row(
@@ -317,12 +488,13 @@ class OrderTrackingPage extends StatelessWidget {
             child: const Icon(Icons.person_rounded, color: _green, size: 32),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Ravi Kumar',
+                  order.partnerName ??
+                      (order.isDemo ? 'Ravula Akash' : 'Delivery partner'),
                   style: TextStyle(
                     color: _mainText,
                     fontSize: 15,
@@ -401,31 +573,67 @@ class OrderTrackingPage extends StatelessWidget {
   }
 
   Widget _buildDeliveryInformation() {
-    return const _SectionCard(
+    return _SectionCard(
       title: 'Delivering to',
       child: Row(
         children: [
-          Icon(Icons.home_outlined, color: _green, size: 24),
-          SizedBox(width: 11),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Home',
-                style: TextStyle(
-                  color: _mainText,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+          const Icon(Icons.home_outlined, color: _green, size: 24),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  order.deliveryAddressLabel,
+                  style: const TextStyle(
+                    color: _mainText,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              SizedBox(height: 3),
-              Text(
-                'Demo address',
-                style: TextStyle(color: _secondaryText, fontSize: 12),
-              ),
-            ],
+                const SizedBox(height: 3),
+                Text(
+                  order.deliveryAddress,
+                  style: const TextStyle(color: _secondaryText, fontSize: 12),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildItemList() {
+    final items = order.itemNames.isEmpty ? [order.items] : order.itemNames;
+    return _SectionCard(
+      title: 'Items in this order',
+      child: Material(
+        color: Colors.transparent,
+        child: ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: const EdgeInsets.only(bottom: 8),
+          title: const Text(
+            'View item list',
+            style: TextStyle(
+              color: _mainText,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          children: [
+            for (final item in items)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.shopping_bag_outlined, color: _green),
+                title: Text(item),
+              ),
+          ],
+        ),
       ),
     );
   }

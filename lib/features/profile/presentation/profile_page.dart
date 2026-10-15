@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
-import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../categories/presentation/categories_page.dart';
 import '../../coupons/presentation/coupons_page.dart';
@@ -16,6 +15,7 @@ import '../../privacy_policy/presentation/privacy_policy_page.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../../terms_conditions/presentation/terms_conditions_page.dart';
 import '../../wishlist/presentation/wishlist_page.dart';
+import '../../../shared/presentation/bottom_navigation_bar.dart';
 import 'edit_profile_page.dart';
 import 'saved_addresses_page.dart';
 
@@ -38,8 +38,8 @@ class _ProfilePageState extends State<ProfilePage> {
   static const _logoutBackground = Color(0xFFFFF2F1);
   static const _logoutColor = Color(0xFFA85B5B);
   static const _demoProfile = ApiCustomerProfile(
-    displayName: 'Chandra Shekar',
-    phone: '+91 89XXX XXX45',
+    displayName: 'Your profile',
+    phone: null,
     email: null,
   );
 
@@ -187,7 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ],
                   )
-                : _buildProfileDetails(context, profile!),
+                : _buildProfileDetails(context, profile ?? _demoProfile),
           ),
         ],
       ),
@@ -202,7 +202,7 @@ class _ProfilePageState extends State<ProfilePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _backendMode ? 'Backend profile' : 'Demo profile · on this device',
+          _backendMode ? 'Your account' : 'Profile not connected',
           style: const TextStyle(color: _secondaryText, fontSize: 10),
         ),
         const SizedBox(height: 3),
@@ -217,10 +217,24 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
         const SizedBox(height: 5),
-        Text(
-          profile.phone ?? profile.email ?? 'No contact method saved',
-          style: const TextStyle(color: _secondaryText, fontSize: 14),
-        ),
+        if (profile.phone?.isNotEmpty ?? false)
+          Text(
+            profile.phone!,
+            style: const TextStyle(color: _secondaryText, fontSize: 14),
+          ),
+        if (profile.email?.isNotEmpty ?? false)
+          Text(
+            profile.email!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _secondaryText, fontSize: 12),
+          ),
+        if ((profile.phone == null || profile.phone!.isEmpty) &&
+            (profile.email == null || profile.email!.isEmpty))
+          const Text(
+            'Add your contact details',
+            style: TextStyle(color: _secondaryText, fontSize: 14),
+          ),
         const SizedBox(height: 10),
         OutlinedButton(
           onPressed: () async {
@@ -591,60 +605,27 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildBottomNavigation(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: BottomNavigationBar(
-        currentIndex: 4,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: AppTheme.darkGreen,
-        selectedItemColor: AppTheme.brandYellow,
-        unselectedItemColor: AppTheme.white,
-        selectedFontSize: 11,
-        unselectedFontSize: 11,
-        elevation: 10,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.of(context).popUntil((route) => route.isFirst);
-          } else if (index == 1) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const CategoriesPage(),
-              ),
-            );
-          } else if (index == 2) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (context) => const CartPage()),
-            );
-          } else if (index == 3) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (context) => const OrdersPage()),
-            );
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.grid_view_rounded),
-            label: 'Categories',
-          ),
-          BottomNavigationBarItem(
-            icon: CartNavigationIcon(),
-            label: '',
-            tooltip: 'Cart',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long_rounded),
-            label: 'Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline_rounded),
-            label: 'Profile',
-          ),
-        ],
-      ),
+    return ShopzyBottomNavigationBar(
+      currentIndex: 4,
+      onTap: (index) {
+        if (index == 0) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        } else if (index == 1) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) => const CategoriesPage(),
+            ),
+          );
+        } else if (index == 2) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (context) => const CartPage()),
+          );
+        } else if (index == 3) {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (context) => const OrdersPage()),
+          );
+        }
+      },
     );
   }
 

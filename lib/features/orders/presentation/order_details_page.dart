@@ -546,6 +546,12 @@ class OrderDetailsPage extends StatelessWidget {
             items: order.itemSummary,
             total: order.total,
             status: status,
+            deliveryAddressLabel: order.deliveryAddressLabel,
+            deliveryAddress: order.deliveryAddress,
+            itemNames: order.items
+                .map((item) => '${item.name} × ${item.quantity}')
+                .toList(growable: false),
+            isDemo: !order.isBackendData,
           ),
         ),
       ),

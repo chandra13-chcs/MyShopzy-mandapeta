@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
-import '../../cart/presentation/cart_access_button.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../bakery/presentation/bakery_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
@@ -14,6 +13,7 @@ import '../../profile/presentation/profile_page.dart';
 import '../../restaurants/presentation/restaurants_page.dart';
 import '../../search/presentation/search_page.dart';
 import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
+import '../../../shared/presentation/bottom_navigation_bar.dart';
 
 class CategoriesPage extends StatelessWidget {
   const CategoriesPage({super.key});
@@ -138,63 +138,30 @@ class CategoriesPage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: BottomNavigationBar(
-          currentIndex: 1,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: AppTheme.darkGreen,
-          selectedItemColor: AppTheme.brandYellow,
-          unselectedItemColor: AppTheme.white,
-          selectedFontSize: 11,
-          unselectedFontSize: 11,
-          elevation: 10,
-          onTap: (index) {
-            if (index == 0) Navigator.of(context).maybePop();
-            if (index == 2) {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (context) => const CartPage()),
-              );
-            }
-            if (index == 3) {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const OrdersPage(),
-                ),
-              );
-            }
-            if (index == 4) {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => const ProfilePage(),
-                ),
-              );
-            }
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.grid_view_rounded),
-              label: 'Categories',
-            ),
-            BottomNavigationBarItem(
-              icon: CartNavigationIcon(),
-              label: '',
-              tooltip: 'Cart',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_rounded),
-              label: 'Orders',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline_rounded),
-              label: 'Profile',
-            ),
-          ],
-        ),
+      bottomNavigationBar: ShopzyBottomNavigationBar(
+        currentIndex: 1,
+        onTap: (index) {
+          if (index == 0) Navigator.of(context).maybePop();
+          if (index == 2) {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (context) => const CartPage()),
+            );
+          }
+          if (index == 3) {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const OrdersPage(),
+              ),
+            );
+          }
+          if (index == 4) {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const ProfilePage(),
+              ),
+            );
+          }
+        },
       ),
     );
   }

@@ -45,6 +45,7 @@ class StoreProduct {
     required this.discount,
     required this.rating,
     required this.available,
+    this.serviceType = 'local_store',
     this.imageUrl,
     this.badge,
     this.variants = const [],
@@ -63,6 +64,7 @@ class StoreProduct {
   final int discount;
   final double rating;
   final bool available;
+  final String serviceType;
   final String? imageUrl;
   final String? badge;
   final List<ProductVariant> variants;
@@ -566,7 +568,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
 
   Future<_BackendLocalStoreCatalog> _loadBackendCatalog(CustomerApi api) async {
     final categories = await api.getCategories(widget.store.id);
-    final products = await api.getProducts(shopId: widget.store.id);
+    final products = await api.getAllProducts(shopId: widget.store.id);
     final categoryIds = categories.map((category) => category.id).toSet();
     final hasUncategorizedProducts = products.any(
       (product) =>
@@ -597,16 +599,24 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
                 product.categoryId != null &&
                     categoryIds.contains(product.categoryId)
                 ? product.categoryId!
-                : 'other',
-            name: product.name,
-            brand: '',
-            description: product.description,
-            packSize: '',
+                    : 'other',
+                name: product.name,
+                description: product.description,
+            packSize: product.packSize ?? '',
             price: product.priceMinor / 100,
-            mrp: product.priceMinor / 100,
-            discount: 0,
-            rating: 0,
+            mrp: (product.mrpMinor ?? product.priceMinor) / 100,
+            discount: product.discountPercent,
+            rating: product.rating ?? -1,
             available: product.available,
+            serviceType: switch (product.partnerType) {
+              'restaurant' => 'restaurant',
+              'meat_shop' => 'meat',
+              'bakery' => 'bakery',
+              _ => 'local_store',
+            },
+            imageUrl: product.imageUrl,
+            badge: product.badge,
+            brand: product.brand ?? '',
             isBackendData: true,
           ),
         )
@@ -671,7 +681,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
                           padding: const EdgeInsets.fromLTRB(10, 8, 14, 18),
                           sliver: SliverGrid(
                             delegate: SliverChildBuilderDelegate(
-                              (context, index) => _ProductCard(
+                              (context, index) => StoreProductCard(
                                 product: visibleProducts[index],
                                 placeholderIndex: index,
                                 storeName: widget.store.name,
@@ -898,8 +908,9 @@ class _ToolbarPill extends StatelessWidget {
   }
 }
 
-class _ProductCard extends StatefulWidget {
-  const _ProductCard({
+class StoreProductCard extends StatefulWidget {
+  const StoreProductCard({
+    super.key,
     required this.product,
     required this.placeholderIndex,
     required this.storeName,
@@ -912,10 +923,10 @@ class _ProductCard extends StatefulWidget {
   final List<StoreProduct> relatedProducts;
 
   @override
-  State<_ProductCard> createState() => _ProductCardState();
+  State<StoreProductCard> createState() => _StoreProductCardState();
 }
 
-class _ProductCardState extends State<_ProductCard> {
+class _StoreProductCardState extends State<StoreProductCard> {
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
   static const _imageColors = [
@@ -939,7 +950,7 @@ class _ProductCardState extends State<_ProductCard> {
   }
 
   @override
-  void didUpdateWidget(covariant _ProductCard oldWidget) {
+  void didUpdateWidget(covariant StoreProductCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.product.id != product.id ||
         !_sameVariantIds(oldWidget.product.variants, product.variants)) {
@@ -1044,7 +1055,7 @@ class _ProductCardState extends State<_ProductCard> {
                     child: CartProductControl(
                           available: product.available,
                           productId: product.id,
-                          serviceType: 'local_store',
+                          serviceType: product.serviceType,
                           merchantId: product.storeId,
                           categoryId: product.categoryId,
                           name: product.name,
@@ -1135,7 +1146,7 @@ class _ProductCardState extends State<_ProductCard> {
           ),
         ),
         const SizedBox(height: 2),
-        if (product.isBackendData)
+        if (product.isBackendData && product.rating < 0)
           Text(
             product.description,
             maxLines: 2,
@@ -1211,7 +1222,7 @@ class _ProductCardState extends State<_ProductCard> {
     return CartProductControl(
       available: variant.available,
       productId: product.id,
-      serviceType: 'local_store',
+      serviceType: product.serviceType,
       merchantId: product.storeId,
       productVariantId: variant.id,
       variantLabel: variant.label,
@@ -1275,7 +1286,7 @@ class _ProductCardState extends State<_ProductCard> {
   ) {
     return ProductDetailsProduct(
       id: item.id,
-      serviceType: 'local_store',
+      serviceType: item.serviceType,
       merchantId: item.storeId,
       merchantName: storeName,
       categoryId: item.categoryId,
@@ -1287,7 +1298,7 @@ class _ProductCardState extends State<_ProductCard> {
       mrpInPaise: (item.mrp * 100).round(),
       discountPercent: item.discount,
       quantityLabel: item.packSize,
-      rating: item.rating,
+      rating: item.rating < 0 ? 0 : item.rating,
       available: item.available,
       icon: Icons.inventory_2_rounded,
       isBackendProduct: item.isBackendData,
@@ -1295,7 +1306,7 @@ class _ProductCardState extends State<_ProductCard> {
       relatedProducts: related.map((relatedItem) {
         return ProductDetailsProduct(
           id: relatedItem.id,
-          serviceType: 'local_store',
+          serviceType: relatedItem.serviceType,
           merchantId: relatedItem.storeId,
           merchantName: storeName,
           categoryId: relatedItem.categoryId,
@@ -1307,7 +1318,7 @@ class _ProductCardState extends State<_ProductCard> {
           mrpInPaise: (relatedItem.mrp * 100).round(),
           discountPercent: relatedItem.discount,
           quantityLabel: relatedItem.packSize,
-          rating: relatedItem.rating,
+          rating: relatedItem.rating < 0 ? 0 : relatedItem.rating,
           available: relatedItem.available,
           icon: Icons.inventory_2_rounded,
           isBackendProduct: relatedItem.isBackendData,

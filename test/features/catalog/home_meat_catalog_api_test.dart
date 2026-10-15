@@ -7,7 +7,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myshopzy/features/bakery/presentation/bakery_page.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
+import 'package:myshopzy/features/local_stores/presentation/local_store_catalog_page.dart';
 import 'package:myshopzy/features/meat/presentation/meat_page.dart';
+import 'package:myshopzy/features/vegetables_fruits/presentation/produce_catalog_page.dart';
 import 'package:myshopzy/features/vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
 
@@ -51,6 +53,9 @@ void main() {
     expect(find.text('Fresh Market'), findsWidgets);
     expect(find.text('Live products'), findsOneWidget);
     expect(find.text('Backend Apples'), findsOneWidget);
+    expect(find.byType(StoreProductCard), findsOneWidget);
+    expect(find.text('4.7'), findsOneWidget);
+    expect(find.text('17% OFF'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 700));
     await tester.pumpAndSettle();
     expect(find.text('Demo offer · not verified by backend'), findsNothing);
@@ -216,7 +221,7 @@ void main() {
     );
   });
 
-  testWidgets('unsupported bakery and produce catalogs are labeled demo', (
+  testWidgets('unsupported bakery remains demo and produce is backend-ready', (
     tester,
   ) async {
     var requestSent = false;
@@ -235,12 +240,43 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: VegetablesFruitsPage()));
     expect(
-      find.text(
-        'Demo produce catalog · the API cannot distinguish produce from other shops.',
-      ),
+      find.text('Live produce products are loaded from grocery partners.'),
       findsOneWidget,
     );
     expect(requestSent, isFalse);
+  });
+
+  testWidgets('produce catalog shows backend-tagged products in shared cards', (
+    tester,
+  ) async {
+    api = _api((request) async {
+      if (request.url.path.endsWith('/shops')) {
+        return _listResponse([_shopJson]);
+      }
+      if (request.url.path.endsWith('/categories')) {
+        return _listResponse([
+          {
+            'id': 'produce-category',
+            'shop_id': _shopId,
+            'name': 'Fresh fruit',
+            'parent_category_id': null,
+          },
+        ]);
+      }
+      return _listResponse([_produceProductJson]);
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ProduceCatalogPage(type: ProduceType.fruit)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Live grocery products tagged by produce type.'),
+      findsOneWidget,
+    );
+    expect(find.text('Backend Apples'), findsOneWidget);
+    expect(find.byType(StoreProductCard), findsOneWidget);
   });
 }
 
@@ -282,4 +318,23 @@ final Map<String, Object?> _productJson = {
   'is_available': true,
   'shop_name': 'Fresh Market',
   'partner_type': 'meat_shop',
+  'attributes': {
+    'image_url': 'https://shop.example/apples.png',
+    'rating': 4.7,
+    'mrp_minor': 15000,
+    'discount_percent': 17,
+    'badge': 'Fresh',
+    'brand': 'Farm',
+    'pack_size': '1 kg',
+  },
+};
+
+final Map<String, Object?> _produceProductJson = {
+  ..._productJson,
+  'category_id': 'produce-category',
+  'partner_type': 'grocery',
+  'attributes': {
+    ...(_productJson['attributes'] as Map<String, Object>),
+    'produce_type': 'fruit',
+  },
 };

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
-import '../../product_details/presentation/product_details_page.dart';
+import '../../local_stores/presentation/local_store_catalog_page.dart';
 import 'chicken_page.dart';
 import 'mutton_page.dart';
 
@@ -314,7 +314,7 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
       _products = const [];
     });
     try {
-      final products = await CustomerApi.instance.getProducts(
+      final products = await CustomerApi.instance.getAllProducts(
         partnerType: 'meat_shop',
       );
       if (mounted) {
@@ -384,39 +384,44 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
           style: TextStyle(color: AppTheme.secondaryText, fontSize: 11),
         ),
         const SizedBox(height: 9),
-        for (final product in _products)
-          Card(
-            child: ListTile(
-              key: ValueKey('backend-meat-product-${product.id}'),
-              title: Text(product.name),
-              subtitle: Text(
-                [
-                  if (product.shopName?.isNotEmpty ?? false) product.shopName!,
-                  if (product.description.isNotEmpty) product.description,
-                ].join(' · '),
-              ),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (context) => ProductDetailsPage(
-                    product: ProductDetailsProduct(
-                      id: product.id,
-                      serviceType: 'meat',
-                      merchantId: product.shopId,
-                      merchantName: product.shopName,
-                      categoryId: product.categoryId,
-                      name: product.name,
-                      description: product.description,
-                      priceInPaise: product.priceMinor,
-                      available: product.available,
-                      icon: Icons.set_meal_rounded,
-                      isBackendProduct: true,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _products.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 12,
+            mainAxisExtent: 288,
           ),
+          itemBuilder: (context, index) {
+            final product = _products[index];
+            return StoreProductCard(
+              key: ValueKey('backend-meat-product-${product.id}'),
+              product: StoreProduct(
+                id: product.id,
+                storeId: product.shopId,
+                categoryId: product.categoryId ?? 'other',
+                name: product.name,
+                brand: product.brand ?? '',
+                description: product.description,
+                packSize: product.packSize ?? '',
+                price: product.priceMinor / 100,
+                mrp: (product.mrpMinor ?? product.priceMinor) / 100,
+                discount: product.discountPercent,
+                rating: product.rating ?? -1,
+                available: product.available,
+                serviceType: 'meat',
+                imageUrl: product.imageUrl,
+                badge: product.badge,
+                isBackendData: true,
+              ),
+              placeholderIndex: index,
+              storeName: product.shopName ?? '',
+              relatedProducts: const [],
+            );
+          },
+        ),
       ],
     );
   }

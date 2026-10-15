@@ -81,6 +81,19 @@ function toDetailHttpResponse(record, requestId) {
   };
 }
 
+function toAuthenticationRequiredHttpResponse(requestId) {
+  return {
+    status: 401,
+    body: {
+      error: {
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Admin authentication is required.',
+      },
+      meta: requestMeta(requestId),
+    },
+  };
+}
+
 function toErrorHttpResponse(error, requestId) {
   let status = 500;
   let code = 'INTERNAL_SERVER_ERROR';
@@ -106,6 +119,7 @@ function toErrorHttpResponse(error, requestId) {
 }
 
 module.exports = {
+  toAuthenticationRequiredHttpResponse,
   toDetailHttpResponse,
   toErrorHttpResponse,
   toListHttpResponse,

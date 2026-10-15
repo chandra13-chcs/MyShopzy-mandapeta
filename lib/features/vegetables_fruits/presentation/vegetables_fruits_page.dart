@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import 'produce_catalog_page.dart';
 
 class VegetablesFruitsPage extends StatelessWidget {
@@ -94,9 +95,11 @@ class VegetablesFruitsPage extends StatelessWidget {
                     style: TextStyle(color: _muted, fontSize: 13),
                   ),
                   const SizedBox(height: 5),
-                  const Text(
-                    'Demo produce catalog · the API cannot distinguish produce from other shops.',
-                    style: TextStyle(color: _muted, fontSize: 11),
+                  Text(
+                    CustomerApi.instance.isConfigured
+                        ? 'Live produce products are loaded from grocery partners.'
+                        : 'Demo produce catalog · the API cannot distinguish produce from other shops.',
+                    style: const TextStyle(color: _muted, fontSize: 11),
                   ),
                   const SizedBox(height: 19),
                   _ProduceTypeCard(

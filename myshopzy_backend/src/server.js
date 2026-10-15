@@ -4,6 +4,9 @@ const { loadConfig } = require('./config/env');
 const {
   createDevelopmentCustomerAuth,
 } = require('./modules/customer-auth/development-auth');
+const {
+  createAuth0AdminAuthenticator,
+} = require('./modules/admin-read/auth0-authentication');
 
 function shutdownServer(server, pool) {
   return new Promise((resolve, reject) => {
@@ -40,9 +43,17 @@ function startServer({
     databasePool: pool,
     config,
   });
+  const authenticateAdmin = config.auth0Admin && config.superAdminOrigin && pool
+    ? createAuth0AdminAuthenticator({
+        databasePool: pool,
+        ...config.auth0Admin,
+      })
+    : null;
   const app = createApp({
     databasePool: pool,
     authenticateCustomer: developmentCustomerAuth.authenticateCustomer,
+    authenticateAdmin,
+    superAdminOrigin: authenticateAdmin ? config.superAdminOrigin : null,
     developmentCustomerAuthRouter: developmentCustomerAuth.router,
   });
   const server = app.listen(config.port, () => {

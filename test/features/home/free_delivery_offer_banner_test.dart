@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/features/cart/data/cart_store.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
+import 'package:myshopzy/shared/presentation/bottom_navigation_bar.dart';
 
 void main() {
   final cart = CartStore.instance;
@@ -14,8 +15,14 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
 
-    expect(find.byKey(const ValueKey('free-delivery-offer-banner')), findsNothing);
-    expect(find.byKey(const ValueKey('free-delivery-progress-strip')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('free-delivery-offer-banner')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('free-delivery-progress-strip')),
+      findsNothing,
+    );
   });
 
   testWidgets('Home leaves existing cart contents unchanged', (tester) async {
@@ -37,26 +44,25 @@ void main() {
     expect(cart.subtotalInPaise, previousSubtotal);
   });
 
-  testWidgets('home navigation fits at 280 logical pixels', (
-    tester,
-  ) async {
+  testWidgets('home navigation fits at 280 logical pixels', (tester) async {
     await tester.binding.setSurfaceSize(const Size(280, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
-    final navigation = find.byType(BottomNavigationBar);
-    final bottomNavigationBar = tester.widget<BottomNavigationBar>(navigation);
-
-    expect(bottomNavigationBar.items, hasLength(5));
-    expect(bottomNavigationBar.items.map((item) => item.label).toList(), [
-      'Home',
-      'Categories',
-      '',
-      'Orders',
-      'Profile',
-    ]);
-    expect(find.byKey(const ValueKey('free-delivery-offer-banner')), findsNothing);
-    expect(find.byKey(const ValueKey('free-delivery-progress-strip')), findsNothing);
+    expect(find.byType(ShopzyBottomNavigationBar), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Categories'), findsOneWidget);
+    expect(find.text('Cart'), findsOneWidget);
+    expect(find.text('Orders'), findsOneWidget);
+    expect(find.text('Profile'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('free-delivery-offer-banner')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('free-delivery-progress-strip')),
+      findsNothing,
+    );
     expect(tester.takeException(), isNull);
   });
 }
