@@ -17,6 +17,8 @@ production-ready.
   the customer Home Page.
 - `src/modules/cart-checkout/routes.js` implements anonymous capability-token
   carts, server-priced checkout quotes, and authenticated order placement.
+- `src/modules/riders/routes.js` implements rider order offers, order acceptance
+  and status updates, and live location pings.
 - `src/server.js` loads environment variables and starts the HTTP server.
 - `src/config/env.js` validates the HTTP port and any PostgreSQL environment
   configuration. `src/config/database.js` creates the PostgreSQL pool and
@@ -29,7 +31,8 @@ production-ready.
   `payments`, `refunds`, `notifications`, `commissions`, `settlements`,
   `admin`, and `audit`.
 - `database/migrations/` contains reviewed, versioned SQL migrations.
-- `database/seeds/` remains reserved; no seed data is included.
+- `database/seed.sql` provides sample catalog rows and a demo rider used by the
+  development-only rider mock authentication.
 - `tests/unit/` and `tests/integration/` are reserved for future tests.
 - `docs/` is reserved for API and implementation documentation.
 
@@ -126,6 +129,31 @@ Migrations 002–004 add cart, customer-account, dynamic partner-category, and
 serviceability storage. Address, wishlist, profile, order, and parcel endpoints
 are customer-scoped and never accept a customer ID in their route or request
 body. Order history/details are read only.
+
+Rider API endpoints:
+
+- `GET /api/v1/rider/orders/available` lists unassigned `getting_packed` orders
+  with their shop and delivery details only while the requesting rider is
+  online; offline riders receive `403 RIDER_OFFLINE`.
+- `POST /api/v1/rider/orders/:orderId/accept` atomically assigns an available
+  order only while the rider is online, then returns assigned delivery,
+  coordinates, and customer/shop contact details.
+- `PATCH /api/v1/rider/orders/:orderId/status` accepts `picked_up`,
+  `out_for_delivery`, or `delivered` in that order, and only updates orders
+  assigned to that rider. Replaying the current stage is safe for client retry
+  queues; delivery completion writes the rider settlement idempotently.
+- `POST /api/v1/rider/location` accepts `{ "latitude": 16.87, "longitude": 81.93 }`
+  and stores the coordinates while marking the rider online.
+- `PATCH /api/v1/rider/availability` accepts `{ "isOnline": false }` to go off
+  duty; going online requires a valid location ping.
+- `GET /api/v1/rider/earnings/summary` returns the rider's daily and lifetime
+  completed-delivery settlement totals in minor currency units.
+
+In non-production environments, `X-Rider-Id` selects the rider; when omitted,
+the API uses `00000000-0000-4000-8000-000000000001`. Apply the migrations and
+`database/seed.sql` to create that sample rider. The mock header authenticator
+is disabled in production; production deployments must inject a trusted
+`authenticateRider` middleware that sets `req.auth.riderUserId`.
 
 Prepared Super Admin read-only queries cover orders, customers, partners, and
 products. Admin routes mount only when `AUTH0_ISSUER_URL`, `AUTH0_AUDIENCE`,

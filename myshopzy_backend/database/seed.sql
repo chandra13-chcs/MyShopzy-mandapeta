@@ -1,3 +1,18 @@
+INSERT INTO app.users (
+  id, email, display_name, system_role, status
+) VALUES (
+  '00000000-0000-4000-8000-000000000001',
+  'demo-rider@myshopzy.local',
+  'Demo Rider',
+  'rider',
+  'active'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO app.riders (user_id, status)
+VALUES ('00000000-0000-4000-8000-000000000001', 'active')
+ON CONFLICT (user_id) DO NOTHING;
+
 INSERT INTO app.partners (
   id, partner_type, status, name, slug
 ) VALUES

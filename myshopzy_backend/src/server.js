@@ -7,6 +7,7 @@ const {
 const {
   createAuth0AdminAuthenticator,
 } = require('./modules/admin-read/auth0-authentication');
+const { mockRiderAuth } = require('./middleware/mock-rider-auth');
 
 function shutdownServer(server, pool) {
   return new Promise((resolve, reject) => {
@@ -32,6 +33,7 @@ function shutdownServer(server, pool) {
 function startServer({
   config = loadConfig(),
   PoolClass,
+  authenticateRider = null,
   processObject = process,
   logger = console,
 } = {}) {
@@ -52,7 +54,11 @@ function startServer({
   const app = createApp({
     databasePool: pool,
     authenticateCustomer: developmentCustomerAuth.authenticateCustomer,
+    authenticateRider:
+      authenticateRider ??
+      (config.nodeEnv === 'production' ? null : mockRiderAuth),
     authenticateAdmin,
+    nodeEnv: config.nodeEnv,
     superAdminOrigin: authenticateAdmin ? config.superAdminOrigin : null,
     developmentCustomerAuthRouter: developmentCustomerAuth.router,
   });

@@ -21,7 +21,7 @@ test('parses a complete PostgreSQL configuration without changing values', () =>
     NODE_ENV: 'test',
     PGHOST: 'db.example.test',
     PGPORT: '5433',
-    PGDATABASE: 'myshopzy_test',
+    PGDATABASE: 'myshopzy',
     PGUSER: 'app_user',
     PGPASSWORD: 'test-only-password',
     DEVELOPMENT_CUSTOMER_OTP: '123456',
@@ -38,7 +38,7 @@ test('parses a complete PostgreSQL configuration without changing values', () =>
   assert.deepEqual(config.database, {
     host: 'db.example.test',
     port: 5433,
-    database: 'myshopzy_test',
+    database: 'myshopzy',
     user: 'app_user',
     password: 'test-only-password',
   });
@@ -63,6 +63,22 @@ test('rejects invalid HTTP and PostgreSQL ports without echoing values', () => {
       }),
     { message: 'PGPORT must be an integer between 1 and 65535.' },
   );
+});
+
+test('rejects PostgreSQL database names other than myshopzy', () => {
+  for (const database of ['MyShopzy', 'delivery_app', 'myshopzy_test']) {
+    assert.throws(
+      () =>
+        loadConfig({
+          PGHOST: 'db.example.test',
+          PGPORT: '5432',
+          PGDATABASE: database,
+          PGUSER: 'app_user',
+          PGPASSWORD: 'test-only-password',
+        }),
+      { message: 'PGDATABASE must be set to myshopzy.' },
+    );
+  }
 });
 
 test('rejects partial PostgreSQL configuration and only names missing keys', () => {

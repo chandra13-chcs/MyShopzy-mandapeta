@@ -25,6 +25,14 @@ const dynamicCategoriesSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/004_dynamic_partner_categories_and_delivery_zones.sql',
 );
+const riderDeliverySchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/005_rider_delivery_apis.sql',
+);
+const riderEarningsSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/006_rider_delivery_earnings.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -100,9 +108,11 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const cartsSchema = await readFile(cartsSchemaPath, 'utf8');
   const customerAccountSchema = await readFile(customerAccountSchemaPath, 'utf8');
   const dynamicCategoriesSchema = await readFile(dynamicCategoriesSchemaPath, 'utf8');
+  const riderDeliverySchema = await readFile(riderDeliverySchemaPath, 'utf8');
+  const riderEarningsSchema = await readFile(riderEarningsSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
-  assert.equal(appliedCount, 4);
+  assert.equal(appliedCount, 6);
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
   assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
   assert.equal(
@@ -113,11 +123,18 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('004').name,
     '004_dynamic_partner_categories_and_delivery_zones.sql',
   );
+  assert.equal(pool.applied.get('005').name, '005_rider_delivery_apis.sql');
+  assert.equal(
+    pool.applied.get('006').name,
+    '006_rider_delivery_earnings.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
   assert.ok(calls.includes(customerAccountSchema.trim()));
   assert.ok(calls.includes(dynamicCategoriesSchema.trim()));
+  assert.ok(calls.includes(riderDeliverySchema.trim()));
+  assert.ok(calls.includes(riderEarningsSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
@@ -132,6 +149,26 @@ test('dynamic category and serviceability migration supports live partner types'
   assert.match(schema, /GENERATED ALWAYS AS \(status = 'approved'\) STORED/);
   assert.match(schema, /CREATE TABLE app\.serviceable_pincodes\b/);
   assert.match(schema, /pincode ~ '\^\[0-9\]\{6\}\$'/);
+});
+
+test('rider delivery migration adds rider assignment, statuses, and live coordinates', async () => {
+  const schema = await readFile(riderDeliverySchemaPath, 'utf8');
+
+  assert.match(schema, /ADD COLUMN rider_id uuid REFERENCES app\.riders\(user_id\)/);
+  assert.match(schema, /'getting_packed'/);
+  assert.match(schema, /'out_for_delivery'/);
+  assert.match(schema, /current_latitude double precision/);
+  assert.match(schema, /current_longitude double precision/);
+  assert.match(schema, /is_online boolean NOT NULL DEFAULT false/);
+});
+
+test('rider earnings migration enforces delivery stages and records settlements', async () => {
+  const schema = await readFile(riderEarningsSchemaPath, 'utf8');
+
+  assert.match(schema, /rider_stage text NOT NULL DEFAULT 'accepted'/);
+  assert.match(schema, /CREATE TABLE app\.rider_delivery_earnings\b/);
+  assert.match(schema, /payout_minor bigint NOT NULL CHECK \(payout_minor >= 0\)/);
+  assert.match(schema, /PRIMARY KEY/);
 });
 
 test('customer account migration adds address, wishlist, and parcel foundations', async () => {
@@ -163,7 +200,7 @@ test('skips matching applied migrations and refuses checksum drift', async () =>
   const alreadyApplied = createMockPool({
     applied: new Map([['001', { checksum: migration.checksum }]]),
   });
-  assert.equal(await runMigrations(alreadyApplied), 4);
+  assert.equal(await runMigrations(alreadyApplied), 6);
   assert.equal(
     alreadyApplied.calls.some((call) => call.sql === migration.sql.trim()),
     false,

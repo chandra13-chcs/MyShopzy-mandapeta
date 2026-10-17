@@ -30,6 +30,10 @@ function loadConfig(env = process.env) {
       );
     }
 
+    if (env.PGDATABASE !== 'myshopzy') {
+      throw new Error('PGDATABASE must be set to myshopzy.');
+    }
+
     const databasePort = Number(env.PGPORT);
     if (
       !/^\d+$/.test(env.PGPORT) ||

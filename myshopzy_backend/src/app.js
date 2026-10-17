@@ -7,13 +7,17 @@ const { createAdminReadRouter } = require('./modules/admin-read/routes');
 const {
   createDeliveryServiceabilityRouter,
 } = require('./modules/delivery-serviceability/routes');
+const { createRiderRouter } = require('./modules/riders/routes');
+const { mockRiderAuth } = require('./middleware/mock-rider-auth');
 
 function createApp({
   databasePool = null,
   authenticateCustomer = null,
+  authenticateRider = null,
   authenticateAdmin = null,
   superAdminOrigin = null,
   developmentCustomerAuthRouter = null,
+  nodeEnv = 'development',
   logger = console,
 } = {}) {
   const app = express();
@@ -37,6 +41,15 @@ function createApp({
   app.use(
     '/api/v1',
     createDeliveryServiceabilityRouter({ databasePool }),
+  );
+  app.use(
+    '/api/v1',
+    createRiderRouter({
+      databasePool,
+      authenticateRider:
+        authenticateRider ??
+        (nodeEnv === 'production' ? null : mockRiderAuth),
+    }),
   );
   app.use('/api/v1', createCatalogRouter({ databasePool }));
   app.use(
