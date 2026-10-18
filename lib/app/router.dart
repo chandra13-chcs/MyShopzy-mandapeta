@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../features/auth/presentation/phone_entry_page.dart';
-import '../features/auth/presentation/welcome_page.dart';
+import '../features/auth/presentation/landing_page.dart';
+import '../features/auth/presentation/login_page.dart';
 import '../features/home/presentation/home_page.dart';
 
 class AppRouter {
@@ -12,10 +12,10 @@ class AppRouter {
   static const forgotPassword = '/forgot-password';
 
   static Map<String, WidgetBuilder> get routes => {
-    welcome: (_) => const WelcomePage(),
-    phoneEntry: (_) => const PhoneEntryPage(),
+    welcome: (_) => const LandingPage(),
+    phoneEntry: (_) => const LoginPage(),
     home: (_) => const HomePage(),
-    registration: (_) => const PhoneEntryPage(),
-    forgotPassword: (_) => const PhoneEntryPage(),
+    registration: (_) => const LoginPage(),
+    forgotPassword: (_) => const LoginPage(),
   };
 }
