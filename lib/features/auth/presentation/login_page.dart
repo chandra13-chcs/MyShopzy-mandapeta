@@ -16,10 +16,56 @@ class _C {
   static const error = Color(0xFFC0392B);
 }
 
-/// TODO: replace with your real "send OTP" call once the backend has one.
-/// Right now the backend only has /auth/development/verify-otp (debug only).
 Future<void> sendOtp(String phoneNumber) async {
-  await Future<void>.delayed(const Duration(milliseconds: 400));
+  await CustomerApi.instance.requestOtp(phoneNumber: phoneNumber);
+}
+
+enum AuthPageTransition { fadeSlideUp, fadeSlideRight, fadeScale }
+
+PageRoute<T> authPageRoute<T>({
+  required BuildContext context,
+  required Widget page,
+  required AuthPageTransition transition,
+}) {
+  final duration = MediaQuery.of(context).disableAnimations
+      ? Duration.zero
+      : switch (transition) {
+          AuthPageTransition.fadeSlideUp || AuthPageTransition.fadeSlideRight =>
+            const Duration(milliseconds: 300),
+          AuthPageTransition.fadeScale => const Duration(milliseconds: 350),
+        };
+
+  return PageRouteBuilder<T>(
+    pageBuilder: (_, _, _) => page,
+    transitionDuration: duration,
+    reverseTransitionDuration: duration,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
+      final offset = switch (transition) {
+        AuthPageTransition.fadeSlideUp => const Offset(0, 0.08),
+        AuthPageTransition.fadeSlideRight => const Offset(0.15, 0),
+        AuthPageTransition.fadeScale => Offset.zero,
+      };
+      final transitioned = switch (transition) {
+        AuthPageTransition.fadeScale => ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+          child: child,
+        ),
+        AuthPageTransition.fadeSlideUp ||
+        AuthPageTransition.fadeSlideRight => SlideTransition(
+          position: Tween<Offset>(
+            begin: offset,
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      };
+      return FadeTransition(opacity: curved, child: transitioned);
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -58,13 +104,18 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       setState(() => _busy = false);
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => OtpPage(phone: full)),
+        authPageRoute<void>(
+          context: context,
+          page: OtpPage(phone: full),
+          transition: AuthPageTransition.fadeSlideRight,
+        ),
       );
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'Could not send the code. Check your connection and try again.';
+        _error =
+            'Could not send the code. Check your connection and try again.';
       });
     }
   }
@@ -102,7 +153,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'We will text you a 6-digit code.',
+                  'We will send a 6-digit code to this WhatsApp number.',
                   style: TextStyle(fontSize: 14, color: _C.muted),
                 ),
                 const SizedBox(height: 20),
@@ -259,7 +310,7 @@ class OtpPage extends StatefulWidget {
   State<OtpPage> createState() => _OtpPageState();
 }
 
-class _OtpPageState extends State<OtpPage> {
+class _OtpPageState extends State<OtpPage> with SingleTickerProviderStateMixin {
   static const _length = 6;
   static const _resendSeconds = 30;
 
@@ -269,12 +320,34 @@ class _OtpPageState extends State<OtpPage> {
   int _left = _resendSeconds;
   bool _busy = false;
   String? _error;
+  late final AnimationController _successController;
+  late final Animation<double> _successScale;
 
   String get _code => _controller.text;
 
   @override
   void initState() {
     super.initState();
+    _successController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 160),
+    );
+    _successScale =
+        TweenSequence<double>([
+          TweenSequenceItem(
+            tween: Tween<double>(begin: 1, end: 1.06),
+            weight: 1,
+          ),
+          TweenSequenceItem(
+            tween: Tween<double>(begin: 1.06, end: 1),
+            weight: 1,
+          ),
+        ]).animate(
+          CurvedAnimation(
+            parent: _successController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
     _startTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focus.requestFocus();
@@ -282,8 +355,17 @@ class _OtpPageState extends State<OtpPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _successController.duration = MediaQuery.of(context).disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 160);
+  }
+
+  @override
   void dispose() {
     _timer?.cancel();
+    _successController.dispose();
     _controller.dispose();
     _focus.dispose();
     super.dispose();
@@ -306,6 +388,7 @@ class _OtpPageState extends State<OtpPage> {
     setState(() => _error = null);
     try {
       await sendOtp(widget.phone);
+      if (!mounted) return;
       _controller.clear();
       _startTimer();
     } catch (_) {
@@ -321,13 +404,19 @@ class _OtpPageState extends State<OtpPage> {
       _error = null;
     });
     try {
-      await CustomerApi.instance.verifyDevelopmentOtp(
+      await CustomerApi.instance.verifyOtp(
         phoneNumber: widget.phone,
         otp: _code,
       );
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => HomePage()),
+      await _successController.forward(from: 0);
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil<void>(
+        authPageRoute<void>(
+          context: context,
+          page: HomePage(),
+          transition: AuthPageTransition.fadeScale,
+        ),
         (route) => false,
       );
     } on CustomerApiException catch (e) {
@@ -399,8 +488,9 @@ class _OtpPageState extends State<OtpPage> {
                 controller: _controller,
                 focus: _focus,
                 length: _length,
-                hasError: _error != null,
+                errorMessage: _error,
                 enabled: !_busy,
+                successScale: _successScale,
                 onChanged: () {
                   setState(() => _error = null);
                   if (_code.length == _length) _verify();
@@ -448,89 +538,220 @@ class _OtpPageState extends State<OtpPage> {
 
 /// One hidden TextField drives six visual boxes. This keeps keyboard
 /// paste and Android/iOS one-time-code autofill working.
-class _OtpBoxes extends StatelessWidget {
+class _OtpBoxes extends StatefulWidget {
   const _OtpBoxes({
     required this.controller,
     required this.focus,
     required this.length,
-    required this.hasError,
+    required this.errorMessage,
     required this.enabled,
+    required this.successScale,
     required this.onChanged,
   });
 
   final TextEditingController controller;
   final FocusNode focus;
   final int length;
-  final bool hasError;
+  final String? errorMessage;
   final bool enabled;
+  final Animation<double> successScale;
   final VoidCallback onChanged;
 
   @override
+  State<_OtpBoxes> createState() => _OtpBoxesState();
+}
+
+class _OtpBoxesState extends State<_OtpBoxes> with TickerProviderStateMixin {
+  late final AnimationController _shakeController;
+  late final Animation<double> _shakeOffset;
+  Timer? _digitPulseTimer;
+  int? _pulsingIndex;
+  String _lastText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _shakeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _shakeOffset =
+        TweenSequence<double>([
+          TweenSequenceItem(tween: Tween(begin: 0, end: -8), weight: 1),
+          TweenSequenceItem(tween: Tween(begin: -8, end: 8), weight: 1),
+          TweenSequenceItem(tween: Tween(begin: 8, end: -8), weight: 1),
+          TweenSequenceItem(tween: Tween(begin: -8, end: 8), weight: 1),
+          TweenSequenceItem(tween: Tween(begin: 8, end: -8), weight: 1),
+          TweenSequenceItem(tween: Tween(begin: -8, end: 0), weight: 1),
+        ]).animate(
+          CurvedAnimation(parent: _shakeController, curve: Curves.easeInOut),
+        );
+    _lastText = widget.controller.text;
+    widget.controller.addListener(_handleTextChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _shakeController.duration = MediaQuery.of(context).disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 350);
+  }
+
+  @override
+  void didUpdateWidget(covariant _OtpBoxes oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.controller != oldWidget.controller) {
+      oldWidget.controller.removeListener(_handleTextChanged);
+      _lastText = widget.controller.text;
+      widget.controller.addListener(_handleTextChanged);
+    }
+    if (widget.errorMessage != null &&
+        widget.errorMessage != oldWidget.errorMessage) {
+      _shakeController.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleTextChanged);
+    _digitPulseTimer?.cancel();
+    _shakeController.dispose();
+    super.dispose();
+  }
+
+  void _handleTextChanged() {
+    final text = widget.controller.text;
+    var changedIndex = -1;
+    final sharedLength = text.length < _lastText.length
+        ? text.length
+        : _lastText.length;
+    for (var i = 0; i < sharedLength; i++) {
+      if (text[i] != _lastText[i]) {
+        changedIndex = i;
+        break;
+      }
+    }
+    if (changedIndex == -1 && text.length > _lastText.length) {
+      changedIndex = _lastText.length;
+    }
+    _lastText = text;
+
+    if (changedIndex < 0) {
+      _digitPulseTimer?.cancel();
+      if (_pulsingIndex != null) setState(() => _pulsingIndex = null);
+      return;
+    }
+    _digitPulseTimer?.cancel();
+    setState(() => _pulsingIndex = changedIndex);
+    _digitPulseTimer = Timer(const Duration(milliseconds: 110), () {
+      if (mounted) setState(() => _pulsingIndex = null);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => focus.requestFocus(),
-      child: Stack(
-        children: [
-          AnimatedBuilder(
-            animation: Listenable.merge([controller, focus]),
-            builder: (context, _) {
-              final text = controller.text;
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(length, (i) {
-                  final filled = i < text.length;
-                  final active =
-                      focus.hasFocus && i == text.length.clamp(0, length - 1);
-                  return Container(
-                    width: 46,
-                    height: 56,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _C.mist,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: hasError
-                            ? _C.error
-                            : active
-                            ? _C.green
-                            : Colors.transparent,
-                        width: 1.6,
-                      ),
-                    ),
-                    child: Text(
-                      filled ? text[i] : '',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: _C.ink,
-                      ),
-                    ),
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    return ScaleTransition(
+      scale: widget.successScale,
+      child: GestureDetector(
+        onTap: () => widget.focus.requestFocus(),
+        child: Stack(
+          children: [
+            AnimatedBuilder(
+              animation: _shakeController,
+              child: AnimatedBuilder(
+                animation: Listenable.merge([widget.controller, widget.focus]),
+                builder: (context, _) {
+                  final text = widget.controller.text;
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: List.generate(widget.length, (i) {
+                      final filled = i < text.length;
+                      final active =
+                          widget.focus.hasFocus &&
+                          i == text.length.clamp(0, widget.length - 1);
+                      return AnimatedScale(
+                        scale: active ? 1.05 : 1,
+                        duration: reduceMotion
+                            ? Duration.zero
+                            : const Duration(milliseconds: 150),
+                        curve: Curves.easeOut,
+                        child: AnimatedScale(
+                          scale: _pulsingIndex == i ? 1.15 : 1,
+                          duration: reduceMotion
+                              ? Duration.zero
+                              : const Duration(milliseconds: 110),
+                          curve: Curves.easeOutBack,
+                          child: Container(
+                            width: 46,
+                            height: 56,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: _C.mist,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: widget.errorMessage != null
+                                    ? _C.error
+                                    : active
+                                    ? _C.green
+                                    : Colors.transparent,
+                                width: 1.6,
+                              ),
+                            ),
+                            child: AnimatedSwitcher(
+                              duration: reduceMotion
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 150),
+                              transitionBuilder: (child, animation) =>
+                                  FadeTransition(
+                                    opacity: animation,
+                                    child: child,
+                                  ),
+                              child: Text(
+                                filled ? text[i] : '',
+                                key: ValueKey<String>(filled ? text[i] : ''),
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: _C.ink,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
                   );
-                }),
-              );
-            },
-          ),
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0,
-              child: TextField(
-                controller: controller,
-                focusNode: focus,
-                enabled: enabled,
-                autofocus: true,
-                keyboardType: TextInputType.number,
-                autofillHints: const [AutofillHints.oneTimeCode],
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(length),
-                ],
-                showCursor: false,
-                enableInteractiveSelection: false,
-                onChanged: (_) => onChanged(),
+                },
+              ),
+              builder: (context, child) => Transform.translate(
+                offset: Offset(_shakeOffset.value, 0),
+                child: child,
               ),
             ),
-          ),
-        ],
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0,
+                child: TextField(
+                  controller: widget.controller,
+                  focusNode: widget.focus,
+                  enabled: widget.enabled,
+                  autofocus: true,
+                  keyboardType: TextInputType.number,
+                  autofillHints: const [AutofillHints.oneTimeCode],
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(widget.length),
+                  ],
+                  showCursor: false,
+                  enableInteractiveSelection: false,
+                  onChanged: (_) => widget.onChanged(),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

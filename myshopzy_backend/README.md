@@ -4,8 +4,8 @@ CommonJS/Express backend for the MyShopzy Mandapeta delivery platform.
 Customer catalog read APIs are implemented against the initial PostgreSQL
 schema. Customer profile, saved-address, cart, checkout, serviceability, and
 order APIs are backed by PostgreSQL. Order placement and customer-specific
-routes require trusted customer authentication. The only configured customer
-authentication is an explicitly development-only OTP path. The backend is not
+routes require trusted customer authentication. Customer OTP authentication
+has separate provider-backed and development-only routes. The backend is not
 production-ready.
 
 ## Structure
@@ -237,21 +237,46 @@ database-backed tests using that exact role.
 
 ## Planned security and integrations
 
-Production authentication, role-based authorization, rate limiting, and request
-logging are not implemented yet. Catalog endpoints validate their query/path inputs
+Role-based authorization and general request logging are not implemented yet.
+Catalog endpoints validate their query/path inputs
 and return generic errors without leaking PostgreSQL details.
 The PostgreSQL pool uses the validated environment settings. Pool errors and
 readiness responses do not expose database error details or credentials.
-Payment processing, OTP delivery, object storage, and production deployment
-remain unconfigured. For local development only, `POST
+Payment processing, object storage, and production deployment remain
+unconfigured. Customer phone authentication supports provider-backed WhatsApp
+OTP only when backend configuration is complete:
+
+- `POST /api/v1/auth/otp/request` accepts `{ "phoneNumber": "+919876543210" }`
+  and returns a neutral `202` response. It does not claim a message was sent;
+  Meta must accept the request and return a message ID before a challenge can
+  be verified.
+- `POST /api/v1/auth/otp/verify` accepts `{ "phoneNumber": "+919876543210",
+  "otp": "123456" }`. A valid code creates a customer if needed and issues a
+  15-minute bearer JWT. New accounts initially use the display name `Customer`.
+- Codes are cryptographically generated, expire after five minutes, and are
+  stored only as keyed hashes. Verification allows five attempts. Phone requests
+  are limited to three per 15 minutes with a 30-second resend cooldown; source
+  IP requests are limited to ten per hour. Rate-limit keys are keyed hashes.
+- Configure `CUSTOMER_OTP_PEPPER`, `CUSTOMER_SESSION_SECRET`,
+  `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
+  `WHATSAPP_OTP_TEMPLATE_NAME`, and `WHATSAPP_OTP_TEMPLATE_LANGUAGE` only in
+  backend environment/secret management. Values are never read from Flutter.
+  The configured Meta template must be an approved Authentication template
+  using the copy-code OTP button. Graph API acceptance is not proof of actual
+  device delivery.
+- Migration 007 adds OTP challenge and rate-limit storage. Review and apply
+  migrations as a separate deployment operation; the application does not
+  run migrations on startup.
+
+The local development-only `POST
 /api/v1/auth/development/verify-otp` accepts a six-digit code configured through
 `DEVELOPMENT_CUSTOMER_OTP` and signs a 15-minute customer bearer token using
 `DEVELOPMENT_CUSTOMER_SESSION_SECRET` (at least 32 bytes). No SMS or WhatsApp is
 sent. The code is shared development configuration, not real identity
 verification; only an existing active customer whose phone matches can receive
 a session. The endpoint returns 404 in production, and customer authentication
-fails closed there. The Flutter app exposes this flow only in debug builds and
-keeps the token in memory; it is lost when the app restarts. Do not use this
+is never accepted by the production customer authenticator. Flutter keeps
+customer tokens in memory; they are lost when the app restarts. Do not use this
 mechanism in production or treat it as provider-backed OTP authentication.
 The migrations do not model coupons, refunds, reviews,
 support requests, notifications, or payment verification. Coupon
@@ -259,5 +284,6 @@ eligibility/redemption, notification delivery, support ticketing, payment
 verification/provider references, and review/rating records need separately
 designed schema and integrations before those APIs can be implemented. Order
 creation is available only when a trusted authentication middleware is
-injected; production login/signup and provider-backed OTP/JWT authentication
-are not implemented.
+injected; production customer APIs accept only the production OTP session
+issuer and secret, while development tokens are accepted only outside
+production. Signing keys are distinct.

@@ -7,6 +7,96 @@ import 'package:myshopzy/shared/data/customer_api.dart';
 
 void main() {
   group('CustomerApi', () {
+    test('requests and verifies OTP through the production API contract', () async {
+      final requests = <http.Request>[];
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          if (request.url.path.endsWith('/auth/otp/request')) {
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'message': 'If this number can receive verification messages, a code may be sent.',
+                  'expiresIn': 300,
+                  'resendAfter': 30,
+                },
+              }),
+              202,
+            );
+          }
+          if (request.url.path.endsWith('/auth/otp/verify')) {
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'accessToken': 'header.payload.signature',
+                  'tokenType': 'Bearer',
+                  'expiresIn': 900,
+                },
+              }),
+              200,
+            );
+          }
+          return http.Response(
+            jsonEncode({'data': [], 'pagination': {'limit': 20, 'offset': 0}}),
+            200,
+          );
+        }),
+      );
+      addTearDown(api.close);
+
+      await api.requestOtp(phoneNumber: '+919876543210');
+      expect(api.hasCustomerSession, isFalse);
+      await api.verifyOtp(phoneNumber: '+919876543210', otp: '123456');
+      expect(api.hasCustomerSession, isTrue);
+      await api.getShops();
+
+      expect(requests.map((request) => request.url.path), [
+        '/api/v1/auth/otp/request',
+        '/api/v1/auth/otp/verify',
+        '/api/v1/shops',
+      ]);
+      expect(jsonDecode(requests[0].body), {
+        'phoneNumber': '+919876543210',
+      });
+      expect(jsonDecode(requests[1].body), {
+        'phoneNumber': '+919876543210',
+        'otp': '123456',
+      });
+      expect(
+        requests[2].headers['Authorization'],
+        'Bearer header.payload.signature',
+      );
+    });
+
+    test('does not create a customer session when OTP verification fails', () async {
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'error': {
+                'code': 'INVALID_OTP',
+                'message': 'The verification code is invalid or expired.',
+              },
+            }),
+            401,
+          ),
+        ),
+      );
+      addTearDown(api.close);
+
+      await expectLater(
+        api.verifyOtp(phoneNumber: '+919876543210', otp: '123456'),
+        throwsA(
+          isA<CustomerApiException>()
+              .having((error) => error.statusCode, 'statusCode', 401)
+              .having((error) => error.code, 'code', 'INVALID_OTP'),
+        ),
+      );
+      expect(api.hasCustomerSession, isFalse);
+    });
+
     test('uses configured base URL and parses catalog resources', () async {
       final requests = <http.Request>[];
       final api = CustomerApi(

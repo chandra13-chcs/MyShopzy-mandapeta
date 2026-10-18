@@ -2,8 +2,9 @@
 
 This mapping follows the current Flutter screens, the existing PostgreSQL
 migrations, and the additive customer API migrations.
-The server includes explicitly development-only OTP authentication;
-production authentication, login, and signup integrations are not implemented.
+The server includes separately configured development OTP authentication and
+backend-provider-backed customer OTP authentication. Customer creation happens
+only after successful OTP verification.
 Implemented catalog endpoints are public reads; a customer ID supplied by a
 client is not a trusted identity.
 
@@ -48,6 +49,8 @@ middleware is configured. Client-supplied user IDs are never used as identity.
 
 | Endpoint | Request / result | Tables and scope |
 |---|---|---|
+| `POST /auth/otp/request` | `{ "phoneNumber": "+919876543210" }`; neutral `202` response with expiry and resend timing | Stores a keyed OTP hash and keyed rate-limit identifiers; sends through the configured backend WhatsApp Authentication template |
+| `POST /auth/otp/verify` | `{ "phoneNumber": "+919876543210", "otp": "123456" }`; returns a 15-minute bearer session | `app.customer_otp_challenges`, `app.users`, `app.customers`; creates a customer only after successful verification |
 | `GET /me/profile` | Reads display name, email, phone, creation time | `app.users`, `app.customers`; authenticated user only |
 | `PATCH /me/profile` | Optional `displayName`, `email`, `phone`; requires at least one of email/phone to remain | `app.users`, `app.customers`; database uniqueness conflicts return `409` |
 | `GET /me/addresses` | Lists own saved addresses | `app.customer_saved_addresses` |
@@ -60,6 +63,13 @@ middleware is configured. Client-supplied user IDs are never used as identity.
 | `GET /me/orders` | Optional `limit` (1–100), `offset` | Orders, order items, shops; authenticated customer's records only |
 | `GET /me/orders/:orderId` | UUID path | Order summary, address snapshot, immutable item snapshots; foreign and missing orders return `404` |
 | `POST /me/parcels` | Pickup/drop strings, UI parcel type, weight `0 < kg <= 20` (up to three decimal places), optional instructions | `app.parcel_bookings`; creates a `requested` booking, `201` |
+
+OTP codes expire after five minutes, allow five verification attempts, and have
+a 30-second resend cooldown. Requests are limited to three per phone per 15
+minutes and ten per source IP per hour. Codes, phone numbers, and IP addresses
+are not stored in plaintext in OTP challenge/rate-limit tables. Unknown and
+existing phone numbers follow the same request contract; a customer account
+is only created after code verification.
 | `GET /me/parcels` | Optional `limit` (1–100), `offset` | Authenticated customer's booking list |
 | `GET /me/parcels/:parcelId` | UUID path | Owner-scoped booking details; foreign and missing IDs return `404` |
 
@@ -101,9 +111,9 @@ instructions, payment details, and cancellation reason are not persisted.
 `req.auth.customerUserId` only after verifying customer authentication; the
 route additionally checks the corresponding active customer/user rows. It
 never reads customer identity from request data. Unit tests use a test-only
-trusted middleware stub to exercise the transaction; this does not enable
-production order placement: the running server only provides the
-development-only OTP authenticator outside production. The allowlist check is
+trusted middleware stub to exercise the transaction; the running server wires
+the production OTP session authenticator when configured and accepts the
+development-only token issuer only outside production. The allowlist check is
 repeated during order placement. This policy checks pincodes only and does not
 geofence coordinates. Customer order cancellation remains unavailable.
 

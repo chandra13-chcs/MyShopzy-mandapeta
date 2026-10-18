@@ -16,6 +16,7 @@ function createApp({
   authenticateRider = null,
   authenticateAdmin = null,
   superAdminOrigin = null,
+  customerOtpAuthRouter = null,
   developmentCustomerAuthRouter = null,
   nodeEnv = 'development',
   logger = console,
@@ -35,6 +36,9 @@ function createApp({
     });
   });
 
+  if (customerOtpAuthRouter) {
+    app.use('/api/v1', customerOtpAuthRouter);
+  }
   if (developmentCustomerAuthRouter) {
     app.use('/api/v1', developmentCustomerAuthRouter);
   }

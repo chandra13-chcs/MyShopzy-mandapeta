@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 class CustomerApiException implements Exception {
@@ -747,21 +746,36 @@ class CustomerApi {
         message: 'The previous order outcome is still unknown.',
       );
 
-  Future<void> verifyDevelopmentOtp({
+  Future<void> requestOtp({
     required String phoneNumber,
-    required String otp,
   }) async {
-    if (!kDebugMode) {
-      throw const CustomerApiException(
-        statusCode: null,
-        code: 'DEVELOPMENT_AUTH_DISABLED',
-        message: 'Development customer authentication is unavailable.',
-      );
-    }
     _customerAccessToken = null;
     final payload = await _request(
       'POST',
-      '/auth/development/verify-otp',
+      '/auth/otp/request',
+      body: {'phoneNumber': phoneNumber},
+    );
+    try {
+      final result = _dataObject(payload);
+      _requiredString(result, 'message');
+      final expiresIn = _requiredInteger(result, 'expiresIn', minimum: 1);
+      final resendAfter = _requiredInteger(result, 'resendAfter', minimum: 1);
+      if (expiresIn > 5 * 60 || resendAfter > expiresIn) {
+        throw const FormatException('Invalid OTP request response.');
+      }
+    } on FormatException {
+      throw _invalidResponse();
+    }
+  }
+
+  Future<void> verifyOtp({
+    required String phoneNumber,
+    required String otp,
+  }) async {
+    _customerAccessToken = null;
+    final payload = await _request(
+      'POST',
+      '/auth/otp/verify',
       body: {'phoneNumber': phoneNumber, 'otp': otp},
     );
     try {

@@ -33,6 +33,10 @@ const riderEarningsSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/006_rider_delivery_earnings.sql',
 );
+const customerOtpSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/007_customer_otp_auth.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -110,9 +114,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const dynamicCategoriesSchema = await readFile(dynamicCategoriesSchemaPath, 'utf8');
   const riderDeliverySchema = await readFile(riderDeliverySchemaPath, 'utf8');
   const riderEarningsSchema = await readFile(riderEarningsSchemaPath, 'utf8');
+  const customerOtpSchema = await readFile(customerOtpSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
-  assert.equal(appliedCount, 6);
+  assert.equal(appliedCount, 7);
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
   assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
   assert.equal(
@@ -128,6 +133,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('006').name,
     '006_rider_delivery_earnings.sql',
   );
+  assert.equal(
+    pool.applied.get('007').name,
+    '007_customer_otp_auth.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -135,6 +144,7 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(dynamicCategoriesSchema.trim()));
   assert.ok(calls.includes(riderDeliverySchema.trim()));
   assert.ok(calls.includes(riderEarningsSchema.trim()));
+  assert.ok(calls.includes(customerOtpSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
@@ -171,6 +181,17 @@ test('rider earnings migration enforces delivery stages and records settlements'
   assert.match(schema, /PRIMARY KEY/);
 });
 
+test('customer OTP migration stores hashes and bounded challenge/rate state', async () => {
+  const schema = await readFile(customerOtpSchemaPath, 'utf8');
+
+  assert.match(schema, /CREATE TABLE app\.customer_otp_challenges\b/);
+  assert.match(schema, /phone_hash char\(64\) NOT NULL UNIQUE/);
+  assert.match(schema, /otp_hash char\(64\) NOT NULL/);
+  assert.match(schema, /attempt_count BETWEEN 0 AND 5/);
+  assert.match(schema, /CREATE TABLE app\.customer_auth_rate_limits\b/);
+  assert.match(schema, /scope IN \('phone', 'ip'\)/);
+});
+
 test('customer account migration adds address, wishlist, and parcel foundations', async () => {
   const schema = await readFile(customerAccountSchemaPath, 'utf8');
 
@@ -200,7 +221,7 @@ test('skips matching applied migrations and refuses checksum drift', async () =>
   const alreadyApplied = createMockPool({
     applied: new Map([['001', { checksum: migration.checksum }]]),
   });
-  assert.equal(await runMigrations(alreadyApplied), 6);
+  assert.equal(await runMigrations(alreadyApplied), 7);
   assert.equal(
     alreadyApplied.calls.some((call) => call.sql === migration.sql.trim()),
     false,

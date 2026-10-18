@@ -1,5 +1,3 @@
-// Put this file at: lib/features/auth/presentation/landing_page.dart
-// Put the image at:  assets/login/login_hero.jpg  (and register it in pubspec.yaml)
 import 'package:flutter/material.dart';
 
 import 'login_page.dart';
@@ -13,8 +11,48 @@ class _C {
 }
 
 /// First screen of the customer app: brand artwork + Login button.
-class LandingPage extends StatelessWidget {
+class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
+
+  @override
+  State<LandingPage> createState() => _LandingPageState();
+}
+
+class _LandingPageState extends State<LandingPage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entryController;
+  late final Animation<Offset> _entryOffset;
+  bool _entryStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _entryController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _entryOffset = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _entryController, curve: Curves.easeOutCubic),
+        );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_entryStarted) return;
+    _entryStarted = true;
+    _entryController.duration = MediaQuery.of(context).disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 400);
+    _entryController.forward();
+  }
+
+  @override
+  void dispose() {
+    _entryController.dispose();
+    super.dispose();
+  }
 
   void _soon(BuildContext context, String what) {
     ScaffoldMessenger.of(context)
@@ -33,9 +71,9 @@ class LandingPage extends StatelessWidget {
             child: SizedBox(
               width: double.infinity,
               child: Image.asset(
-                'assets/login/login_hero.jpg',
+                'assets/category_tiles/login_hero.jpg',
                 fit: BoxFit.cover,
-                alignment: const Alignment(0, -0.2),
+                alignment: Alignment.center,
                 errorBuilder: (_, _, _) => const ColoredBox(
                   color: _C.greenDark,
                   child: Center(
@@ -54,66 +92,84 @@ class LandingPage extends StatelessWidget {
           ),
           Transform.translate(
             offset: const Offset(0, -1),
-            child: Container(
-              width: double.infinity,
-              padding: EdgeInsets.fromLTRB(20, 22, 20, 12 + bottom),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const LoginPage()),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _C.green,
-                        foregroundColor: Colors.white,
-                        elevation: 3,
-                        shape: const StadiumBorder(),
-                        textStyle: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      child: const Text('Login'),
+            child: FadeTransition(
+              opacity: _entryController,
+              child: SlideTransition(
+                position: _entryOffset,
+                child: Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.fromLTRB(20, 22, 20, 12 + bottom),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(32),
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const _Muted('By continuing, you agree to our '),
-                      _Link('Privacy Policy', () => _soon(context, 'Privacy Policy')),
-                      const _Muted(' & '),
-                      _Link('Terms of Use', () => _soon(context, 'Terms of Use')),
-                    ],
-                  ),
-                  const SizedBox(height: 22),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(width: 14, height: 3, color: _C.yellow),
-                      const SizedBox(width: 10),
-                      const Text(
-                        'Smart Shopping  •  Fast Delivery',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _C.green,
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(context).push(
+                            authPageRoute<void>(
+                              context: context,
+                              page: const LoginPage(),
+                              transition: AuthPageTransition.fadeSlideUp,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _C.green,
+                            foregroundColor: Colors.white,
+                            elevation: 3,
+                            shape: const StadiumBorder(),
+                            textStyle: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          child: const Text('Login'),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Container(width: 14, height: 3, color: _C.yellow),
+                      const SizedBox(height: 14),
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          const _Muted('By continuing, you agree to our '),
+                          _Link(
+                            'Privacy Policy',
+                            () => _soon(context, 'Privacy Policy'),
+                          ),
+                          const _Muted(' & '),
+                          _Link(
+                            'Terms of Use',
+                            () => _soon(context, 'Terms of Use'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(width: 14, height: 3, color: _C.yellow),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Smart Shopping  •  Fast Delivery',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _C.green,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Container(width: 14, height: 3, color: _C.yellow),
+                        ],
+                      ),
                     ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

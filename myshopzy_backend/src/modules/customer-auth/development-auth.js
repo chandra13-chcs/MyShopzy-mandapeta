@@ -1,11 +1,14 @@
-const { createHmac, timingSafeEqual } = require('node:crypto');
+const { timingSafeEqual } = require('node:crypto');
 const express = require('express');
+const {
+  DEVELOPMENT_TOKEN_ISSUER,
+  TOKEN_LIFETIME_SECONDS,
+  signCustomerToken,
+  verifyCustomerToken,
+} = require('./customer-session');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TOKEN_ISSUER = 'myshopzy-development-auth';
-const TOKEN_AUDIENCE = 'myshopzy-customer';
-const TOKEN_LIFETIME_SECONDS = 15 * 60;
 
 function sendAuthError(res, status, code, message) {
   return res.status(status).json({ error: { code, message } });
@@ -47,68 +50,6 @@ function isConfigured(config) {
     typeof config.developmentCustomerSessionSecret === 'string' &&
     Buffer.byteLength(config.developmentCustomerSessionSecret, 'utf8') >= 32
   );
-}
-
-function encodeJson(value) {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-function signToken(customerUserId, secret, nowSeconds) {
-  const header = encodeJson({ alg: 'HS256', typ: 'JWT' });
-  const payload = encodeJson({
-    sub: customerUserId,
-    iss: TOKEN_ISSUER,
-    aud: TOKEN_AUDIENCE,
-    iat: nowSeconds,
-    exp: nowSeconds + TOKEN_LIFETIME_SECONDS,
-  });
-  const unsignedToken = `${header}.${payload}`;
-  const signature = createHmac('sha256', secret)
-    .update(unsignedToken)
-    .digest('base64url');
-  return `${unsignedToken}.${signature}`;
-}
-
-function verifyToken(token, secret, nowSeconds) {
-  if (typeof token !== 'string') return null;
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  let header;
-  let payload;
-  let signature;
-  try {
-    header = JSON.parse(Buffer.from(parts[0], 'base64url').toString('utf8'));
-    payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-    signature = Buffer.from(parts[2], 'base64url');
-  } catch (_) {
-    return null;
-  }
-  if (
-    header?.alg !== 'HS256' ||
-    header?.typ !== 'JWT' ||
-    !payload ||
-    typeof payload !== 'object' ||
-    !UUID_PATTERN.test(payload.sub ?? '') ||
-    payload.iss !== TOKEN_ISSUER ||
-    payload.aud !== TOKEN_AUDIENCE ||
-    !Number.isInteger(payload.iat) ||
-    !Number.isInteger(payload.exp) ||
-    payload.iat > nowSeconds ||
-    payload.exp <= nowSeconds ||
-    payload.exp - payload.iat !== TOKEN_LIFETIME_SECONDS
-  ) {
-    return null;
-  }
-  const expected = createHmac('sha256', secret)
-    .update(`${parts[0]}.${parts[1]}`)
-    .digest();
-  if (
-    signature.length !== expected.length ||
-    !timingSafeEqual(signature, expected)
-  ) {
-    return null;
-  }
-  return payload;
 }
 
 function createDevelopmentCustomerAuth({
@@ -188,10 +129,11 @@ function createDevelopmentCustomerAuth({
       const nowSeconds = now();
       return res.status(200).json({
         data: {
-          accessToken: signToken(
+          accessToken: signCustomerToken(
             result.rows[0].id,
             config.developmentCustomerSessionSecret,
             nowSeconds,
+            DEVELOPMENT_TOKEN_ISSUER,
           ),
           tokenType: 'Bearer',
           expiresIn: TOKEN_LIFETIME_SECONDS,
@@ -218,7 +160,12 @@ function createDevelopmentCustomerAuth({
     const authorization = req.get('authorization') ?? '';
     const match = /^Bearer ([A-Za-z0-9_.-]+)$/.exec(authorization);
     const claims = match
-      ? verifyToken(match[1], config.developmentCustomerSessionSecret, now())
+      ? verifyCustomerToken(
+          match[1],
+          config.developmentCustomerSessionSecret,
+          now(),
+          DEVELOPMENT_TOKEN_ISSUER,
+        )
       : null;
     if (!claims || !databasePool) {
       return sendAuthError(

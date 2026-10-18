@@ -5,6 +5,10 @@ const {
   createDevelopmentCustomerAuth,
 } = require('./modules/customer-auth/development-auth');
 const {
+  createCustomerAuthenticator,
+} = require('./modules/customer-auth/customer-session');
+const { createCustomerOtpAuth } = require('./modules/customer-auth/otp-auth');
+const {
   createAuth0AdminAuthenticator,
 } = require('./modules/admin-read/auth0-authentication');
 const { mockRiderAuth } = require('./middleware/mock-rider-auth');
@@ -45,6 +49,11 @@ function startServer({
     databasePool: pool,
     config,
   });
+  const customerOtpAuthRouter = createCustomerOtpAuth({
+    databasePool: pool,
+    config,
+    logger,
+  });
   const authenticateAdmin = config.auth0Admin && config.superAdminOrigin && pool
     ? createAuth0AdminAuthenticator({
         databasePool: pool,
@@ -53,13 +62,17 @@ function startServer({
     : null;
   const app = createApp({
     databasePool: pool,
-    authenticateCustomer: developmentCustomerAuth.authenticateCustomer,
+    authenticateCustomer: createCustomerAuthenticator({
+      databasePool: pool,
+      config,
+    }),
     authenticateRider:
       authenticateRider ??
       (config.nodeEnv === 'production' ? null : mockRiderAuth),
     authenticateAdmin,
     nodeEnv: config.nodeEnv,
     superAdminOrigin: authenticateAdmin ? config.superAdminOrigin : null,
+    customerOtpAuthRouter,
     developmentCustomerAuthRouter: developmentCustomerAuth.router,
   });
   const server = app.listen(config.port, () => {

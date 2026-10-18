@@ -3,87 +3,69 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:myshopzy/shared/data/customer_api.dart';
 import 'package:myshopzy/shared/data/whatsapp_service.dart';
 
 void main() {
   group('WhatsAppService', () {
-    test('sends an OTP using the WhatsApp template endpoint', () async {
+    test('requests OTP through the configured backend only', () async {
       http.Request? capturedRequest;
-      final service = WhatsAppService(
-        accessToken: 'test-token',
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
         httpClient: MockClient((request) async {
           capturedRequest = request;
-          return http.Response('{}', 200);
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'message': 'If this number can receive verification messages, a code may be sent.',
+                'expiresIn': 300,
+                'resendAfter': 30,
+              },
+            }),
+            202,
+          );
         }),
       );
+      addTearDown(api.close);
+      final service = WhatsAppService(customerApi: api);
 
-      await service.sendOtpMessage(
-        recipientPhone: '+15551234567',
-        otpCode: '123456',
-      );
+      await service.requestOtp(recipientPhone: '+919876543210');
 
       expect(
         capturedRequest!.url.toString(),
-        'https://graph.facebook.com/v17.0/1346981995167088/messages',
+        'https://shop.example/api/v1/auth/otp/request',
       );
-      expect(capturedRequest!.method, 'POST');
-      expect(capturedRequest!.headers['authorization'], 'Bearer test-token');
+      expect(capturedRequest!.headers.containsKey('authorization'), isFalse);
       expect(jsonDecode(capturedRequest!.body), {
-        'messaging_product': 'whatsapp',
-        'to': '+15551234567',
-        'type': 'template',
-        'template': {
-          'name': 'otp',
-          'language': {'code': 'en_US'},
-          'components': [
-            {
-              'type': 'body',
-              'parameters': [
-                {'type': 'text', 'text': '123456'},
-              ],
-            },
-          ],
-        },
+        'phoneNumber': '+919876543210',
       });
     });
 
-    test('throws an exception for a non-200 API response', () async {
-      final service = WhatsAppService(
-        accessToken: 'test-token',
+    test('surfaces backend OTP delivery failures', () async {
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
         httpClient: MockClient(
-          (_) async => http.Response('Invalid template', 400),
+          (_) async => http.Response(
+            jsonEncode({
+              'error': {
+                'code': 'OTP_DELIVERY_FAILED',
+                'message': 'The verification message could not be accepted. Try again later.',
+              },
+            }),
+            503,
+          ),
         ),
       );
+      addTearDown(api.close);
+      final service = WhatsAppService(customerApi: api);
 
       await expectLater(
-        service.sendOtpMessage(
-          recipientPhone: '+15551234567',
-          otpCode: '123456',
-        ),
+        service.requestOtp(recipientPhone: '+919876543210'),
         throwsA(
-          isA<WhatsAppApiException>()
-              .having((error) => error.statusCode, 'statusCode', 400)
-              .having(
-                (error) => error.responseBody,
-                'responseBody',
-                'Invalid template',
-              ),
+          isA<CustomerApiException>()
+              .having((error) => error.statusCode, 'statusCode', 503)
+              .having((error) => error.code, 'code', 'OTP_DELIVERY_FAILED'),
         ),
-      );
-    });
-
-    test('requires an access token before sending', () async {
-      final service = WhatsAppService(
-        accessToken: '',
-        httpClient: MockClient((_) async => http.Response('{}', 200)),
-      );
-
-      await expectLater(
-        service.sendOtpMessage(
-          recipientPhone: '+15551234567',
-          otpCode: '123456',
-        ),
-        throwsA(isA<StateError>()),
       );
     });
   });

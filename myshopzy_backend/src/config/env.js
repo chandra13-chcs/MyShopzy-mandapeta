@@ -123,6 +123,61 @@ function loadConfig(env = process.env) {
     }
   }
 
+  const otpConfigKeys = [
+    'CUSTOMER_OTP_PEPPER',
+    'CUSTOMER_SESSION_SECRET',
+    'WHATSAPP_ACCESS_TOKEN',
+    'WHATSAPP_PHONE_NUMBER_ID',
+    'WHATSAPP_OTP_TEMPLATE_NAME',
+    'WHATSAPP_OTP_TEMPLATE_LANGUAGE',
+  ];
+  const otpConfigProvided = otpConfigKeys.some(
+    (key) => env[key] !== undefined && env[key] !== '',
+  );
+  let customerOtpPepper = null;
+  let customerSessionSecret = null;
+  let whatsapp = null;
+
+  if (otpConfigProvided) {
+    const requiredValues = {
+      CUSTOMER_OTP_PEPPER: env.CUSTOMER_OTP_PEPPER,
+      CUSTOMER_SESSION_SECRET: env.CUSTOMER_SESSION_SECRET,
+      WHATSAPP_ACCESS_TOKEN: env.WHATSAPP_ACCESS_TOKEN,
+      WHATSAPP_PHONE_NUMBER_ID: env.WHATSAPP_PHONE_NUMBER_ID,
+      WHATSAPP_OTP_TEMPLATE_NAME: env.WHATSAPP_OTP_TEMPLATE_NAME,
+      WHATSAPP_OTP_TEMPLATE_LANGUAGE: env.WHATSAPP_OTP_TEMPLATE_LANGUAGE,
+    };
+    const missingKeys = Object.entries(requiredValues)
+      .filter(([, value]) => !value)
+      .map(([key]) => key);
+    if (missingKeys.length > 0) {
+      throw new Error(
+        `Customer OTP authentication configuration is incomplete. Set: ${missingKeys.join(', ')}.`,
+      );
+    }
+    if (
+      Buffer.byteLength(env.CUSTOMER_OTP_PEPPER, 'utf8') < 32 ||
+      Buffer.byteLength(env.CUSTOMER_SESSION_SECRET, 'utf8') < 32
+    ) {
+      throw new Error(
+        'CUSTOMER_OTP_PEPPER and CUSTOMER_SESSION_SECRET must be at least 32 bytes.',
+      );
+    }
+    const graphApiVersion = env.WHATSAPP_GRAPH_API_VERSION || 'v25.0';
+    if (!/^v\d+\.\d+$/.test(graphApiVersion)) {
+      throw new Error('WHATSAPP_GRAPH_API_VERSION must look like v25.0.');
+    }
+    customerOtpPepper = env.CUSTOMER_OTP_PEPPER;
+    customerSessionSecret = env.CUSTOMER_SESSION_SECRET;
+    whatsapp = Object.freeze({
+      accessToken: env.WHATSAPP_ACCESS_TOKEN,
+      phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID,
+      templateName: env.WHATSAPP_OTP_TEMPLATE_NAME,
+      templateLanguage: env.WHATSAPP_OTP_TEMPLATE_LANGUAGE,
+      graphApiVersion,
+    });
+  }
+
   return Object.freeze({
     port,
     nodeEnv: env.NODE_ENV || 'development',
@@ -130,6 +185,9 @@ function loadConfig(env = process.env) {
     developmentCustomerOtp: env.DEVELOPMENT_CUSTOMER_OTP || null,
     developmentCustomerSessionSecret:
       env.DEVELOPMENT_CUSTOMER_SESSION_SECRET || null,
+    customerOtpPepper,
+    customerSessionSecret,
+    whatsapp,
     auth0Admin,
     superAdminOrigin,
   });
