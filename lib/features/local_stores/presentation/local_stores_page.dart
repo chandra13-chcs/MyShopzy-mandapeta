@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 
 export '../models/local_store.dart';
 
@@ -61,6 +63,16 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
     return api.getAllShops(partnerType: widget.partnerType ?? 'grocery');
   }
 
+  Future<void> _refreshStores() async {
+    final future = _loadStores(CustomerApi.instance);
+    setState(() => _storesFuture = future);
+    try {
+      await future;
+    } on CustomerApiException {
+      // The FutureBuilder presents the same request error on the page.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final storesFuture = _storesFuture;
@@ -74,15 +86,42 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
       future: storesFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return Scaffold(
-            backgroundColor: _page,
-            body: const SafeArea(
-              child: Center(child: CircularProgressIndicator()),
+          return AnimatedContentSwitcher(
+            child: KeyedSubtree(
+              key: const ValueKey('stores-loading'),
+              child: Scaffold(
+                backgroundColor: _page,
+                body: SafeArea(
+                  child: Column(
+                    children: [
+                      _buildHeader(context, showRadius: false),
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.all(16),
+                          children: [
+                            SkeletonBox(height: 18, width: 150, radius: 6),
+                            SizedBox(height: 14),
+                            for (var index = 0; index < 3; index++) ...[
+                              SkeletonBox(height: 224, radius: 16),
+                              SizedBox(height: 14),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           );
         }
         if (snapshot.hasError) {
-          return _buildApiError(snapshot.error);
+          return AnimatedContentSwitcher(
+            child: KeyedSubtree(
+              key: const ValueKey('stores-error'),
+              child: _buildApiError(snapshot.error),
+            ),
+          );
         }
         final stores = snapshot.data!
             .map(
@@ -98,7 +137,12 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
               ),
             )
             .toList(growable: false);
-        return _buildPage(stores, sourceLabel: 'Backend catalog');
+        return AnimatedContentSwitcher(
+          child: KeyedSubtree(
+            key: const ValueKey('stores-loaded'),
+            child: _buildPage(stores, sourceLabel: 'Backend catalog'),
+          ),
+        );
       },
     );
   }
@@ -158,6 +202,64 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
     final nearbyStores = stores.any((store) => store.isBackendData)
         ? stores
         : eligibleLocalStores(stores);
+    final storeList = ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 19, 16, 24),
+      children: [
+        Text(
+          sourceLabel,
+          style: const TextStyle(color: _muted, fontSize: 11),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.categoryName == null
+                    ? 'Stores near you'
+                    : '${widget.categoryName} near you',
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+              ),
+            ),
+            Text(
+              '${nearbyStores.length} places',
+              style: const TextStyle(
+                color: _muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 13),
+        for (var index = 0; index < nearbyStores.length; index++) ...[
+          if (index < 8)
+            FadeSlideIn(
+              key: ValueKey('store-${nearbyStores[index].id}'),
+              delay: staggerDelay(index),
+              keepAlive: true,
+              child: PressScaleFeedback(
+                child: _buildStoreCard(context, nearbyStores, index),
+              ),
+            )
+          else
+            PressScaleFeedback(
+              child: _buildStoreCard(context, nearbyStores, index),
+            ),
+          if (index < nearbyStores.length - 1) const SizedBox(height: 14),
+        ],
+        if (nearbyStores.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: Center(child: Text('No stores available.')),
+          ),
+      ],
+    );
     return Scaffold(
       backgroundColor: _page,
       body: SafeArea(
@@ -168,74 +270,42 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
               showRadius: !stores.any((store) => store.isBackendData),
             ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 19, 16, 24),
-                children: [
-                  Text(
-                    sourceLabel,
-                    style: const TextStyle(color: _muted, fontSize: 11),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.categoryName == null
-                              ? 'Stores near you'
-                              : '${widget.categoryName} near you',
-                          style: TextStyle(
-                            color: _ink,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.4,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${nearbyStores.length} places',
-                        style: const TextStyle(
-                          color: _muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 13),
-                  for (var index = 0; index < nearbyStores.length; index++) ...[
-                    _StoreCard(
-                      store: nearbyStores[index],
-                      recommended: !nearbyStores[index].isBackendData &&
-                          index == 0,
-                      placeholderColor: LocalStoresPage._coverColors[
-                          index % LocalStoresPage._coverColors.length],
-                      onTap: () {
-                        final store = nearbyStores[index];
-                        LocalStoreSession.instance.select(store);
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (context) => LocalStoreCatalogPage(
-                              store: store,
-                              initialCategoryId: widget.initialCategoryId,
-                            ),
-                          ),
-                        );
-                      },
+              child: _storesFuture == null
+                  ? storeList
+                  : RefreshIndicator(
+                      color: const Color(0xFF016034),
+                      onRefresh: _refreshStores,
+                      child: storeList,
                     ),
-                    if (index < nearbyStores.length - 1)
-                      const SizedBox(height: 14),
-                  ],
-                  if (nearbyStores.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 48),
-                      child: Center(child: Text('No stores available.')),
-                    ),
-                ],
-              ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildStoreCard(
+    BuildContext context,
+    List<LocalStore> nearbyStores,
+    int index,
+  ) {
+    final store = nearbyStores[index];
+    return _StoreCard(
+      store: store,
+      recommended: !store.isBackendData && index == 0,
+      placeholderColor: LocalStoresPage._coverColors[
+          index % LocalStoresPage._coverColors.length],
+      onTap: () {
+        LocalStoreSession.instance.select(store);
+        Navigator.of(context).push(
+          AppPageRoute<void>(
+            page: LocalStoreCatalogPage(
+              store: store,
+              initialCategoryId: widget.initialCategoryId,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -429,8 +499,7 @@ class _StoreCard extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.96),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.bookmark_border_rounded,
+                      child: const AnimatedBookmarkButton(
                         color: _ink,
                         size: 20,
                       ),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import 'restaurant_menu_page.dart';
 
 enum RestaurantStatus { open, closed, unavailable, unknown }
@@ -151,7 +153,12 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
           return _buildLoadingPage();
         }
         if (snapshot.hasError) {
-          return _buildApiErrorPage(snapshot.error);
+          return AnimatedContentSwitcher(
+            child: KeyedSubtree(
+              key: const ValueKey('restaurants-error'),
+              child: _buildApiErrorPage(snapshot.error),
+            ),
+          );
         }
         return _buildPage(
           context,
@@ -191,10 +198,48 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
     });
   }
 
+  Future<void> _refreshRestaurants() async {
+    final api = CustomerApi.instance;
+    final future = api.getShops(
+      partnerType: 'restaurant',
+      query: _searchQuery.isEmpty ? null : _searchQuery,
+    );
+    setState(() => _shopsFuture = future);
+    try {
+      await future;
+    } on CustomerApiException {
+      // The FutureBuilder presents the same request error on the page.
+    }
+  }
+
   Widget _buildLoadingPage() {
-    return Scaffold(
-      backgroundColor: RestaurantsPage._page,
-      body: const SafeArea(child: Center(child: CircularProgressIndicator())),
+    return AnimatedContentSwitcher(
+      child: KeyedSubtree(
+        key: const ValueKey('restaurants-loading'),
+        child: Scaffold(
+          backgroundColor: RestaurantsPage._page,
+          body: SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(context),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      SkeletonBox(height: 18, width: 170, radius: 6),
+                      SizedBox(height: 14),
+                      for (var index = 0; index < 3; index++) ...[
+                        SkeletonBox(height: 224, radius: 16),
+                        SizedBox(height: 14),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -252,101 +297,130 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
     BuildContext context,
     List<Restaurant> restaurants, {
     required String sourceLabel,
-      bool backendResults = false,
-    }) {
-      final query = _searchQuery.toLowerCase();
-      final visibleRestaurants = backendResults ||
-              restaurants.any((restaurant) => restaurant.isBackendData)
-          ? restaurants
-          : restaurants
-                .where(
-                  (restaurant) =>
-                      query.isEmpty ||
-                      restaurant.name.toLowerCase().contains(query) ||
-                      restaurant.cuisine.toLowerCase().contains(query) ||
-                      restaurant.location.toLowerCase().contains(query),
-                )
-                .toList(growable: false);
-      return Scaffold(
-      backgroundColor: RestaurantsPage._page,
-      body: SafeArea(
-        child: Column(
+    bool backendResults = false,
+  }) {
+    final query = _searchQuery.toLowerCase();
+    final visibleRestaurants =
+        backendResults ||
+            restaurants.any((restaurant) => restaurant.isBackendData)
+        ? restaurants
+        : restaurants
+              .where(
+                (restaurant) =>
+                    query.isEmpty ||
+                    restaurant.name.toLowerCase().contains(query) ||
+                    restaurant.cuisine.toLowerCase().contains(query) ||
+                    restaurant.location.toLowerCase().contains(query),
+              )
+              .toList(growable: false);
+    final restaurantList = ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 19, 16, 24),
+      children: [
+        Text(
+          sourceLabel,
+          style: const TextStyle(color: RestaurantsPage._muted, fontSize: 11),
+        ),
+        const SizedBox(height: 8),
+        Row(
           children: [
-            _buildHeader(context),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 19, 16, 24),
-                children: [
-                  Text(
-                    sourceLabel,
-                    style: const TextStyle(
-                      color: RestaurantsPage._muted,
-                      fontSize: 11,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Restaurants near you',
-                          style: TextStyle(
-                            color: RestaurantsPage._ink,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.4,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '${visibleRestaurants.length} places',
-                        style: const TextStyle(
-                          color: RestaurantsPage._muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 13),
-                  if (visibleRestaurants.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 48),
-                      child: Center(child: Text('No restaurants available.')),
-                    ),
-                  for (
-                    var index = 0;
-                    index < visibleRestaurants.length;
-                    index++
-                  ) ...[
-                    _RestaurantCard(
-                      restaurant: visibleRestaurants[index],
-                      placeholderColor:
-                          RestaurantsPage._coverColors[index %
-                              RestaurantsPage._coverColors.length],
-                      onTap: () {
-                        final restaurant = visibleRestaurants[index];
-                        if (widget.onRestaurantTap != null) {
-                          widget.onRestaurantTap!(restaurant);
-                          return;
-                        }
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (context) =>
-                                RestaurantMenuPage(restaurant: restaurant),
-                          ),
-                        );
-                      },
-                    ),
-                    if (index < visibleRestaurants.length - 1)
-                      const SizedBox(height: 14),
-                  ],
-                ],
+            const Expanded(
+              child: Text(
+                'Restaurants near you',
+                style: TextStyle(
+                  color: RestaurantsPage._ink,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+              ),
+            ),
+            Text(
+              '${visibleRestaurants.length} places',
+              style: const TextStyle(
+                color: RestaurantsPage._muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
         ),
+        const SizedBox(height: 13),
+        if (visibleRestaurants.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 48),
+            child: Center(child: Text('No restaurants available.')),
+          ),
+        for (var index = 0; index < visibleRestaurants.length; index++) ...[
+          if (index < 8)
+            FadeSlideIn(
+              key: ValueKey('restaurant-${visibleRestaurants[index].id}'),
+              delay: staggerDelay(index),
+              keepAlive: true,
+              child: PressScaleFeedback(
+                child: _buildRestaurantCard(context, visibleRestaurants, index),
+              ),
+            )
+          else
+            PressScaleFeedback(
+              child: _buildRestaurantCard(context, visibleRestaurants, index),
+            ),
+          if (index < visibleRestaurants.length - 1) const SizedBox(height: 14),
+        ],
+      ],
+    );
+
+    return AnimatedContentSwitcher(
+      child: KeyedSubtree(
+        key: const ValueKey('restaurants-loaded'),
+        child: Scaffold(
+          backgroundColor: RestaurantsPage._page,
+          body: SafeArea(
+            child: Column(
+              children: [
+                _buildHeader(context),
+                Expanded(
+                  child:
+                      backendResults ||
+                          restaurants.any(
+                            (restaurant) => restaurant.isBackendData,
+                          )
+                      ? RefreshIndicator(
+                          color: const Color(0xFF016034),
+                          onRefresh: _refreshRestaurants,
+                          child: restaurantList,
+                        )
+                      : restaurantList,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildRestaurantCard(
+    BuildContext context,
+    List<Restaurant> visibleRestaurants,
+    int index,
+  ) {
+    final restaurant = visibleRestaurants[index];
+    return _RestaurantCard(
+      restaurant: restaurant,
+      placeholderColor: RestaurantsPage
+          ._coverColors[index % RestaurantsPage._coverColors.length],
+      onTap: () {
+        if (widget.onRestaurantTap != null) {
+          widget.onRestaurantTap!(restaurant);
+          return;
+        }
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => RestaurantMenuPage(restaurant: restaurant),
+          ),
+        );
+      },
     );
   }
 
@@ -416,32 +490,87 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
             ],
           ),
           const SizedBox(height: 13),
-          Container(
-            height: 49,
-            padding: const EdgeInsets.symmetric(horizontal: 13),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: const Color(0xFFE5E9E3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.search_rounded, color: _muted, size: 22),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: TextField(
-                    key: const ValueKey('restaurant-search'),
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: _searchRestaurants,
-                    decoration: const InputDecoration(
-                      hintText: 'Search restaurants...',
-                      border: InputBorder.none,
-                      isDense: true,
-                    ),
-                    style: const TextStyle(color: _ink, fontSize: 13),
-                  ),
+          _RestaurantSearchBar(onSubmitted: _searchRestaurants),
+        ],
+      ),
+    );
+  }
+}
+
+class _RestaurantSearchBar extends StatefulWidget {
+  const _RestaurantSearchBar({required this.onSubmitted});
+
+  final ValueChanged<String> onSubmitted;
+
+  @override
+  State<_RestaurantSearchBar> createState() => _RestaurantSearchBarState();
+}
+
+class _RestaurantSearchBarState extends State<_RestaurantSearchBar> {
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_handleFocusChange);
+  }
+
+  void _handleFocusChange() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _focusNode
+      ..removeListener(_handleFocusChange)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final focused = _focusNode.hasFocus;
+    return AnimatedContainer(
+      height: 49,
+      padding: const EdgeInsets.symmetric(horizontal: 13),
+      duration: reduceMotion(context) ? Duration.zero : kMotionFast,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(
+          color: focused ? RestaurantsPage._green : const Color(0xFFE5E9E3),
+        ),
+        boxShadow: focused
+            ? [
+                BoxShadow(
+                  color: RestaurantsPage._green.withValues(alpha: 0.12),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-              ],
+              ]
+            : const [],
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.search_rounded,
+            color: RestaurantsPage._muted,
+            size: 22,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: TextField(
+              key: const ValueKey('restaurant-search'),
+              focusNode: _focusNode,
+              textInputAction: TextInputAction.search,
+              onSubmitted: widget.onSubmitted,
+              decoration: const InputDecoration(
+                hintText: 'Search restaurants...',
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              style: const TextStyle(color: RestaurantsPage._ink, fontSize: 13),
             ),
           ),
         ],
@@ -519,8 +648,7 @@ class _RestaurantCard extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.96),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
-                        Icons.bookmark_border_rounded,
+                      child: const AnimatedBookmarkButton(
                         color: _ink,
                         size: 20,
                       ),

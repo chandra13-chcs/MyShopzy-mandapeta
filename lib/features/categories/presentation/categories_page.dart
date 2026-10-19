@@ -14,6 +14,8 @@ import '../../restaurants/presentation/restaurants_page.dart';
 import '../../search/presentation/search_page.dart';
 import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import '../../../shared/presentation/bottom_navigation_bar.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 
 class CategoriesPage extends StatelessWidget {
   const CategoriesPage({super.key});
@@ -216,11 +218,23 @@ class CategoriesPage extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             itemCount: _shopCategories.length,
             separatorBuilder: (context, index) => const SizedBox(width: 13),
-            itemBuilder: (context, index) => _HorizontalCategory(
-              category: _shopCategories[index],
-              onTap: () =>
-                  _openShopCategory(context, _shopCategories[index].name),
-            ),
+            itemBuilder: (context, index) {
+              final category = _shopCategories[index];
+              final tile = PressScaleFeedback(
+                child: _HorizontalCategory(
+                  category: category,
+                  onTap: () => _openShopCategory(context, category.name),
+                ),
+              );
+              return index < 8
+                  ? FadeSlideIn(
+                      key: ValueKey('shop-store-${category.name}'),
+                      delay: staggerDelay(index),
+                      keepAlive: true,
+                      child: tile,
+                    )
+                  : tile;
+            },
           ),
         ),
       ],
@@ -251,10 +265,23 @@ class CategoriesPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
               sliver: SliverGrid(
                 delegate: SliverChildBuilderDelegate(
-                  (context, index) => _GridCategory(
-                    category: categories[index],
-                    onTap: _gridCategoryAction(context, categories[index].name),
-                  ),
+                  (context, index) {
+                    final category = categories[index];
+                    final tile = PressScaleFeedback(
+                      child: _GridCategory(
+                        category: category,
+                        onTap: _gridCategoryAction(context, category.name),
+                      ),
+                    );
+                    return index < 8
+                        ? FadeSlideIn(
+                            key: ValueKey('category-${category.name}'),
+                            delay: staggerDelay(index),
+                            keepAlive: true,
+                            child: tile,
+                          )
+                        : tile;
+                  },
                   childCount: categories.length,
                 ),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -356,8 +383,9 @@ class CategoriesPage extends StatelessWidget {
   }
 
   void _pushPage(BuildContext context, Widget page) {
-    Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (context) => page));
+    Navigator.of(
+      context,
+    ).push(AppPageRoute<void>(page: page));
   }
 }
 

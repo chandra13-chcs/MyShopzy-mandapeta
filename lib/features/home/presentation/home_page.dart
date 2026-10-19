@@ -8,6 +8,7 @@ import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../checkout/presentation/checkout_page.dart';
 import '../../../shared/presentation/dietary_badge.dart';
+import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../../shared/presentation/bottom_navigation_bar.dart';
 import '../../profile/models/saved_address.dart';
@@ -56,28 +57,23 @@ class HomePage extends StatelessWidget {
       backgroundColor: _page,
       body: SafeArea(
         bottom: false,
-        child: CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
-              sliver: SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  _buildHomeSliverChild,
-                  childCount: _homeSliverChildCount,
-                ),
-              ),
-            ),
-          ],
+        child: _HomeCatalogRefreshView(
+          childCount: _homeSliverChildCount,
+          itemBuilder: _buildHomeSliverChild,
         ),
       ),
       bottomNavigationBar: _buildBottomNavigation(context),
     );
   }
 
-  Widget _buildHomeSliverChild(BuildContext context, int index) {
+  Widget _buildHomeSliverChild(
+    BuildContext context,
+    int index,
+    GlobalKey<_HomeCatalogFeedState> catalogKey,
+  ) {
     if (index < _homeIntroChildCount) {
       return switch (index) {
-        0 => _buildHeader(context),
+        0 => FadeSlideIn(child: _buildHeader(context)),
         1 => const SizedBox(height: 10),
         2 => _buildSearchBar(context),
         3 => const SizedBox(height: 22),
@@ -106,7 +102,7 @@ class HomePage extends StatelessWidget {
     if (restaurantChildIndex < restaurantChildCount) {
       if (CustomerApi.instance.isConfigured) {
         return restaurantChildIndex == 0
-            ? const _HomeCatalogFeed(key: ValueKey('home-live-catalog'))
+            ? _HomeCatalogFeed(key: catalogKey)
             : const SizedBox.shrink();
       }
       final section = _restaurantDiscoverySections[restaurantChildIndex ~/ 2];
@@ -321,9 +317,8 @@ class HomePage extends StatelessWidget {
                   categoryName: service.name,
                 ),
               };
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (context) => destination),
-        );
+        Navigator.of(context)
+            .push(MaterialPageRoute<void>(builder: (context) => destination));
       },
     );
   }
@@ -350,13 +345,14 @@ class HomePage extends StatelessWidget {
             separatorBuilder: (context, index) => const SizedBox(width: 11),
             itemBuilder: (context, index) {
               final banner = banners[index];
-              return _buildPromotionCard(
+              final card = _buildPromotionCard(
                 context,
                 banner.assetPath,
                 key: banner.key,
                 width: cardWidth,
                 height: cardHeight,
               );
+              return index == 0 ? FadeSlideIn(child: card) : card;
             },
           ),
         );
@@ -927,6 +923,75 @@ class HomePage extends StatelessWidget {
   }
 }
 
+typedef _HomeSliverBuilder = Widget Function(
+  BuildContext context,
+  int index,
+  GlobalKey<_HomeCatalogFeedState> catalogKey,
+);
+
+class _HomeCatalogRefreshView extends StatefulWidget {
+  const _HomeCatalogRefreshView({
+    required this.childCount,
+    required this.itemBuilder,
+  });
+
+  final int childCount;
+  final _HomeSliverBuilder itemBuilder;
+
+  @override
+  State<_HomeCatalogRefreshView> createState() =>
+      _HomeCatalogRefreshViewState();
+}
+
+class _HomeCatalogRefreshViewState extends State<_HomeCatalogRefreshView> {
+  final _catalogKey = GlobalKey<_HomeCatalogFeedState>();
+
+  Future<void> _refreshCatalog() async {
+    final catalogState = _catalogKey.currentState;
+    if (catalogState != null) await catalogState._load();
+  }
+
+  @override
+  Widget build(BuildContext context) => RefreshIndicator(
+    color: const Color(0xFF016034),
+    onRefresh: _refreshCatalog,
+    child: CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) =>
+                  widget.itemBuilder(context, index, _catalogKey),
+              childCount: widget.childCount,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _catalogSkeletonSpacing(BuildContext context, int index) =>
+    const SizedBox(width: 8);
+
+Widget _catalogSkeletonCard(BuildContext context, int index) => const SizedBox(
+  width: 156,
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SkeletonBox(height: 164, radius: 14),
+      SizedBox(height: 10),
+      SkeletonBox(width: 112, height: 14, radius: 5),
+      SizedBox(height: 8),
+      SkeletonBox(width: 82, height: 12, radius: 5),
+      Spacer(),
+      SkeletonBox(height: 38, radius: 10),
+    ],
+  ),
+);
+
 class _HomeLocationHeader extends StatefulWidget {
   const _HomeLocationHeader();
 
@@ -1173,156 +1238,174 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 28),
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return AnimatedContentSwitcher(child: _catalogSkeleton());
     }
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Live catalog unavailable',
-              style: TextStyle(
-                color: HomePage._ink,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
+      return AnimatedContentSwitcher(
+        child: Padding(
+          key: const ValueKey('home-live-catalog-error'),
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Live catalog unavailable',
+                style: TextStyle(
+                  color: HomePage._ink,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              _error!,
-              style: const TextStyle(color: HomePage._muted, fontSize: 12),
-            ),
-            TextButton.icon(
-              onPressed: _loading ? null : _load,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Retry catalog'),
-            ),
-          ],
+              const SizedBox(height: 5),
+              Text(
+                _error!,
+                style: const TextStyle(color: HomePage._muted, fontSize: 12),
+              ),
+              TextButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry catalog'),
+              ),
+            ],
+          ),
         ),
       );
     }
     if (_shops.isEmpty && _products.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Text(
-          'No live shops or products are available right now.',
-          style: TextStyle(color: HomePage._muted, fontSize: 13),
+      return AnimatedContentSwitcher(
+        child: Padding(
+          key: ValueKey('home-live-catalog-empty'),
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: Text(
+            'No live shops or products are available right now.',
+            style: TextStyle(color: HomePage._muted, fontSize: 13),
+          ),
         ),
       );
     }
-    return Column(
-      key: const ValueKey('home-live-catalog-content'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_shops.isNotEmpty) ...[
-          _sectionTitle('Live shops'),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 58,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _shops.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final shop = _shops[index];
-                return Material(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    key: ValueKey('home-live-shop-${shop.id}'),
+    return AnimatedContentSwitcher(
+      child: Column(
+        key: const ValueKey('home-live-catalog-content'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_shops.isNotEmpty) ...[
+            _sectionTitle('Live shops'),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 58,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _shops.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final shop = _shops[index];
+                  return Material(
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    onTap: () {
-                      final destination = _shopDestination(shop);
-                      if (destination == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'This shop type does not have a customer catalog screen yet.',
+                    child: InkWell(
+                      key: ValueKey('home-live-shop-${shop.id}'),
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        final destination = _shopDestination(shop);
+                        if (destination == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'This shop type does not have a customer catalog screen yet.',
+                              ),
                             ),
+                          );
+                          return;
+                        }
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (context) => destination,
                           ),
                         );
-                        return;
-                      }
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (context) => destination,
+                      },
+                      child: Container(
+                        constraints: const BoxConstraints(maxWidth: 220),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
                         ),
-                      );
-                    },
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 220),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE5E9E3)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            shop.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: HomePage._ink,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFE5E9E3)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              shop.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: HomePage._ink,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
-                          ),
-                          Text(
-                            shop.partnerType,
-                            style: const TextStyle(
-                              color: HomePage._muted,
-                              fontSize: 10,
+                            Text(
+                              shop.partnerType,
+                              style: const TextStyle(
+                                color: HomePage._muted,
+                                fontSize: 10,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-        ],
-        if (_products.isNotEmpty) ...[
-          _sectionTitle('Live products'),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 288,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _products.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final product = _products[index];
-                return SizedBox(
-                  key: ValueKey('home-live-product-${product.id}'),
-                  width: 156,
-                  child: StoreProductCard(
-                    product: _mapProduct(product),
-                    placeholderIndex: index,
-                    storeName: product.shopName ?? '',
-                    relatedProducts: const [],
-                  ),
-                );
-              },
+            const SizedBox(height: 16),
+          ],
+          if (_products.isNotEmpty) ...[
+            _sectionTitle('Live products'),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 288,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _products.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final product = _products[index];
+                  return SizedBox(
+                    key: ValueKey('home-live-product-${product.id}'),
+                    width: 156,
+                    child: StoreProductCard(
+                      product: _mapProduct(product),
+                      placeholderIndex: index,
+                      storeName: product.shopName ?? '',
+                      relatedProducts: const [],
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
+          ],
         ],
-      ],
+      ),
     );
   }
+
+  Widget _catalogSkeleton() => Shimmer(
+    child: SizedBox(
+      key: ValueKey('home-live-catalog-loading'),
+      height: 288,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: 3,
+        separatorBuilder: _catalogSkeletonSpacing,
+        itemBuilder: _catalogSkeletonCard,
+      ),
+    ),
+  );
 
   StoreProduct _mapProduct(ApiProduct product) => StoreProduct(
     id: product.id,
@@ -2437,9 +2520,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
 
   Future<List<_Service>> _loadPartnerServices(CustomerApi api) async {
     final categories = await api.getPartnerCategories();
-    return categories
-        .map(_Service.forPartnerCategory)
-        .toList(growable: false);
+    return categories.map(_Service.forPartnerCategory).toList(growable: false);
   }
 
   @override
@@ -2474,10 +2555,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                 const SizedBox(height: 5),
                 Text(
                   message,
-                  style: const TextStyle(
-                    color: HomePage._muted,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: HomePage._muted, fontSize: 12),
                 ),
                 TextButton.icon(
                   onPressed: () => setState(_loadServices),
@@ -2518,85 +2596,90 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
               ),
               itemBuilder: (context, index) {
                 final service = services[index];
-                return PressScaleFeedback(
-                  child: Material(
-                    color: AppTheme.white,
-                    borderRadius: BorderRadius.circular(12),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      key: ValueKey('home-category-${service.key}'),
-                      onTap: () => widget.onServiceTap(context, service),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.asset(
-                            service.assetPath,
-                            fit: BoxFit.cover,
-                            cacheWidth:
-                                (tileWidth *
-                                        MediaQuery.devicePixelRatioOf(context))
-                                    .round(),
-                            semanticLabel: service.name,
-                          ),
-                          if (service.isDynamic)
-                            Positioned(
-                              left: 8,
-                              right: 38,
-                              bottom: 11,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.black.withValues(alpha: 0),
-                                      Colors.black.withValues(alpha: 0.7),
-                                    ],
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
+                return FadeSlideIn(
+                  delay: staggerDelay(index),
+                  child: PressScaleFeedback(
+                    child: Material(
+                      color: AppTheme.white,
+                      borderRadius: BorderRadius.circular(12),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        key: ValueKey('home-category-${service.key}'),
+                        onTap: () => widget.onServiceTap(context, service),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.asset(
+                              service.assetPath,
+                              fit: BoxFit.cover,
+                              cacheWidth:
+                                  (tileWidth *
+                                          MediaQuery.devicePixelRatioOf(
+                                            context,
+                                          ))
+                                      .round(),
+                              semanticLabel: service.name,
+                            ),
+                            if (service.isDynamic)
+                              Positioned(
+                                left: 8,
+                                right: 38,
+                                bottom: 11,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.black.withValues(alpha: 0),
+                                        Colors.black.withValues(alpha: 0.7),
+                                      ],
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                    ),
                                   ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    5,
-                                    12,
-                                    5,
-                                    5,
-                                  ),
-                                  child: Text(
-                                    service.name,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      5,
+                                      12,
+                                      5,
+                                      5,
+                                    ),
+                                    child: Text(
+                                      service.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                          Positioned(
-                            right: 6,
-                            bottom: 6,
-                            child: IgnorePointer(
-                              child: Container(
-                                key: ValueKey(
-                                  'home-category-arrow-${service.key}',
-                                ),
-                                width: 26,
-                                height: 26,
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.brandYellow,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.arrow_forward_rounded,
-                                  color: AppTheme.darkGreen,
-                                  size: 16,
+                            Positioned(
+                              right: 6,
+                              bottom: 6,
+                              child: IgnorePointer(
+                                child: Container(
+                                  key: ValueKey(
+                                    'home-category-arrow-${service.key}',
+                                  ),
+                                  width: 26,
+                                  height: 26,
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.brandYellow,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.arrow_forward_rounded,
+                                    color: AppTheme.darkGreen,
+                                    size: 16,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

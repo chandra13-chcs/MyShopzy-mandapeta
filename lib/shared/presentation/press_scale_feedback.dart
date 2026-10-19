@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'motion.dart';
+
 class PressScaleFeedback extends StatefulWidget {
   const PressScaleFeedback({required this.child, super.key, this.scale = 0.97});
 
@@ -26,8 +28,10 @@ class _PressScaleFeedbackState extends State<PressScaleFeedback> {
       onPointerUp: (_) => _setPressed(false),
       onPointerCancel: (_) => _setPressed(false),
       child: AnimatedScale(
-        scale: _pressed ? widget.scale : 1,
-        duration: const Duration(milliseconds: 100),
+        scale: !reduceMotion(context) && _pressed ? widget.scale : 1,
+        duration: reduceMotion(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 100),
         curve: Curves.easeOut,
         child: widget.child,
       ),

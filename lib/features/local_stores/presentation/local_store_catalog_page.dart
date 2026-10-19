@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../product_details/models/product_variant.dart';
@@ -477,6 +479,16 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
         : widget.categories.first.id;
   }
 
+  Future<void> _refreshCatalog() async {
+    final future = _loadBackendCatalog(CustomerApi.instance);
+    setState(() => _backendCatalogFuture = future);
+    try {
+      await future;
+    } on CustomerApiException {
+      // The FutureBuilder presents the same request error on the page.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final catalogFuture = _backendCatalogFuture;
@@ -491,22 +503,67 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
       future: catalogFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return Scaffold(
-            backgroundColor: _page,
-            body: const SafeArea(
-              child: Center(child: CircularProgressIndicator()),
+          return AnimatedContentSwitcher(
+            child: KeyedSubtree(
+              key: const ValueKey('store-catalog-loading'),
+              child: Scaffold(
+                backgroundColor: _page,
+                body: SafeArea(
+                  child: Column(
+                    children: [
+                      _buildHeader(context),
+                      Expanded(
+                        child: GridView.builder(
+                          padding: const EdgeInsets.all(14),
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: 6,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 12,
+                                mainAxisExtent: 288,
+                              ),
+                          itemBuilder: (context, index) => const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: SkeletonBox(height: 170)),
+                              SizedBox(height: 8),
+                              SkeletonBox(height: 14, width: 80, radius: 5),
+                              SizedBox(height: 7),
+                              SkeletonBox(height: 12, radius: 5),
+                              SizedBox(height: 5),
+                              SkeletonBox(height: 12, width: 120, radius: 5),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                bottomNavigationBar: const CartSummaryBar(),
+              ),
             ),
-            bottomNavigationBar: const CartSummaryBar(),
           );
         }
         if (snapshot.hasError) {
-          return _buildBackendCatalogError(snapshot.error);
+          return AnimatedContentSwitcher(
+            child: KeyedSubtree(
+              key: const ValueKey('store-catalog-error'),
+              child: _buildBackendCatalogError(snapshot.error),
+            ),
+          );
         }
         final catalog = snapshot.data!;
-        return _buildCatalog(
-          catalog.categories,
-          catalog.products,
-          sourceLabel: 'Backend catalog',
+        return AnimatedContentSwitcher(
+          child: KeyedSubtree(
+            key: const ValueKey('store-catalog-loaded'),
+            child: _buildCatalog(
+              catalog.categories,
+              catalog.products,
+              sourceLabel: 'Backend catalog',
+            ),
+          ),
         );
       },
     );
@@ -675,60 +732,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
                 children: [
                   _buildCategorySidebar(categories, selectedCategoryId),
                   Expanded(
-                    child: CustomScrollView(
-                      slivers: [
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(10, 8, 14, 18),
-                          sliver: SliverGrid(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => StoreProductCard(
-                                product: visibleProducts[index],
-                                placeholderIndex: index,
-                                storeName: widget.store.name,
-                                relatedProducts: visibleProducts
-                                    .where(
-                                      (related) =>
-                                          related.storeId ==
-                                              visibleProducts[index].storeId &&
-                                          related.categoryId ==
-                                              visibleProducts[index]
-                                                  .categoryId &&
-                                          related.id !=
-                                              visibleProducts[index].id,
-                                    )
-                                    .toList(),
-                              ),
-                              childCount: visibleProducts.length,
-                            ),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 10,
-                                  mainAxisSpacing: 12,
-                                  mainAxisExtent: 288,
-                                ),
-                          ),
-                        ),
-                        if (visibleProducts.isEmpty)
-                          SliverFillRemaining(
-                            hasScrollBody: false,
-                            child: Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(18),
-                                child: Text(
-                                  'No $categoryName available at this store yet.',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    color: _muted,
-                                    fontSize: 12,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                    child: _buildProductList(visibleProducts, categoryName),
                   ),
                 ],
               ),
@@ -738,6 +742,82 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
       ),
       bottomNavigationBar: const CartSummaryBar(),
     );
+  }
+
+  Widget _buildProductList(
+    List<StoreProduct> visibleProducts,
+    String categoryName,
+  ) {
+    final productList = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 14, 18),
+          sliver: SliverGrid(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final product = visibleProducts[index];
+                final card = PressScaleFeedback(
+                  child: StoreProductCard(
+                    product: product,
+                    placeholderIndex: index,
+                    storeName: widget.store.name,
+                    relatedProducts: visibleProducts
+                        .where(
+                          (related) =>
+                              related.storeId == product.storeId &&
+                              related.categoryId == product.categoryId &&
+                              related.id != product.id,
+                        )
+                        .toList(),
+                  ),
+                );
+                return index < 8
+                    ? FadeSlideIn(
+                        key: ValueKey('store-product-${product.id}'),
+                        delay: staggerDelay(index),
+                        keepAlive: true,
+                        child: card,
+                      )
+                    : card;
+              },
+              childCount: visibleProducts.length,
+            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 12,
+              mainAxisExtent: 288,
+            ),
+          ),
+        ),
+        if (visibleProducts.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Text(
+                  'No $categoryName available at this store yet.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+    return _backendCatalogFuture == null
+        ? productList
+        : RefreshIndicator(
+            color: const Color(0xFF016034),
+            onRefresh: _refreshCatalog,
+            child: productList,
+          );
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -816,45 +896,51 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
         itemBuilder: (context, index) {
           final category = categories[index];
           final selected = category.id == selectedCategoryId;
-          return InkWell(
-            onTap: () => setState(() => _selectedCategoryId = category.id),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(7, 5, 7, 10),
-              child: Column(
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    width: 62,
-                    height: 65,
-                    decoration: BoxDecoration(
-                      color: selected ? const Color(0xFFE9F1E7) : Colors.white,
-                      borderRadius: BorderRadius.circular(13),
-                      border: Border.all(
+          return PressScaleFeedback(
+            child: InkWell(
+              onTap: () => setState(() => _selectedCategoryId = category.id),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(7, 5, 7, 10),
+                child: Column(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      width: 62,
+                      height: 65,
+                      decoration: BoxDecoration(
                         color: selected
-                            ? const Color(0xFFBBD4B7)
-                            : const Color(0xFFE9ECE7),
+                            ? const Color(0xFFE9F1E7)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(13),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFFBBD4B7)
+                              : const Color(0xFFE9ECE7),
+                        ),
+                      ),
+                      child: Icon(
+                        category.icon,
+                        color: selected ? _green : const Color(0xFF8B948C),
+                        size: 27,
                       ),
                     ),
-                    child: Icon(
-                      category.icon,
-                      color: selected ? _green : const Color(0xFF8B948C),
-                      size: 27,
+                    const SizedBox(height: 5),
+                    Text(
+                      category.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: selected ? _ink : _muted,
+                        fontSize: 10,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        height: 1.2,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    category.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: selected ? _ink : _muted,
-                      fontSize: 10,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      height: 1.2,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
@@ -1045,6 +1131,7 @@ class _StoreProductCardState extends State<StoreProductCard> {
                     child: SaveListButton(
                       product: _toDetails(product, const []),
                       size: 15,
+                      animateToggle: true,
                     ),
                   ),
                 ),

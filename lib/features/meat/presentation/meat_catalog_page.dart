@@ -4,6 +4,8 @@ import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 
 enum MeatType { chicken, mutton }
 
@@ -157,6 +159,14 @@ class MeatCatalogPage extends StatelessWidget {
                                 filteredCategories[index].id,
                           )
                           .toList(),
+                      firstProductIndex: products
+                          .where(
+                            (product) => filteredCategories
+                                .take(index)
+                                .any((category) =>
+                                    category.id == product.categoryId),
+                          )
+                          .length,
                     ),
                     if (index < filteredCategories.length - 1)
                       const SizedBox(height: 9),
@@ -328,7 +338,9 @@ class MeatCatalogPage extends StatelessWidget {
 
   Widget _buildCategorySection(
     MeatCategory category,
-    List<MeatProduct> categoryProducts,
+    List<MeatProduct> categoryProducts, {
+    required int firstProductIndex,
+  }
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,18 +367,10 @@ class MeatCatalogPage extends StatelessWidget {
           ),
         ),
         for (var index = 0; index < categoryProducts.length; index++) ...[
-          _MeatProductCard(
-            product: categoryProducts[index],
-            partner: _partnerFor(categoryProducts[index].partnerId),
-            relatedProducts: categoryProducts
-                .where(
-                  (related) =>
-                      related.partnerId == categoryProducts[index].partnerId &&
-                      related.categoryId ==
-                          categoryProducts[index].categoryId &&
-                      related.id != categoryProducts[index].id,
-                )
-                .toList(),
+          _buildProductRow(
+            categoryProducts[index],
+            categoryProducts,
+            firstProductIndex + index,
           ),
           if (index < categoryProducts.length - 1)
             const Divider(
@@ -378,6 +382,35 @@ class MeatCatalogPage extends StatelessWidget {
         ],
         const SizedBox(height: 7),
       ],
+    );
+  }
+
+  Widget _buildProductRow(
+    MeatProduct product,
+    List<MeatProduct> categoryProducts,
+    int animationIndex,
+  ) {
+    final row = PressScaleFeedback(
+      child: _MeatProductCard(
+        product: product,
+        partner: _partnerFor(product.partnerId),
+        relatedProducts: categoryProducts
+            .where(
+              (related) =>
+                  related.partnerId == product.partnerId &&
+                  related.categoryId == product.categoryId &&
+                  related.id != product.id,
+            )
+            .toList(),
+      ),
+    );
+    if (animationIndex >= 8) return row;
+
+    return FadeSlideIn(
+      key: ValueKey('meat-product-${product.id}'),
+      delay: staggerDelay(animationIndex),
+      keepAlive: true,
+      child: row,
     );
   }
 
@@ -550,6 +583,7 @@ class _MeatProductCard extends StatelessWidget {
                     child: SaveListButton(
                       product: _toDetails(product, const []),
                       size: 15,
+                      animateToggle: true,
                     ),
                   ),
                 ),

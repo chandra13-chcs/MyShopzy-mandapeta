@@ -4,16 +4,34 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import 'chicken_page.dart';
 import 'mutton_page.dart';
 
-class MeatPage extends StatelessWidget {
+class MeatPage extends StatefulWidget {
   const MeatPage({super.key});
 
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
   static const _green = AppTheme.primaryGreen;
+
+  @override
+  State<MeatPage> createState() => _MeatPageState();
+}
+
+class _MeatPageState extends State<MeatPage> {
+  static const _ink = MeatPage._ink;
+  static const _muted = MeatPage._muted;
+  static const _green = MeatPage._green;
+  final _catalogKey = GlobalKey<_BackendMeatCatalogState>();
+
+  Future<void> _refreshCatalog() async {
+    if (!CustomerApi.instance.isConfigured) return;
+    final catalog = _catalogKey.currentState;
+    if (catalog != null) await catalog._load();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,57 +42,72 @@ class MeatPage extends StatelessWidget {
           children: [
             _buildHeader(context),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
-                children: [
-                  const Text(
-                    'Meat',
-                    style: TextStyle(
-                      color: _ink,
-                      fontSize: 25,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.6,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  const Text(
-                    'Fresh cuts from trusted local shops',
-                    style: TextStyle(color: _muted, fontSize: 13),
-                  ),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'Demo chicken and mutton categories',
-                    style: TextStyle(color: _muted, fontSize: 11),
-                  ),
-                  const SizedBox(height: 8),
-                  _MeatCategoryCard(
-                    title: 'Chicken',
-                    subtitle: 'Fresh cuts for every meal',
-                    icon: Icons.lunch_dining_rounded,
-                    background: const Color(0xFFF4E8D8),
-                    accent: const Color(0xFF93623F),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (context) => const ChickenPage(),
+              child: RefreshIndicator(
+                color: const Color(0xFF016034),
+                onRefresh: _refreshCatalog,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                  children: [
+                    const Text(
+                      'Meat',
+                      style: TextStyle(
+                        color: MeatPage._ink,
+                        fontSize: 25,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.6,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  _MeatCategoryCard(
-                    title: 'Mutton',
-                    subtitle: 'Carefully selected premium cuts',
-                    icon: Icons.set_meal_rounded,
-                    background: const Color(0xFFF0E3DF),
-                    accent: const Color(0xFF9B5145),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (context) => const MuttonPage(),
+                    const SizedBox(height: 5),
+                    const Text(
+                      'Fresh cuts from trusted local shops',
+                      style: TextStyle(color: MeatPage._muted, fontSize: 13),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Demo chicken and mutton categories',
+                      style: TextStyle(color: MeatPage._muted, fontSize: 11),
+                    ),
+                    const SizedBox(height: 8),
+                    FadeSlideIn(
+                      key: const ValueKey('meat-category-chicken'),
+                      delay: staggerDelay(0),
+                      keepAlive: true,
+                      child: PressScaleFeedback(
+                        child: _MeatCategoryCard(
+                          title: 'Chicken',
+                          subtitle: 'Fresh cuts for every meal',
+                          icon: Icons.lunch_dining_rounded,
+                          background: const Color(0xFFF4E8D8),
+                          accent: const Color(0xFF93623F),
+                          onTap: () => Navigator.of(
+                            context,
+                          ).push(AppPageRoute<void>(page: const ChickenPage())),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  const _BackendMeatCatalog(),
-                ],
+                    const SizedBox(height: 14),
+                    FadeSlideIn(
+                      key: const ValueKey('meat-category-mutton'),
+                      delay: staggerDelay(1),
+                      keepAlive: true,
+                      child: PressScaleFeedback(
+                        child: _MeatCategoryCard(
+                          title: 'Mutton',
+                          subtitle: 'Carefully selected premium cuts',
+                          icon: Icons.set_meal_rounded,
+                          background: const Color(0xFFF0E3DF),
+                          accent: const Color(0xFF9B5145),
+                          onTap: () => Navigator.of(
+                            context,
+                          ).push(AppPageRoute<void>(page: const MuttonPage())),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _BackendMeatCatalog(key: _catalogKey),
+                  ],
+                ),
               ),
             ),
           ],
@@ -286,11 +319,10 @@ class _MeatCategoryCard extends StatelessWidget {
       ),
     );
   }
-
 }
 
 class _BackendMeatCatalog extends StatefulWidget {
-  const _BackendMeatCatalog();
+  const _BackendMeatCatalog({super.key});
 
   @override
   State<_BackendMeatCatalog> createState() => _BackendMeatCatalogState();
@@ -342,87 +374,122 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
       );
     }
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return AnimatedContentSwitcher(
+        child: KeyedSubtree(
+          key: const ValueKey('meat-catalog-loading'),
+          child: Column(
+            children: [
+              for (var index = 0; index < 3; index++) ...[
+                if (index == 0) const SizedBox(height: 4),
+                const SkeletonBox(height: 110, radius: 12),
+                const SizedBox(height: 12),
+              ],
+            ],
+          ),
+        ),
+      );
     }
     if (_error != null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _error!,
-            style: const TextStyle(color: Color(0xFFA85B5B), fontSize: 12),
+      return AnimatedContentSwitcher(
+        child: KeyedSubtree(
+          key: const ValueKey('meat-catalog-error'),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _error!,
+                style: const TextStyle(color: Color(0xFFA85B5B), fontSize: 12),
+              ),
+              TextButton.icon(
+                onPressed: _loading ? null : _load,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry meat catalog'),
+              ),
+            ],
           ),
-          TextButton.icon(
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Retry meat catalog'),
-          ),
-        ],
+        ),
       );
     }
     if (_products.isEmpty) {
-      return const Text(
-        'No live meat products are available right now.',
-        style: TextStyle(color: AppTheme.secondaryText, fontSize: 12),
+      return AnimatedContentSwitcher(
+        child: KeyedSubtree(
+          key: const ValueKey('meat-catalog-empty'),
+          child: const Text(
+            'No live meat products are available right now.',
+            style: TextStyle(color: AppTheme.secondaryText, fontSize: 12),
+          ),
+        ),
       );
     }
-    return Column(
-      key: const ValueKey('backend-meat-catalog'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Live meat shop products',
-          style: TextStyle(
-            color: AppTheme.primaryText,
-            fontSize: 16,
-            fontWeight: FontWeight.w700,
+    return AnimatedContentSwitcher(
+      child: Column(
+        key: const ValueKey('backend-meat-catalog'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Live meat shop products',
+            style: TextStyle(
+              color: AppTheme.primaryText,
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'The catalog does not identify chicken versus mutton.',
-          style: TextStyle(color: AppTheme.secondaryText, fontSize: 11),
-        ),
-        const SizedBox(height: 9),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: _products.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 12,
-            mainAxisExtent: 288,
+          const SizedBox(height: 4),
+          const Text(
+            'The catalog does not identify chicken versus mutton.',
+            style: TextStyle(color: AppTheme.secondaryText, fontSize: 11),
           ),
-          itemBuilder: (context, index) {
-            final product = _products[index];
-            return StoreProductCard(
-              key: ValueKey('backend-meat-product-${product.id}'),
-              product: StoreProduct(
-                id: product.id,
-                storeId: product.shopId,
-                categoryId: product.categoryId ?? 'other',
-                name: product.name,
-                brand: product.brand ?? '',
-                description: product.description,
-                packSize: product.packSize ?? '',
-                price: product.priceMinor / 100,
-                mrp: (product.mrpMinor ?? product.priceMinor) / 100,
-                discount: product.discountPercent,
-                rating: product.rating ?? -1,
-                available: product.available,
-                serviceType: 'meat',
-                imageUrl: product.imageUrl,
-                badge: product.badge,
-                isBackendData: true,
-              ),
-              placeholderIndex: index,
-              storeName: product.shopName ?? '',
-              relatedProducts: const [],
-            );
-          },
-        ),
-      ],
+          const SizedBox(height: 9),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _products.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 12,
+              mainAxisExtent: 288,
+            ),
+            itemBuilder: (context, index) {
+              final product = _products[index];
+              final card = PressScaleFeedback(
+                child: StoreProductCard(
+                  key: ValueKey('backend-meat-product-${product.id}'),
+                  product: StoreProduct(
+                    id: product.id,
+                    storeId: product.shopId,
+                    categoryId: product.categoryId ?? 'other',
+                    name: product.name,
+                    brand: product.brand ?? '',
+                    description: product.description,
+                    packSize: product.packSize ?? '',
+                    price: product.priceMinor / 100,
+                    mrp: (product.mrpMinor ?? product.priceMinor) / 100,
+                    discount: product.discountPercent,
+                    rating: product.rating ?? -1,
+                    available: product.available,
+                    serviceType: 'meat',
+                    imageUrl: product.imageUrl,
+                    badge: product.badge,
+                    isBackendData: true,
+                  ),
+                  placeholderIndex: index,
+                  storeName: product.shopName ?? '',
+                  relatedProducts: const [],
+                ),
+              );
+              return index < 8
+                  ? FadeSlideIn(
+                      key: ValueKey('backend-meat-product-entry-${product.id}'),
+                      delay: staggerDelay(index),
+                      keepAlive: true,
+                      child: card,
+                    )
+                  : card;
+            },
+          ),
+        ],
+      ),
     );
   }
 }
