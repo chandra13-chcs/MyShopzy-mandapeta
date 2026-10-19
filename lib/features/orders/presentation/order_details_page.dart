@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
 import '../../cart/data/cart_store.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../product_details/data/product_availability_store.dart';
@@ -66,11 +68,23 @@ class OrderDetailsPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildStatusCard(),
+              fadeSlideItem(
+                itemKey: 'order-details-status-${order.orderId}',
+                index: 0,
+                child: _buildStatusCard(),
+              ),
               const SizedBox(height: 14),
-              _buildOrderInfoCard(),
+              fadeSlideItem(
+                itemKey: 'order-details-info-${order.orderId}',
+                index: 1,
+                child: _buildOrderInfoCard(),
+              ),
               const SizedBox(height: 14),
-              _buildItemsCard(),
+              fadeSlideItem(
+                itemKey: 'order-details-items-${order.orderId}',
+                index: 2,
+                child: _buildItemsCard(),
+              ),
               const SizedBox(height: 14),
               _buildPriceCard(),
               const SizedBox(height: 14),
@@ -297,7 +311,11 @@ class OrderDetailsPage extends StatelessWidget {
         children: [
           for (var index = 0; index < order.items.length; index++) ...[
             if (index > 0) const Divider(height: 20, color: _border),
-            _OrderItemRow(item: order.items[index]),
+            fadeSlideItem(
+              itemKey: 'order-detail-item-${order.items[index].productId ?? order.items[index].name}-$index',
+              index: index,
+              child: _OrderItemRow(item: order.items[index]),
+            ),
           ],
         ],
       ),
@@ -538,7 +556,7 @@ class OrderDetailsPage extends StatelessWidget {
     final status = order.trackingStatus;
     if (status == null) return;
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      AppPageRoute<void>.builder(
         builder: (context) => OrderTrackingPage(
           order: OrderTrackingData(
             orderId: order.orderId,
@@ -823,7 +841,9 @@ class OrderDetailsPage extends StatelessWidget {
     }
     _showReorderMessage(context, feedback.toString());
     Navigator.of(context)
-        .push(MaterialPageRoute<void>(builder: (context) => const CartPage()));
+        .push(
+          AppPageRoute<void>.builder(builder: (context) => const CartPage()),
+        );
   }
 
   String _normalizeIdentity(String value) {
@@ -928,6 +948,7 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
 
   ApiCustomerOrderDetail? _detail;
   String? _error;
+  bool _offlineError = false;
   bool _loading = false;
 
   @override
@@ -940,6 +961,7 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _offlineError = false;
     });
     try {
       final detail = await CustomerApi.instance.getOrderDetails(
@@ -951,6 +973,7 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
         setState(() {
           _detail = null;
           _error = error.message;
+          _offlineError = isOfflineApiError(error);
         });
       }
     } finally {
@@ -972,9 +995,11 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: SkeletonBox(height: 190, radius: 20))
           : _error != null
-          ? Center(
+          ? _offlineError
+              ? Center(child: OfflineErrorState(onRetry: _load))
+              : Center(
               child: Padding(
                 padding: const EdgeInsets.all(28),
                 child: Column(
@@ -1009,27 +1034,41 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
             style: TextStyle(color: _muted, fontSize: 11),
           ),
           const SizedBox(height: 8),
-          _section(
-            title: detail.shopName,
-            children: [
+          fadeSlideItem(
+            itemKey: 'backend-order-detail-shop-${detail.id}',
+            index: 0,
+            child: _section(
+              title: detail.shopName,
+              children: [
               _row('Order ID', detail.id),
               _row('Status', detail.status),
               _row('Placed at', detail.placedAt),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 14),
           _section(
             title: 'Items',
             children: [
-              for (final item in detail.items) ...[
-                _row(
-                  '${item.name} × ${item.quantity}',
-                  _formatMinor(item.lineTotalMinor, item.currency),
+              for (var index = 0; index < detail.items.length; index++) ...[
+                fadeSlideItem(
+                  itemKey:
+                      'backend-order-line-${detail.items[index].name}-$index',
+                  index: index,
+                  child: _row(
+                    '${detail.items[index].name} × ${detail.items[index].quantity}',
+                    _formatMinor(
+                      detail.items[index].lineTotalMinor,
+                      detail.items[index].currency,
+                    ),
+                  ),
                 ),
-                if (item.sku != null && item.sku!.isNotEmpty)
-                  _row('SKU', item.sku!),
-                if (item.variantSnapshot != null)
-                  for (final entry in item.variantSnapshot!.entries)
+                if (detail.items[index].sku != null &&
+                    detail.items[index].sku!.isNotEmpty)
+                  _row('SKU', detail.items[index].sku!),
+                if (detail.items[index].variantSnapshot != null)
+                  for (final entry
+                      in detail.items[index].variantSnapshot!.entries)
                     _row(entry.key, '${entry.value}'),
               ],
             ],

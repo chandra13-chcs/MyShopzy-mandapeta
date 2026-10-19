@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/offline_error_state.dart';
 
 enum OrderTrackingStatus {
   orderPlaced,
@@ -118,6 +119,7 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
   Timer? _refreshTimer;
   bool _refreshing = false;
   String? _refreshError;
+  bool _refreshOfflineError = false;
 
   @override
   void initState() {
@@ -143,6 +145,7 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
     setState(() {
       _refreshing = true;
       _refreshError = null;
+      _refreshOfflineError = false;
     });
     try {
       final detail = await CustomerApi.instance.getOrderDetails(order.orderId);
@@ -171,7 +174,12 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
         );
       });
     } on CustomerApiException catch (error) {
-      if (mounted) setState(() => _refreshError = error.message);
+      if (mounted) {
+        setState(() {
+          _refreshError = error.message;
+          _refreshOfflineError = isOfflineApiError(error);
+        });
+      }
     } finally {
       if (mounted) setState(() => _refreshing = false);
     }
@@ -274,7 +282,12 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildStatusHeader(),
-              if (_refreshError != null) ...[
+              if (_refreshError != null && _refreshOfflineError) ...[
+                OfflineErrorState(
+                  onRetry: _refreshStatus,
+                  compact: true,
+                ),
+              ] else if (_refreshError != null) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [

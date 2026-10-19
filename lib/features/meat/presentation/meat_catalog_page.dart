@@ -150,23 +150,28 @@ class MeatCatalogPage extends StatelessWidget {
                     index < filteredCategories.length;
                     index++
                   ) ...[
-                    _buildCategorySection(
-                      filteredCategories[index],
-                      products
-                          .where(
-                            (product) =>
-                                product.categoryId ==
-                                filteredCategories[index].id,
-                          )
-                          .toList(),
-                      firstProductIndex: products
-                          .where(
-                            (product) => filteredCategories
-                                .take(index)
-                                .any((category) =>
-                                    category.id == product.categoryId),
-                          )
-                          .length,
+                    fadeSlideItem(
+                      itemKey:
+                          'meat-category-${filteredCategories[index].id}',
+                      index: index,
+                      child: _buildCategorySection(
+                        filteredCategories[index],
+                        products
+                            .where(
+                              (product) =>
+                                  product.categoryId ==
+                                  filteredCategories[index].id,
+                            )
+                            .toList(),
+                        firstProductIndex: products
+                            .where(
+                              (product) => filteredCategories
+                                  .take(index)
+                                  .any((category) =>
+                                      category.id == product.categoryId),
+                            )
+                            .length,
+                      ),
                     ),
                     if (index < filteredCategories.length - 1)
                       const SizedBox(height: 9),
@@ -404,12 +409,9 @@ class MeatCatalogPage extends StatelessWidget {
             .toList(),
       ),
     );
-    if (animationIndex >= 8) return row;
-
-    return FadeSlideIn(
-      key: ValueKey('meat-product-${product.id}'),
-      delay: staggerDelay(animationIndex),
-      keepAlive: true,
+    return fadeSlideItem(
+      itemKey: 'meat-product-${product.id}',
+      index: animationIndex,
       child: row,
     );
   }

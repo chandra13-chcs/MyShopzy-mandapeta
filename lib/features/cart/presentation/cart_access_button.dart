@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
 import '../data/cart_store.dart';
 import '../../product_details/data/product_availability_store.dart';
 import 'cart_page.dart';
@@ -28,7 +29,7 @@ class CartAccessButton extends StatelessWidget {
                 shape: const CircleBorder(),
                 child: InkWell(
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
+                    AppPageRoute<void>.builder(
                       builder: (context) => const CartPage(),
                     ),
                   ),
@@ -102,7 +103,7 @@ class CartSummaryBar extends StatelessWidget {
                 height: 52,
                 child: FilledButton(
                   onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
+                    AppPageRoute<void>.builder(
                       builder: (context) => const CartPage(),
                     ),
                   ),
@@ -311,8 +312,7 @@ class CartProductControl extends StatelessWidget {
     CartStore store,
     bool isAvailable, {
     required bool isPending,
-  }
-  ) {
+  }) {
     return _controlSurface(
       isAvailable: isAvailable,
       onTap: isAvailable && !isPending
@@ -392,8 +392,7 @@ class CartProductControl extends StatelessWidget {
     int quantity,
     bool isAvailable, {
     required bool isPending,
-  }
-  ) {
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.lightBackground,
@@ -413,18 +412,23 @@ class CartProductControl extends StatelessWidget {
           _stepButton(
             icon: Icons.remove_rounded,
             label: 'Decrease quantity',
-            onPressed: isPending ? null : () {
-              if (quantity == 1) {
-                _runCartMutation(context, store.removeItemFromUi(_cartKey));
-              } else if (backendCatalogItem) {
-                _runCartMutation(
-                  context,
-                  store.decreaseQuantityFromUi(_cartKey),
-                );
-              } else {
-                store.decreaseQuantity(_cartKey);
-              }
-            },
+            onPressed: isPending
+                ? null
+                : () {
+                    if (quantity == 1) {
+                      _runCartMutation(
+                        context,
+                        store.removeItemFromUi(_cartKey),
+                      );
+                    } else if (backendCatalogItem) {
+                      _runCartMutation(
+                        context,
+                        store.decreaseQuantityFromUi(_cartKey),
+                      );
+                    } else {
+                      store.decreaseQuantity(_cartKey);
+                    }
+                  },
           ),
           Flexible(
             child: Text(
@@ -441,17 +445,21 @@ class CartProductControl extends StatelessWidget {
             icon: Icons.add_rounded,
             label: 'Increase quantity',
             color: isAvailable ? _green : const Color(0xFF929892),
-            onPressed: isPending ? null : () {
-              if (!isAvailable) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('This product is currently out of stock.'),
-                  ),
-                );
-                return;
-              }
-              _runIncrease(context, store);
-            },
+            onPressed: isPending
+                ? null
+                : () {
+                    if (!isAvailable) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'This product is currently out of stock.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    _runIncrease(context, store);
+                  },
           ),
         ],
       ),

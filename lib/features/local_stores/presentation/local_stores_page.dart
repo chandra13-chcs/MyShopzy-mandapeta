@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 
 export '../models/local_store.dart';
@@ -148,6 +149,23 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
   }
 
   Widget _buildApiError(Object? error) {
+    if (isOfflineApiError(error)) {
+      return Scaffold(
+        backgroundColor: _page,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(context, showRadius: false),
+              Expanded(
+                child: Center(
+                  child: OfflineErrorState(onRetry: _refreshStores),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: _page,
       body: SafeArea(
@@ -238,19 +256,13 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
         ),
         const SizedBox(height: 13),
         for (var index = 0; index < nearbyStores.length; index++) ...[
-          if (index < 8)
-            FadeSlideIn(
-              key: ValueKey('store-${nearbyStores[index].id}'),
-              delay: staggerDelay(index),
-              keepAlive: true,
-              child: PressScaleFeedback(
-                child: _buildStoreCard(context, nearbyStores, index),
-              ),
-            )
-          else
-            PressScaleFeedback(
+          fadeSlideItem(
+            itemKey: 'store-${nearbyStores[index].id}',
+            index: index,
+            child: PressScaleFeedback(
               child: _buildStoreCard(context, nearbyStores, index),
             ),
+          ),
           if (index < nearbyStores.length - 1) const SizedBox(height: 14),
         ],
         if (nearbyStores.isEmpty)

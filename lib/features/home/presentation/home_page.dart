@@ -2,15 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../shared/data/customer_api.dart';
-import '../../bakery/presentation/bakery_page.dart';
 import '../../../app/theme/app_theme.dart';
-import '../../cart/presentation/cart_page.dart';
-import '../../checkout/presentation/checkout_page.dart';
+import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/bottom_navigation_bar.dart';
 import '../../../shared/presentation/dietary_badge.dart';
 import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
-import '../../../shared/presentation/bottom_navigation_bar.dart';
+import '../../bakery/presentation/bakery_page.dart';
+import '../../cart/presentation/cart_page.dart';
+import '../../checkout/presentation/checkout_page.dart';
 import '../../profile/models/saved_address.dart';
 import '../../profile/presentation/saved_addresses_page.dart';
 import 'delivery_location_bottom_sheet.dart';
@@ -73,7 +74,7 @@ class HomePage extends StatelessWidget {
   ) {
     if (index < _homeIntroChildCount) {
       return switch (index) {
-        0 => FadeSlideIn(child: _buildHeader(context)),
+        0 => _buildHeader(context),
         1 => const SizedBox(height: 10),
         2 => _buildSearchBar(context),
         3 => const SizedBox(height: 22),
@@ -317,8 +318,9 @@ class HomePage extends StatelessWidget {
                   categoryName: service.name,
                 ),
               };
-        Navigator.of(context)
-            .push(MaterialPageRoute<void>(builder: (context) => destination));
+        Navigator.of(context).push(
+          AppPageRoute<void>.builder(builder: (context) => destination),
+        );
       },
     );
   }
@@ -352,7 +354,11 @@ class HomePage extends StatelessWidget {
                 width: cardWidth,
                 height: cardHeight,
               );
-              return index == 0 ? FadeSlideIn(child: card) : card;
+              return fadeSlideItem(
+                itemKey: 'home-promotion-${banner.key}',
+                index: index,
+                child: card,
+              );
             },
           ),
         );
@@ -422,7 +428,11 @@ class HomePage extends StatelessWidget {
             separatorBuilder: (context, index) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final product = section.products[index];
-              return _buildRestaurantDiscoveryCard(context, product);
+              return fadeSlideItem(
+                itemKey: 'home-restaurant-product-${product.productId}',
+                index: index,
+                child: _buildRestaurantDiscoveryCard(context, product),
+              );
             },
           ),
         ),
@@ -474,8 +484,14 @@ class HomePage extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             itemCount: products.length,
             separatorBuilder: (context, index) => const SizedBox(width: 10),
-            itemBuilder: (context, index) =>
-                RecentlyViewedProductCard(product: products[index], width: 138),
+            itemBuilder: (context, index) => fadeSlideItem(
+              itemKey: 'home-recent-product-${products[index].id}',
+              index: index,
+              child: RecentlyViewedProductCard(
+                product: products[index],
+                width: 138,
+              ),
+            ),
           ),
         ),
       ],
@@ -633,7 +649,9 @@ class HomePage extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(17),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (context) => const ParcelPage()),
+          AppPageRoute<void>.builder(
+            builder: (context) => const ParcelPage(),
+          ),
         ),
         child: Container(
           width: double.infinity,
@@ -901,17 +919,19 @@ class HomePage extends StatelessWidget {
       onTap: (index) {
         if (index == 1) {
           Navigator.of(context).push(
-            MaterialPageRoute<void>(
+            AppPageRoute<void>.builder(
               builder: (context) => const CategoriesPage(),
             ),
           );
         } else if (index == 2) {
           Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (context) => const CartPage()),
+            AppPageRoute<void>.builder(builder: (context) => const CartPage()),
           );
         } else if (index == 3) {
           Navigator.of(context).push(
-            MaterialPageRoute<void>(builder: (context) => const OrdersPage()),
+            AppPageRoute<void>.builder(
+              builder: (context) => const OrdersPage(),
+            ),
           );
         } else if (index == 4) {
           Navigator.of(context).push(
@@ -962,8 +982,11 @@ class _HomeCatalogRefreshViewState extends State<_HomeCatalogRefreshView> {
           padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, index) =>
-                  widget.itemBuilder(context, index, _catalogKey),
+              (context, index) => fadeSlideItem(
+                itemKey: 'home-feed-section-$index',
+                index: index,
+                child: widget.itemBuilder(context, index, _catalogKey),
+              ),
               childCount: widget.childCount,
             ),
           ),
@@ -1166,6 +1189,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
   List<ApiProduct> _products = const [];
   bool _loading = false;
   String? _error;
+  bool _offlineError = false;
 
   @override
   void initState() {
@@ -1212,6 +1236,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
     setState(() {
       _loading = true;
       _error = null;
+      _offlineError = false;
       _shops = const [];
       _products = const [];
     });
@@ -1230,6 +1255,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
       if (!mounted) return;
       setState(() {
         _error = error.message;
+        _offlineError = isOfflineApiError(error);
         _loading = false;
       });
     }
@@ -1242,32 +1268,39 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
     }
     if (_error != null) {
       return AnimatedContentSwitcher(
-        child: Padding(
+        child: KeyedSubtree(
           key: const ValueKey('home-live-catalog-error'),
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Live catalog unavailable',
-                style: TextStyle(
-                  color: HomePage._ink,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+          child: _offlineError
+              ? OfflineErrorState(onRetry: _load)
+              : Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Live catalog unavailable',
+                        style: TextStyle(
+                          color: HomePage._ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        _error!,
+                        style: const TextStyle(
+                          color: HomePage._muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry catalog'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                _error!,
-                style: const TextStyle(color: HomePage._muted, fontSize: 12),
-              ),
-              TextButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Retry catalog'),
-              ),
-            ],
-          ),
         ),
       );
     }
@@ -1299,62 +1332,66 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
                 separatorBuilder: (context, index) => const SizedBox(width: 8),
                 itemBuilder: (context, index) {
                   final shop = _shops[index];
-                  return Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      key: ValueKey('home-live-shop-${shop.id}'),
+                  return fadeSlideItem(
+                    itemKey: 'home-live-shop-${shop.id}',
+                    index: index,
+                    child: Material(
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        final destination = _shopDestination(shop);
-                        if (destination == null) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'This shop type does not have a customer catalog screen yet.',
+                      child: InkWell(
+                        key: ValueKey('home-live-shop-${shop.id}'),
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          final destination = _shopDestination(shop);
+                          if (destination == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'This shop type does not have a customer catalog screen yet.',
+                                ),
                               ),
+                            );
+                            return;
+                          }
+                          Navigator.of(context).push(
+                            AppPageRoute<void>.builder(
+                              builder: (context) => destination,
                             ),
                           );
-                          return;
-                        }
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (context) => destination,
+                        },
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 220),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 9,
                           ),
-                        );
-                      },
-                      child: Container(
-                        constraints: const BoxConstraints(maxWidth: 220),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 9,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFFE5E9E3)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              shop.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: HomePage._ink,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE5E9E3)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                shop.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: HomePage._ink,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
-                            ),
-                            Text(
-                              shop.partnerType,
-                              style: const TextStyle(
-                                color: HomePage._muted,
-                                fontSize: 10,
+                              Text(
+                                shop.partnerType,
+                                style: const TextStyle(
+                                  color: HomePage._muted,
+                                  fontSize: 10,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1375,14 +1412,20 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
                 separatorBuilder: (context, index) => const SizedBox(width: 8),
                 itemBuilder: (context, index) {
                   final product = _products[index];
-                  return SizedBox(
-                    key: ValueKey('home-live-product-${product.id}'),
-                    width: 156,
-                    child: StoreProductCard(
-                      product: _mapProduct(product),
-                      placeholderIndex: index,
-                      storeName: product.shopName ?? '',
-                      relatedProducts: const [],
+                  return fadeSlideItem(
+                    itemKey: 'home-live-product-${product.id}',
+                    index: index,
+                    child: PressScaleFeedback(
+                      child: SizedBox(
+                        key: ValueKey('home-live-product-${product.id}'),
+                        width: 156,
+                        child: StoreProductCard(
+                          product: _mapProduct(product),
+                          placeholderIndex: index,
+                          storeName: product.shopName ?? '',
+                          relatedProducts: const [],
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -2466,6 +2509,24 @@ class _Service {
   final String assetPath;
   final String? partnerType;
   final bool isDynamic;
+
+  String get subtitle => switch (partnerType ?? key) {
+    'restaurant' || 'partner-restaurant' || 'restaurants' => 'Biryani · Meals',
+    'bakery' || 'partner-bakery' => 'Breads · Cakes',
+    'meat_shop' ||
+    'partner-meat_shop' ||
+    'meat_only_chicken' => 'Chicken · Mutton',
+    'vegetables_fruits' ||
+    'partner-vegetables_fruits' ||
+    'fruits_vegetables' => 'Fresh · Seasonal',
+    'grocery' ||
+    'partner-grocery' ||
+    'other' ||
+    'partner-other' ||
+    'local_stores' => 'Kirana · Essentials',
+    'parcel' => 'Same-day · Secure',
+    _ => '',
+  };
 }
 
 const _demoHomeServices = [
@@ -2529,13 +2590,28 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
       future: _servicesFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 28),
-            child: Center(child: CircularProgressIndicator()),
+          return AnimatedContentSwitcher(
+            child: GridView.builder(
+              key: const ValueKey('home-partner-categories-loading'),
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: 6,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemBuilder: (context, index) =>
+                  const SkeletonBox(height: 110, radius: 12),
+            ),
           );
         }
         if (snapshot.hasError) {
           final error = snapshot.error;
+          if (isOfflineApiError(error)) {
+            return OfflineErrorState(onRetry: () => setState(_loadServices));
+          }
           final message = error is CustomerApiException
               ? error.message
               : 'Please try again.';
@@ -2596,8 +2672,9 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
               ),
               itemBuilder: (context, index) {
                 final service = services[index];
-                return FadeSlideIn(
-                  delay: staggerDelay(index),
+                return fadeSlideItem(
+                  itemKey: 'home-category-${service.key}',
+                  index: index,
                   child: PressScaleFeedback(
                     child: Material(
                       color: AppTheme.white,
@@ -2620,42 +2697,59 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                                       .round(),
                               semanticLabel: service.name,
                             ),
-                            if (service.isDynamic)
-                              Positioned(
-                                left: 8,
-                                right: 38,
-                                bottom: 11,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.black.withValues(alpha: 0),
-                                        Colors.black.withValues(alpha: 0.7),
-                                      ],
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                    ),
+                            Positioned(
+                              left: 8,
+                              right: 38,
+                              bottom: 8,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.black.withValues(alpha: 0),
+                                      Colors.black.withValues(alpha: 0.7),
+                                    ],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
                                   ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                      5,
-                                      12,
-                                      5,
-                                      5,
-                                    ),
-                                    child: Text(
-                                      service.name,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    5,
+                                    12,
+                                    5,
+                                    5,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (service.isDynamic)
+                                        Text(
+                                          service.name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      Text(
+                                        service.subtitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ),
                               ),
+                            ),
                             Positioned(
                               right: 6,
                               bottom: 6,

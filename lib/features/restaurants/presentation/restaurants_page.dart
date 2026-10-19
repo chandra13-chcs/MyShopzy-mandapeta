@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 import 'restaurant_menu_page.dart';
 
@@ -244,6 +245,25 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
   }
 
   Widget _buildApiErrorPage(Object? error) {
+    if (isOfflineApiError(error)) {
+      return Scaffold(
+        backgroundColor: RestaurantsPage._page,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(context),
+              Expanded(
+                child: Center(
+                  child: OfflineErrorState(
+                    onRetry: () => _searchRestaurants(_searchQuery),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: RestaurantsPage._page,
       body: SafeArea(
@@ -351,28 +371,22 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
             padding: EdgeInsets.symmetric(vertical: 48),
             child: Center(child: Text('No restaurants available.')),
           ),
-        for (var index = 0; index < visibleRestaurants.length; index++) ...[
-          if (index < 8)
-            FadeSlideIn(
-              key: ValueKey('restaurant-${visibleRestaurants[index].id}'),
-              delay: staggerDelay(index),
-              keepAlive: true,
+          for (var index = 0; index < visibleRestaurants.length; index++) ...[
+            fadeSlideItem(
+              itemKey: 'restaurant-${visibleRestaurants[index].id}',
+              index: index,
               child: PressScaleFeedback(
                 child: _buildRestaurantCard(context, visibleRestaurants, index),
               ),
-            )
-          else
-            PressScaleFeedback(
-              child: _buildRestaurantCard(context, visibleRestaurants, index),
             ),
-          if (index < visibleRestaurants.length - 1) const SizedBox(height: 14),
-        ],
+            if (index < visibleRestaurants.length - 1) const SizedBox(height: 14),
+          ],
       ],
     );
 
     return AnimatedContentSwitcher(
       child: KeyedSubtree(
-        key: const ValueKey('restaurants-loaded'),
+      key: ValueKey('restaurants-loaded-${_searchQuery.toLowerCase()}'),
         child: Scaffold(
           backgroundColor: RestaurantsPage._page,
           body: SafeArea(
@@ -416,7 +430,7 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
           return;
         }
         Navigator.of(context).push(
-          MaterialPageRoute<void>(
+          AppPageRoute<void>.builder(
             builder: (context) => RestaurantMenuPage(restaurant: restaurant),
           ),
         );

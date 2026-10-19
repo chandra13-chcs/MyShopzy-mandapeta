@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import 'produce_catalog_page.dart';
 
 class VegetablesFruitsPage extends StatelessWidget {
@@ -102,31 +104,43 @@ class VegetablesFruitsPage extends StatelessWidget {
                     style: const TextStyle(color: _muted, fontSize: 11),
                   ),
                   const SizedBox(height: 19),
-                  _ProduceTypeCard(
-                    title: 'Fruits',
-                    subtitle: 'Fresh, seasonal picks',
-                    icon: Icons.apple_rounded,
-                    background: const Color(0xFFEAF1DD),
-                    accent: const Color(0xFF59733D),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (context) => const ProduceCatalogPage(
-                          type: ProduceType.fruit,
+                  fadeSlideItem(
+                    itemKey: 'produce-type-fruits',
+                    index: 0,
+                    child: PressScaleFeedback(
+                      child: _ProduceTypeCard(
+                        title: 'Fruits',
+                        subtitle: 'Fresh, seasonal picks',
+                        icon: Icons.apple_rounded,
+                        background: const Color(0xFFEAF1DD),
+                        accent: const Color(0xFF59733D),
+                        onTap: () => Navigator.of(context).push(
+                          AppPageRoute<void>.builder(
+                            builder: (context) => const ProduceCatalogPage(
+                              type: ProduceType.fruit,
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(height: 13),
-                  _ProduceTypeCard(
-                    title: 'Vegetables',
-                    subtitle: 'Everyday farm-fresh produce',
-                    icon: Icons.eco_rounded,
-                    background: const Color(0xFFE0EEE0),
-                    accent: const Color(0xFF397447),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (context) => const ProduceCatalogPage(
-                          type: ProduceType.vegetable,
+                  fadeSlideItem(
+                    itemKey: 'produce-type-vegetables',
+                    index: 1,
+                    child: PressScaleFeedback(
+                      child: _ProduceTypeCard(
+                        title: 'Vegetables',
+                        subtitle: 'Everyday farm-fresh produce',
+                        icon: Icons.eco_rounded,
+                        background: const Color(0xFFE0EEE0),
+                        accent: const Color(0xFF397447),
+                        onTap: () => Navigator.of(context).push(
+                          AppPageRoute<void>.builder(
+                            builder: (context) => const ProduceCatalogPage(
+                              type: ProduceType.vegetable,
+                            ),
+                          ),
                         ),
                       ),
                     ),

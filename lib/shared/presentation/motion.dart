@@ -13,6 +13,19 @@ bool reduceMotion(BuildContext c) => MediaQuery.of(c).disableAnimations;
 Duration staggerDelay(int index) =>
     Duration(milliseconds: 40 * index.clamp(0, 7).toInt());
 
+Widget fadeSlideItem({
+  required Object itemKey,
+  required int index,
+  required Widget child,
+}) {
+  return FadeSlideIn(
+    key: ValueKey<Object>(itemKey),
+    delay: index < 8 ? staggerDelay(index) : Duration.zero,
+    keepAlive: true,
+    child: child,
+  );
+}
+
 class FadeSlideIn extends StatefulWidget {
   const FadeSlideIn({
     super.key,
@@ -200,29 +213,37 @@ class _ShimmerState extends State<Shimmer>
 
 class AppPageRoute<T> extends PageRouteBuilder<T> {
   AppPageRoute({required Widget page, RouteSettings? settings})
+    : this.builder(builder: (_) => page, settings: settings);
+
+  AppPageRoute.builder({required WidgetBuilder builder, RouteSettings? settings})
     : super(
         settings: settings,
-        pageBuilder: (context, animation, secondaryAnimation) => page,
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            builder(context),
         transitionDuration: const Duration(milliseconds: 300),
         reverseTransitionDuration: const Duration(milliseconds: 300),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          if (reduceMotion(context)) return child;
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: kMotionCurve,
-          );
-          return FadeTransition(
-            opacity: curved,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 0.06),
-                end: Offset.zero,
-              ).animate(curved),
-              child: child,
-            ),
-          );
-        },
+        transitionsBuilder: _buildTransition,
       );
+
+  static Widget _buildTransition(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (reduceMotion(context)) return child;
+    final curved = CurvedAnimation(parent: animation, curve: kMotionCurve);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.06),
+          end: Offset.zero,
+        ).animate(curved),
+        child: child,
+      ),
+    );
+  }
 }
 
 class AnimatedContentSwitcher extends StatelessWidget {
@@ -261,7 +282,6 @@ class _AnimatedBookmarkButtonState extends State<AnimatedBookmarkButton> {
 
   @override
   Widget build(BuildContext context) {
-    final shouldReduceMotion = reduceMotion(context);
     return IconButton(
       tooltip: _isBookmarked ? 'Remove bookmark' : 'Add bookmark',
       visualDensity: VisualDensity.compact,
@@ -272,7 +292,7 @@ class _AnimatedBookmarkButtonState extends State<AnimatedBookmarkButton> {
         setState(() => _isBookmarked = !_isBookmarked);
       },
       icon: AnimatedSwitcher(
-        duration: shouldReduceMotion ? Duration.zero : kMotionFast,
+        duration: reduceMotion(context) ? Duration.zero : kMotionFast,
         transitionBuilder: (child, animation) => ScaleTransition(
           scale: animation,
           child: child,

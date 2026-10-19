@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import '../models/order_record.dart';
 import 'order_details_page.dart';
 import 'order_tracking_page.dart';
@@ -202,6 +205,7 @@ class _OrdersPageState extends State<OrdersPage> {
   List<OrderRecord> _backendOrders = [];
   bool _ordersLoading = false;
   String? _ordersError;
+  bool _ordersOfflineError = false;
 
   bool get _backendMode => CustomerApi.instance.isConfigured;
 
@@ -215,6 +219,7 @@ class _OrdersPageState extends State<OrdersPage> {
     setState(() {
       _ordersLoading = true;
       _ordersError = null;
+      _ordersOfflineError = false;
     });
     try {
       final orders = await CustomerApi.instance.getOrders();
@@ -228,6 +233,7 @@ class _OrdersPageState extends State<OrdersPage> {
         setState(() {
           _backendOrders = [];
           _ordersError = error.message;
+          _ordersOfflineError = isOfflineApiError(error);
         });
       }
     } finally {
@@ -388,9 +394,17 @@ class _OrdersPageState extends State<OrdersPage> {
 
   Widget _buildBackendOrderBody(BuildContext context) {
     if (_ordersLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AnimatedContentSwitcher(
+        child: KeyedSubtree(
+          key: ValueKey('orders-loading'),
+          child: _OrdersSkeletonList(),
+        ),
+      );
     }
     if (_ordersError != null) {
+      if (_ordersOfflineError) {
+        return OfflineErrorState(onRetry: _loadOrders);
+      }
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(28),
@@ -428,7 +442,11 @@ class _OrdersPageState extends State<OrdersPage> {
           child: TabBarView(
             children: [
               for (final tab in OrdersTab.values)
-                _buildOrderList(context, _backendOrdersForTab(tab)),
+                _buildOrderList(
+                  context,
+                  _backendOrdersForTab(tab),
+                  onRefresh: _loadOrders,
+                ),
             ],
           ),
         ),
@@ -436,9 +454,13 @@ class _OrdersPageState extends State<OrdersPage> {
     );
   }
 
-  Widget _buildOrderList(BuildContext context, List<OrderRecord> orders) {
+  Widget _buildOrderList(
+    BuildContext context,
+    List<OrderRecord> orders, {
+    Future<void> Function()? onRefresh,
+  }) {
     if (orders.isEmpty) {
-      return const Center(
+      final emptyState = const Center(
         child: Padding(
           padding: EdgeInsets.all(32),
           child: Column(
@@ -468,14 +490,42 @@ class _OrdersPageState extends State<OrdersPage> {
           ),
         ),
       );
+      if (onRefresh == null) return emptyState;
+      return RefreshIndicator(
+        color: const Color(0xFF016034),
+        onRefresh: onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.sizeOf(context).height * 0.6,
+              child: emptyState,
+            ),
+          ],
+        ),
+      );
     }
 
-    return ListView.separated(
+    final orderList = ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
       itemCount: orders.length,
       separatorBuilder: (context, index) => const SizedBox(height: 14),
-      itemBuilder: (context, index) => _buildOrderCard(context, orders[index]),
+      itemBuilder: (context, index) => fadeSlideItem(
+        itemKey: 'order-${orders[index].orderId}',
+        index: index,
+        child: PressScaleFeedback(
+          child: _buildOrderCard(context, orders[index]),
+        ),
+      ),
     );
+    return onRefresh == null
+        ? orderList
+        : RefreshIndicator(
+            color: const Color(0xFF016034),
+            onRefresh: onRefresh,
+            child: orderList,
+          );
   }
 
   Widget _buildOrderCard(BuildContext context, OrderRecord order) {
@@ -595,14 +645,14 @@ class _OrdersPageState extends State<OrdersPage> {
   ) async {
     if (order.isBackendData) {
       await Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
+        AppPageRoute<void>.builder(
           builder: (context) => BackendOrderDetailsPage(order: order),
         ),
       );
       return;
     }
     final cancelled = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
+      AppPageRoute<bool>.builder(
         builder: (context) => OrderDetailsPage(order: order),
       ),
     );
@@ -610,6 +660,21 @@ class _OrdersPageState extends State<OrdersPage> {
     refreshOrderCounts();
     DefaultTabController.of(context).animateTo(OrdersTab.cancelled.index);
   }
+}
+
+class _OrdersSkeletonList extends StatelessWidget {
+  const _OrdersSkeletonList();
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+    children: [
+      for (var index = 0; index < 3; index++) ...[
+        const SkeletonBox(height: 180, radius: 20),
+        const SizedBox(height: 14),
+      ],
+    ],
+  );
 }
 
 class _StatusBadge extends StatelessWidget {

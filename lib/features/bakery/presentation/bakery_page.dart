@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import 'bakery_menu_page.dart';
 
 enum BakeryStatus { open, closed }
@@ -140,14 +142,20 @@ class BakeryPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 13),
                   for (var index = 0; index < bakeries.length; index++) ...[
-                    _BakeryCard(
-                      bakery: bakeries[index],
-                      placeholderColor:
-                          _coverColors[index % _coverColors.length],
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (context) =>
-                              BakeryMenuPage(bakery: bakeries[index]),
+                    fadeSlideItem(
+                      itemKey: 'bakery-${bakeries[index].id}',
+                      index: index,
+                      child: PressScaleFeedback(
+                        child: _BakeryCard(
+                          bakery: bakeries[index],
+                          placeholderColor:
+                              _coverColors[index % _coverColors.length],
+                          onTap: () => Navigator.of(context).push(
+                            AppPageRoute<void>.builder(
+                              builder: (context) =>
+                                  BakeryMenuPage(bakery: bakeries[index]),
+                            ),
+                          ),
                         ),
                       ),
                     ),

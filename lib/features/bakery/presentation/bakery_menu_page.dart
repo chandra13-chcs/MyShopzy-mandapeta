@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
@@ -278,15 +280,22 @@ class BakeryMenuPage extends StatelessWidget {
               ),
             ),
             SliverToBoxAdapter(child: _buildMenuHeading(bakeryItemList.length)),
-            for (final category in menuCategories)
-              SliverToBoxAdapter(
-                child: _buildCategorySection(
-                  category,
-                  bakeryItemList
-                      .where((item) => item.categoryId == category.id)
-                      .toList(),
+            for (var categoryIndex = 0;
+                categoryIndex < menuCategories.length;
+                categoryIndex++)
+                SliverToBoxAdapter(
+                  child: fadeSlideItem(
+                    itemKey: 'bakery-category-${menuCategories[categoryIndex].id}',
+                    index: categoryIndex,
+                    child: _buildCategorySection(
+                    menuCategories[categoryIndex],
+                    bakeryItemList
+                        .where((item) =>
+                            item.categoryId == menuCategories[categoryIndex].id)
+                        .toList(),
+                    ),
+                  ),
                 ),
-              ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
         ),
@@ -533,17 +542,24 @@ class BakeryMenuPage extends StatelessWidget {
             ),
           ),
           for (var index = 0; index < categoryItems.length; index++) ...[
-            _BakeryMenuItemCard(
-              item: categoryItems[index],
-              bakeryName: bakery.name,
-              relatedItems: items
-                  .where(
-                    (related) =>
-                        related.bakeryId == categoryItems[index].bakeryId &&
-                        related.categoryId == categoryItems[index].categoryId &&
-                        related.id != categoryItems[index].id,
-                  )
-                  .toList(),
+            fadeSlideItem(
+              itemKey: 'bakery-menu-${categoryItems[index].id}',
+              index: index,
+              child: PressScaleFeedback(
+                child: _BakeryMenuItemCard(
+                  item: categoryItems[index],
+                  bakeryName: bakery.name,
+                  relatedItems: items
+                      .where(
+                        (related) =>
+                            related.bakeryId == categoryItems[index].bakeryId &&
+                            related.categoryId ==
+                                categoryItems[index].categoryId &&
+                            related.id != categoryItems[index].id,
+                      )
+                      .toList(),
+                ),
+              ),
             ),
             if (index < categoryItems.length - 1)
               const Divider(

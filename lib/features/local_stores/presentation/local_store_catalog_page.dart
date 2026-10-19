@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
@@ -570,6 +571,24 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
   }
 
   Widget _buildBackendCatalogError(Object? error) {
+    if (isOfflineApiError(error)) {
+      return Scaffold(
+        backgroundColor: _page,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildHeader(context),
+              Expanded(
+                child: Center(
+                  child: OfflineErrorState(onRetry: _refreshCatalog),
+                ),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: const CartSummaryBar(),
+      );
+    }
     return Scaffold(
       backgroundColor: _page,
       body: SafeArea(
@@ -772,14 +791,11 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
                         .toList(),
                   ),
                 );
-                return index < 8
-                    ? FadeSlideIn(
-                        key: ValueKey('store-product-${product.id}'),
-                        delay: staggerDelay(index),
-                        keepAlive: true,
-                        child: card,
-                      )
-                    : card;
+                return fadeSlideItem(
+                  itemKey: 'store-product-${product.id}',
+                  index: index,
+                  child: card,
+                );
               },
               childCount: visibleProducts.length,
             ),
@@ -863,21 +879,33 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         scrollDirection: Axis.horizontal,
         children: [
-          _ToolbarPill(
-            icon: Icons.tune_rounded,
-            label: 'Filter',
-            prominent: true,
+          fadeSlideItem(
+            itemKey: 'store-filter-pill',
+            index: 0,
+            child: _ToolbarPill(
+              icon: Icons.tune_rounded,
+              label: 'Filter',
+              prominent: true,
+            ),
           ),
           const SizedBox(width: 8),
-          const _ToolbarPill(
-            label: 'Sort By',
-            icon: Icons.keyboard_arrow_down_rounded,
+          fadeSlideItem(
+            itemKey: 'store-sort-pill',
+            index: 1,
+            child: const _ToolbarPill(
+              label: 'Sort By',
+              icon: Icons.keyboard_arrow_down_rounded,
+            ),
           ),
           const SizedBox(width: 8),
-          const _ToolbarPill(
-            label: 'Top Deals',
-            icon: Icons.bolt_rounded,
-            prominent: true,
+          fadeSlideItem(
+            itemKey: 'store-deals-pill',
+            index: 2,
+            child: const _ToolbarPill(
+              label: 'Top Deals',
+              icon: Icons.bolt_rounded,
+              prominent: true,
+            ),
           ),
         ],
       ),
@@ -896,8 +924,11 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
         itemBuilder: (context, index) {
           final category = categories[index];
           final selected = category.id == selectedCategoryId;
-          return PressScaleFeedback(
-            child: InkWell(
+          return fadeSlideItem(
+            itemKey: 'store-sidebar-category-${category.id}',
+            index: index,
+            child: PressScaleFeedback(
+              child: InkWell(
               onTap: () => setState(() => _selectedCategoryId = category.id),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(7, 5, 7, 10),
@@ -942,6 +973,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
                   ],
                 ),
               ),
+            ),
             ),
           );
         },

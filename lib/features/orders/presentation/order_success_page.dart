@@ -1,16 +1,27 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/presentation/motion.dart';
 import '../../home/presentation/home_page.dart';
 import '../models/order_record.dart';
-import 'order_details_page.dart';
+import 'order_tracking_page.dart';
 
-/// Present only after order placement returns a genuinely confirmed record.
-/// Future confirmation audio must be best-effort and must not gate this screen.
 class OrderSuccessPage extends StatelessWidget {
   const OrderSuccessPage({required this.confirmedOrder, super.key});
 
   final OrderRecord confirmedOrder;
+
+  OrderTrackingData _trackingData() => OrderTrackingData(
+    orderId: confirmedOrder.orderId,
+    storeName: confirmedOrder.storeName,
+    items: confirmedOrder.itemSummary,
+    total: confirmedOrder.total,
+    status: confirmedOrder.trackingStatus ?? OrderTrackingStatus.orderPlaced,
+    deliveryAddressLabel: confirmedOrder.deliveryAddressLabel,
+    deliveryAddress: confirmedOrder.deliveryAddress,
+    itemNames: confirmedOrder.items.map((item) => item.name).toList(),
+    isDemo: !confirmedOrder.isBackendData,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -24,18 +35,30 @@ class OrderSuccessPage extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
+                TweenAnimationBuilder<double>(
                   key: const ValueKey('order-success-mark'),
-                  width: 136,
-                  height: 136,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF1557E8),
-                    shape: BoxShape.circle,
+                  tween: Tween<double>(
+                    begin: reduceMotion(context) ? 1 : 0.55,
+                    end: 1,
                   ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    color: AppTheme.white,
-                    size: 82,
+                  duration: reduceMotion(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  builder: (context, scale, child) =>
+                      Transform.scale(scale: scale, child: child),
+                  child: Container(
+                    width: 136,
+                    height: 136,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.primaryGreen,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: AppTheme.white,
+                      size: 82,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 34),
@@ -87,16 +110,15 @@ class OrderSuccessPage extends StatelessWidget {
                   width: double.infinity,
                   height: 52,
                   child: FilledButton.icon(
-                    key: const ValueKey('order-success-view-details'),
+                    key: const ValueKey('order-success-track-order'),
                     onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (context) => confirmedOrder.isBackendData
-                            ? BackendOrderDetailsPage(order: confirmedOrder)
-                            : OrderDetailsPage(order: confirmedOrder),
+                      AppPageRoute<void>.builder(
+                        builder: (context) =>
+                            OrderTrackingPage(order: _trackingData()),
                       ),
                     ),
-                    icon: const Icon(Icons.receipt_long_outlined),
-                    label: const Text('View Order Details'),
+                    icon: const Icon(Icons.local_shipping_outlined),
+                    label: const Text('Track order'),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -104,15 +126,15 @@ class OrderSuccessPage extends StatelessWidget {
                   width: double.infinity,
                   height: 50,
                   child: OutlinedButton(
-                    key: const ValueKey('order-success-return-home'),
-                    onPressed: () => Navigator.of(context)
-                        .pushAndRemoveUntil<void>(
-                          MaterialPageRoute<void>(
+                    key: const ValueKey('order-success-continue-shopping'),
+                    onPressed: () =>
+                        Navigator.of(context).pushAndRemoveUntil<void>(
+                          AppPageRoute<void>.builder(
                             builder: (context) => const HomePage(),
                           ),
                           (route) => false,
                         ),
-                    child: const Text('Return to Home'),
+                    child: const Text('Continue shopping'),
                   ),
                 ),
               ],

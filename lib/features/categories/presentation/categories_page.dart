@@ -146,12 +146,14 @@ class CategoriesPage extends StatelessWidget {
           if (index == 0) Navigator.of(context).maybePop();
           if (index == 2) {
             Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (context) => const CartPage()),
+              AppPageRoute<void>.builder(
+                builder: (context) => const CartPage(),
+              ),
             );
           }
           if (index == 3) {
             Navigator.of(context).push(
-              MaterialPageRoute<void>(
+              AppPageRoute<void>.builder(
                 builder: (context) => const OrdersPage(),
               ),
             );
@@ -226,14 +228,11 @@ class CategoriesPage extends StatelessWidget {
                   onTap: () => _openShopCategory(context, category.name),
                 ),
               );
-              return index < 8
-                  ? FadeSlideIn(
-                      key: ValueKey('shop-store-${category.name}'),
-                      delay: staggerDelay(index),
-                      keepAlive: true,
-                      child: tile,
-                    )
-                  : tile;
+              return fadeSlideItem(
+                itemKey: 'shop-store-${category.name}',
+                index: index,
+                child: tile,
+              );
             },
           ),
         ),
@@ -273,14 +272,11 @@ class CategoriesPage extends StatelessWidget {
                         onTap: _gridCategoryAction(context, category.name),
                       ),
                     );
-                    return index < 8
-                        ? FadeSlideIn(
-                            key: ValueKey('category-${category.name}'),
-                            delay: staggerDelay(index),
-                            keepAlive: true,
-                            child: tile,
-                          )
-                        : tile;
+                    return fadeSlideItem(
+                      itemKey: 'category-${category.name}',
+                      index: index,
+                      child: tile,
+                    );
                   },
                   childCount: categories.length,
                 ),

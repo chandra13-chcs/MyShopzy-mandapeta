@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../checkout/presentation/checkout_page.dart';
 import '../../home/presentation/free_delivery_progress_strip.dart';
 import '../data/cart_store.dart';
@@ -25,6 +28,8 @@ class _CartPageState extends State<CartPage> {
   final _cartStore = CartStore.instance;
   bool _loadingBackendCart = false;
   String? _cartLoadError;
+  bool _cartOfflineError = false;
+  Future<void> Function()? _offlineMutationRetry;
 
   @override
   void initState() {
@@ -40,11 +45,17 @@ class _CartPageState extends State<CartPage> {
     setState(() {
       _loadingBackendCart = true;
       _cartLoadError = null;
+      _cartOfflineError = false;
     });
     try {
       await _cartStore.refreshBackendCart();
     } on CustomerApiException catch (error) {
-      if (mounted) setState(() => _cartLoadError = error.message);
+      if (mounted) {
+        setState(() {
+          _cartLoadError = error.message;
+          _cartOfflineError = isOfflineApiError(error);
+        });
+      }
     } finally {
       if (mounted) setState(() => _loadingBackendCart = false);
     }
@@ -69,7 +80,12 @@ class _CartPageState extends State<CartPage> {
           final items = _cartStore.items;
           if (items.isNotEmpty) return _buildCartContents(items);
           if (_loadingBackendCart) {
-            return const Center(child: CircularProgressIndicator());
+            return const AnimatedContentSwitcher(
+              child: KeyedSubtree(
+                key: ValueKey('cart-loading'),
+                child: Center(child: SkeletonBox(height: 190, radius: 20)),
+              ),
+            );
           }
           if (_cartLoadError != null) {
             return _buildCartLoadError();
@@ -87,11 +103,31 @@ class _CartPageState extends State<CartPage> {
   }
 
   Widget _buildCartContents(List<CartItem> items) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      children: [
+    return RefreshIndicator(
+      color: const Color(0xFF016034),
+      onRefresh: () async {
+        if (items.any((item) => item.isBackendProduct)) {
+          await _refreshBackendCart();
+        }
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        children: [
         if (_cartLoadError != null) ...[
-          _buildCartLoadErrorBanner(),
+          _cartOfflineError
+              ? OfflineErrorState(onRetry: _refreshBackendCart, compact: true)
+              : _buildCartLoadErrorBanner(),
+          const SizedBox(height: 10),
+        ],
+        if (_offlineMutationRetry != null) ...[
+          OfflineErrorState(
+            onRetry: () {
+              final retry = _offlineMutationRetry;
+              if (retry != null) _runCartMutation(retry);
+            },
+            compact: true,
+          ),
           const SizedBox(height: 10),
         ],
         Container(
@@ -114,7 +150,8 @@ class _CartPageState extends State<CartPage> {
               ),
               if (_cartStore.hasBackendCart)
                 TextButton(
-                  onPressed: () => _runCartMutation(_cartStore.clearFromUi()),
+                  onPressed: () =>
+                      _runCartMutation(() => _cartStore.clearFromUi()),
                   child: const Text('Clear cart'),
                 ),
             ],
@@ -123,13 +160,18 @@ class _CartPageState extends State<CartPage> {
         const SizedBox(height: 14),
         const FreeDeliveryProgressStrip(),
         const SizedBox(height: 14),
-        for (final item in items) ...[
-          _buildCartItem(item),
+        for (var index = 0; index < items.length; index++) ...[
+          fadeSlideItem(
+            itemKey: 'cart-item-${items[index].key}',
+            index: index,
+            child: PressScaleFeedback(child: _buildCartItem(items[index])),
+          ),
           const SizedBox(height: 12),
         ],
         const SizedBox(height: 8),
         _buildOrderSummary(),
-      ],
+        ],
+      ),
     );
   }
 
@@ -205,7 +247,7 @@ class _CartPageState extends State<CartPage> {
             onPressed: _cartStore.isQuantityMutationPending(item.key)
                 ? null
                 : () => _runCartMutation(
-                    _cartStore.removeItemFromUi(item.key),
+                    () => _cartStore.removeItemFromUi(item.key),
                   ),
             tooltip: 'Remove item',
             visualDensity: VisualDensity.compact,
@@ -261,7 +303,7 @@ class _CartPageState extends State<CartPage> {
                     onPressed: quantityPending
                         ? null
                         : () => _runCartMutation(
-                            _cartStore.decreaseQuantityFromUi(item.key),
+                            () => _cartStore.decreaseQuantityFromUi(item.key),
                           ),
                   ),
                   SizedBox(
@@ -324,6 +366,10 @@ class _CartPageState extends State<CartPage> {
       }
     } on CustomerApiException catch (error) {
       if (mounted) {
+        if (isOfflineApiError(error)) {
+          setState(() => _offlineMutationRetry = () => _increaseQuantity(item));
+          return;
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(error.message)));
@@ -331,11 +377,16 @@ class _CartPageState extends State<CartPage> {
     }
   }
 
-  Future<void> _runCartMutation(Future<void> mutation) async {
+  Future<void> _runCartMutation(Future<void> Function() mutation) async {
+    setState(() => _offlineMutationRetry = null);
     try {
-      await mutation;
+      await mutation();
     } on CustomerApiException catch (error) {
       if (mounted) {
+        if (isOfflineApiError(error)) {
+          setState(() => _offlineMutationRetry = mutation);
+          return;
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(error.message)));
@@ -428,7 +479,7 @@ class _CartPageState extends State<CartPage> {
           width: double.infinity,
           child: FilledButton(
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
+              AppPageRoute<void>.builder(
                 builder: (context) => const CheckoutPage(),
               ),
             ),
@@ -518,6 +569,9 @@ class _CartPageState extends State<CartPage> {
   }
 
   Widget _buildCartLoadError() {
+    if (_cartOfflineError) {
+      return Center(child: OfflineErrorState(onRetry: _refreshBackendCart));
+    }
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(30),

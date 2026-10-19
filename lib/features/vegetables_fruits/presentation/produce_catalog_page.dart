@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
+import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../product_details/presentation/product_details_page.dart';
@@ -451,6 +454,7 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
   List<StoreProduct> _backendProducts = const [];
   bool _backendLoading = false;
   String? _backendError;
+  bool _backendOfflineError = false;
 
   @override
   void initState() {
@@ -468,6 +472,7 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
     setState(() {
       _backendLoading = true;
       _backendError = null;
+      _backendOfflineError = false;
       _backendCategories = const [];
       _backendProducts = const [];
     });
@@ -540,6 +545,7 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
       if (!mounted) return;
       setState(() {
         _backendError = error.message;
+        _backendOfflineError = isOfflineApiError(error);
         _backendLoading = false;
       });
     }
@@ -605,10 +611,15 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                       itemBuilder: (context, index) {
                         final category = categories[index];
                         final selected = category.id == _selectedCategoryId;
-                        return InkWell(
-                          onTap: () =>
-                              setState(() => _selectedCategoryId = category.id),
-                          child: Padding(
+                        return fadeSlideItem(
+                          itemKey: 'produce-category-${category.id}',
+                          index: index,
+                          child: PressScaleFeedback(
+                            child: InkWell(
+                              onTap: () => setState(
+                                () => _selectedCategoryId = category.id,
+                              ),
+                              child: Padding(
                             padding: const EdgeInsets.fromLTRB(7, 5, 7, 10),
                             child: Column(
                               children: [
@@ -652,6 +663,8 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                                 ),
                               ],
                             ),
+                              ),
+                            ),
                           ),
                         );
                       },
@@ -664,19 +677,26 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                           padding: const EdgeInsets.fromLTRB(9, 8, 12, 18),
                           sliver: SliverGrid(
                             delegate: SliverChildBuilderDelegate(
-                              (context, index) => _ProduceProductCard(
-                                product: visibleProducts[index],
-                                placeholderIndex: index,
-                                relatedProducts: visibleProducts
-                                    .where(
-                                      (related) =>
-                                          related.categoryId ==
-                                              visibleProducts[index]
-                                                  .categoryId &&
-                                          related.id !=
-                                              visibleProducts[index].id,
-                                    )
-                                    .toList(),
+                              (context, index) => fadeSlideItem(
+                                itemKey:
+                                    'produce-product-${visibleProducts[index].id}',
+                                index: index,
+                                child: PressScaleFeedback(
+                                  child: _ProduceProductCard(
+                                    product: visibleProducts[index],
+                                    placeholderIndex: index,
+                                    relatedProducts: visibleProducts
+                                        .where(
+                                          (related) =>
+                                              related.categoryId ==
+                                                  visibleProducts[index]
+                                                      .categoryId &&
+                                              related.id !=
+                                                  visibleProducts[index].id,
+                                        )
+                                        .toList(),
+                                  ),
+                                ),
                               ),
                               childCount: visibleProducts.length,
                             ),
@@ -743,9 +763,39 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
             ),
             Expanded(
               child: _backendLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? AnimatedContentSwitcher(
+                      child: GridView.builder(
+                        key: const ValueKey('produce-skeleton-loading'),
+                        padding: const EdgeInsets.all(12),
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 6,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 9,
+                              mainAxisSpacing: 12,
+                              mainAxisExtent: 288,
+                            ),
+                        itemBuilder: (context, index) => const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: SkeletonBox(height: 170)),
+                            SizedBox(height: 8),
+                            SkeletonBox(height: 14, width: 80, radius: 5),
+                            SizedBox(height: 7),
+                            SkeletonBox(height: 12, radius: 5),
+                            SizedBox(height: 5),
+                            SkeletonBox(height: 12, width: 120, radius: 5),
+                          ],
+                        ),
+                      ),
+                    )
                   : _backendError != null
-                  ? Center(
+                  ? _backendOfflineError
+                      ? Center(
+                          child: OfflineErrorState(onRetry: _loadBackendCatalog),
+                        )
+                      : Center(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
                         child: Column(
@@ -792,11 +842,15 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                               final category = _backendCategories[index];
                               final selected =
                                   category.id == _selectedCategoryId;
-                              return InkWell(
-                                onTap: () => setState(
-                                  () => _selectedCategoryId = category.id,
-                                ),
-                                child: Padding(
+                              return fadeSlideItem(
+                                itemKey: 'backend-produce-category-${category.id}',
+                                index: index,
+                                child: PressScaleFeedback(
+                                  child: InkWell(
+                                    onTap: () => setState(
+                                      () => _selectedCategoryId = category.id,
+                                    ),
+                                    child: Padding(
                                   padding: const EdgeInsets.fromLTRB(
                                     7,
                                     5,
@@ -849,58 +903,72 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                                       ),
                                     ],
                                   ),
+                                    ),
+                                  ),
                                 ),
                               );
                             },
                           ),
                         ),
                         Expanded(
-                          child: CustomScrollView(
-                            slivers: [
-                              SliverPadding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  9,
-                                  8,
-                                  12,
-                                  18,
-                                ),
-                                sliver: SliverGrid(
-                                  delegate: SliverChildBuilderDelegate(
-                                    (context, index) => StoreProductCard(
-                                      key: ValueKey(
-                                        'backend-produce-product-'
-                                        '${visibleProducts[index].id}',
-                                      ),
-                                      product: visibleProducts[index],
-                                      placeholderIndex: index,
-                                      storeName: '',
-                                      relatedProducts: const [],
-                                    ),
-                                    childCount: visibleProducts.length,
+                          child: RefreshIndicator(
+                            color: const Color(0xFF016034),
+                            onRefresh: _loadBackendCatalog,
+                            child: CustomScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              slivers: [
+                                SliverPadding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    9,
+                                    8,
+                                    12,
+                                    18,
                                   ),
-                                  gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: 2,
-                                        crossAxisSpacing: 9,
-                                        mainAxisSpacing: 12,
-                                        mainAxisExtent: 288,
+                                  sliver: SliverGrid(
+                                    delegate: SliverChildBuilderDelegate(
+                                      (context, index) => fadeSlideItem(
+                                        itemKey:
+                                            'backend-produce-product-${visibleProducts[index].id}',
+                                        index: index,
+                                        child: PressScaleFeedback(
+                                          child: StoreProductCard(
+                                            key: ValueKey(
+                                              'backend-produce-product-'
+                                              '${visibleProducts[index].id}',
+                                            ),
+                                            product: visibleProducts[index],
+                                            placeholderIndex: index,
+                                            storeName: '',
+                                            relatedProducts: const [],
+                                          ),
+                                        ),
                                       ),
-                                ),
-                              ),
-                              if (visibleProducts.isEmpty)
-                                const SliverFillRemaining(
-                                  hasScrollBody: false,
-                                  child: Center(
-                                    child: Text(
-                                      'No products in this category.',
-                                      style: TextStyle(
-                                        color: _muted,
-                                        fontSize: 12,
-                                      ),
+                                      childCount: visibleProducts.length,
                                     ),
+                                    gridDelegate:
+                                        const SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: 2,
+                                          crossAxisSpacing: 9,
+                                          mainAxisSpacing: 12,
+                                          mainAxisExtent: 288,
+                                        ),
                                   ),
                                 ),
-                            ],
+                                if (visibleProducts.isEmpty)
+                                  const SliverFillRemaining(
+                                    hasScrollBody: false,
+                                    child: Center(
+                                      child: Text(
+                                        'No products in this category.',
+                                        style: TextStyle(
+                                          color: _muted,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                       ],

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../product_details/presentation/product_details_page.dart';
@@ -291,6 +293,20 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     return _RestaurantCatalog(categories: menuCategories, items: items);
   }
 
+  Future<void> _refreshCatalog() async {
+    final api = CustomerApi.instance;
+    final future = _loadCatalog(
+      api,
+      query: _productQuery.isEmpty ? null : _productQuery,
+    );
+    setState(() => _catalogFuture = future);
+    try {
+      await future;
+    } on CustomerApiException {
+      // The FutureBuilder presents the same request error on the page.
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final catalogFuture = _catalogFuture;
@@ -305,10 +321,29 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
       future: catalogFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return Scaffold(
-            backgroundColor: _page,
-            body: const SafeArea(
-              child: Center(child: CircularProgressIndicator()),
+          return AnimatedContentSwitcher(
+            child: Scaffold(
+              key: const ValueKey('restaurant-menu-loading'),
+              backgroundColor: _page,
+              body: SafeArea(
+                child: Column(
+                  children: [
+                    _buildRestaurantHeader(context),
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          for (var index = 0; index < 3; index++) ...[
+                            const SkeletonBox(height: 180, radius: 16),
+                            const SizedBox(height: 14),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              bottomNavigationBar: const CartSummaryBar(),
             ),
           );
         }
@@ -325,6 +360,24 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
   }
 
   Widget _buildCatalogError(Object? error) {
+    if (isOfflineApiError(error)) {
+      return Scaffold(
+        backgroundColor: _page,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildRestaurantHeader(context),
+              Expanded(
+                child: Center(
+                  child: OfflineErrorState(onRetry: _refreshCatalog),
+                ),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: const CartSummaryBar(),
+      );
+    }
     return Scaffold(
       backgroundColor: _page,
       body: SafeArea(
@@ -411,46 +464,55 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         )
         .toList();
 
+    final menuScrollView = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(child: _buildRestaurantHeader(context)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 9, 16, 0),
+            child: Text(
+              sourceLabel,
+              style: const TextStyle(color: _muted, fontSize: 11),
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(child: _buildMenuHeading(filteredItems.length)),
+        SliverToBoxAdapter(child: _buildProductSearch()),
+        if (items.any((item) => !item.dietaryInfoAvailable))
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: Text(
+                'Dietary details are not provided by the catalog.',
+                style: TextStyle(color: _muted, fontSize: 11),
+              ),
+            ),
+          ),
+        SliverToBoxAdapter(child: _buildDietaryFilters()),
+        for (final category in menuCategories)
+          SliverToBoxAdapter(
+            child: _buildCategorySection(
+              category,
+              filteredItems
+                  .where((item) => item.categoryId == category.id)
+                  .toList(),
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      ],
+    );
+
     return Scaffold(
       backgroundColor: _page,
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _buildRestaurantHeader(context)),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 9, 16, 0),
-                child: Text(
-                  sourceLabel,
-                  style: const TextStyle(color: _muted, fontSize: 11),
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(child: _buildMenuHeading(filteredItems.length)),
-            SliverToBoxAdapter(child: _buildProductSearch()),
-            if (items.any((item) => !item.dietaryInfoAvailable))
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
-                  child: Text(
-                    'Dietary details are not provided by the catalog.',
-                    style: TextStyle(color: _muted, fontSize: 11),
-                  ),
-                ),
-              ),
-            SliverToBoxAdapter(child: _buildDietaryFilters()),
-            for (final category in menuCategories)
-              SliverToBoxAdapter(
-                child: _buildCategorySection(
-                  category,
-                  filteredItems
-                      .where((item) => item.categoryId == category.id)
-                      .toList(),
-                ),
-              ),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          ],
-        ),
+        child: sourceLabel == 'Backend catalog'
+            ? RefreshIndicator(
+                color: const Color(0xFF016034),
+                onRefresh: _refreshCatalog,
+                child: menuScrollView,
+              )
+            : menuScrollView,
       ),
       bottomNavigationBar: const CartSummaryBar(),
     );

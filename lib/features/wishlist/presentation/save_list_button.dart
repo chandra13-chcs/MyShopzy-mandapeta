@@ -12,7 +12,7 @@ class SaveListButton extends StatelessWidget {
     super.key,
     this.color = const Color(0xFF17251F),
     this.size = 17,
-    this.animateToggle = false,
+    this.animateToggle = true,
   });
 
   final ProductDetailsProduct product;
@@ -41,23 +41,18 @@ class SaveListButton extends StatelessWidget {
                     await store.toggleSavedProduct(product);
                   } on CustomerApiException catch (error) {
                     if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(error.message)),
-                    );
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text(error.message)));
                   }
                 },
           icon: AnimatedSwitcher(
             duration: animateToggle && !reduceMotion(context)
                 ? kMotionFast
                 : Duration.zero,
-            transitionBuilder: (child, animation) => ScaleTransition(
-              scale: animation,
-              child: child,
-            ),
+            transitionBuilder: (child, animation) =>
+                ScaleTransition(scale: animation, child: child),
             child: Icon(
-              isSaved
-                  ? Icons.favorite_rounded
-                  : Icons.bookmark_border_rounded,
+              isSaved ? Icons.favorite_rounded : Icons.bookmark_border_rounded,
               key: ValueKey(isSaved),
               color: isSaved ? const Color(0xFFB63E32) : color,
               size: size,

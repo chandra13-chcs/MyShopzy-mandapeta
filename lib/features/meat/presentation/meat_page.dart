@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import 'chicken_page.dart';
@@ -332,6 +333,7 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
   List<ApiProduct> _products = const [];
   bool _loading = false;
   String? _error;
+  bool _offlineError = false;
 
   @override
   void initState() {
@@ -343,6 +345,7 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
     setState(() {
       _loading = true;
       _error = null;
+      _offlineError = false;
       _products = const [];
     });
     try {
@@ -359,6 +362,7 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
       if (mounted) {
         setState(() {
           _error = error.message;
+          _offlineError = isOfflineApiError(error);
           _loading = false;
         });
       }
@@ -393,7 +397,9 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
       return AnimatedContentSwitcher(
         child: KeyedSubtree(
           key: const ValueKey('meat-catalog-error'),
-          child: Column(
+          child: _offlineError
+              ? OfflineErrorState(onRetry: _load, compact: true)
+              : Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -478,14 +484,11 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
                   relatedProducts: const [],
                 ),
               );
-              return index < 8
-                  ? FadeSlideIn(
-                      key: ValueKey('backend-meat-product-entry-${product.id}'),
-                      delay: staggerDelay(index),
-                      keepAlive: true,
-                      child: card,
-                    )
-                  : card;
+              return fadeSlideItem(
+                itemKey: 'backend-meat-product-entry-${product.id}',
+                index: index,
+                child: card,
+              );
             },
           ),
         ],

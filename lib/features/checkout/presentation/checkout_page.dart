@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/motion.dart';
 import '../../cart/data/cart_store.dart';
 import '../../coupons/models/demo_coupon.dart';
 import '../../orders/models/order_record.dart';
@@ -33,6 +36,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // The backend checks the confirmed destination, not an inferred buyer GPS.
   static const _demoDeliveryChargeInPaise = 3000;
   final _cartStore = CartStore.instance;
+  final _orderSuccessPlayer = AudioPlayer();
   ApiCartQuote? _backendQuote;
   String? _quoteError;
   bool _quoteLoading = false;
@@ -187,7 +191,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
     _newAddressLatitudeController.dispose();
     _newAddressLongitudeController.dispose();
     _newAddressLandmarkController.dispose();
+    unawaited(_orderSuccessPlayer.dispose());
     super.dispose();
+  }
+
+  Future<void> _playOrderSuccessSound() async {
+    try {
+      await _orderSuccessPlayer.play(AssetSource('sounds/order_success.wav'));
+    } catch (error) {
+      debugPrint('Order success sound playback failed: $error');
+    }
   }
 
   void _handleCartChanged() {
@@ -1826,7 +1839,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       setState(() => _serviceabilityResponse = result);
       if (!result.isDeliverable) {
         await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
+          AppPageRoute<void>.builder(
             builder: (context) =>
                 ServiceabilityUnavailablePage(message: result.message),
           ),
@@ -1877,6 +1890,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
         order = null;
       }
       if (!mounted) return;
+      if (order != null) {
+        HapticFeedback.mediumImpact();
+        unawaited(_playOrderSuccessSound());
+      }
       final confirmedOrder = OrderRecord(
         storeName: _cartStore.items.first.merchantId ?? 'MyShopzy Store',
         icon: _cartStore.items.first.icon,
@@ -1922,7 +1939,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       if (order == null) OrdersPage.addDemoOrder(confirmedOrder);
       _cartStore.clear();
       await Navigator.of(context).pushReplacement<void, void>(
-        MaterialPageRoute<void>(
+        AppPageRoute<void>.builder(
           builder: (context) =>
               OrderSuccessPage(confirmedOrder: confirmedOrder),
         ),
