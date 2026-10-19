@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/presentation/offline_error_state.dart';
+import 'live_order_map.dart';
 
 enum OrderTrackingStatus {
   orderPlaced,
@@ -73,9 +75,18 @@ class OrderTrackingData {
 }
 
 class OrderTrackingPage extends StatefulWidget {
-  const OrderTrackingPage({required this.order, super.key});
+  const OrderTrackingPage({
+    required this.order,
+    this.riderLocationStream,
+    this.initialRiderLocation,
+    this.initialCustomerLocation,
+    super.key,
+  });
 
   final OrderTrackingData order;
+  final Stream<LatLng>? riderLocationStream;
+  final LatLng? initialRiderLocation;
+  final LatLng? initialCustomerLocation;
 
   @override
   State<OrderTrackingPage> createState() => _OrderTrackingPageState();
@@ -87,7 +98,6 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
   static const _lightGreen = AppTheme.lightBackground;
   static const _mainText = AppTheme.primaryText;
   static const _secondaryText = Color(0xFF59615C);
-  static const _border = Color(0xFFE7EAE8);
 
   static const _timelineStatuses = [
     OrderTrackingStatus.orderPlaced,
@@ -283,10 +293,7 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
             children: [
               _buildStatusHeader(),
               if (_refreshError != null && _refreshOfflineError) ...[
-                OfflineErrorState(
-                  onRetry: _refreshStatus,
-                  compact: true,
-                ),
+                OfflineErrorState(onRetry: _refreshStatus, compact: true),
               ] else if (_refreshError != null) ...[
                 const SizedBox(height: 8),
                 Row(
@@ -310,7 +317,11 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
               const SizedBox(height: 16),
               _buildEtaCard(),
               const SizedBox(height: 16),
-              _buildMapPlaceholder(),
+              LiveOrderMap(
+                riderLocationStream: widget.riderLocationStream,
+                initialRiderLocation: widget.initialRiderLocation,
+                initialCustomerLocation: widget.initialCustomerLocation,
+              ),
               const SizedBox(height: 16),
               _buildPartnerCard(context),
               const SizedBox(height: 16),
@@ -402,86 +413,6 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildMapPlaceholder() {
-    return Container(
-      height: 390,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF1E8),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _border),
-      ),
-      child: Stack(
-        children: [
-          Positioned.fill(child: CustomPaint(painter: _DemoMapPainter())),
-          Positioned(
-            left: 15,
-            top: 15,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.94),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Text(
-                order.isDemo ? 'MAP PREVIEW' : 'DELIVERY MAP',
-                style: const TextStyle(
-                  color: _green,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-          ),
-          if (!_isDelivered) ...[
-            const Positioned(
-              left: 82,
-              top: 100,
-              child: _MapMarker(
-                icon: Icons.storefront_rounded,
-                label: 'Store',
-                color: _green,
-              ),
-            ),
-            const Positioned(
-              right: 57,
-              bottom: 41,
-              child: _MapMarker(
-                icon: Icons.location_on_rounded,
-                label: 'Home',
-                color: Color(0xFFB6534B),
-              ),
-            ),
-          ] else
-            const Center(
-              child: Icon(Icons.check_circle_rounded, color: _green, size: 42),
-            ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 11),
-              color: Colors.white.withValues(alpha: 0.94),
-              child: Text(
-                _isDelivered
-                    ? 'Delivery completed'
-                    : 'Illustrative route · live location is not available',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: _secondaryText,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -932,99 +863,4 @@ class _PartnerAction extends StatelessWidget {
       ),
     );
   }
-}
-
-class _MapMarker extends StatelessWidget {
-  const _MapMarker({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 38,
-          height: 38,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Icon(icon, color: color, size: 22),
-        ),
-        const SizedBox(height: 3),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF202321),
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DemoMapPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final roadPaint = Paint()
-      ..color = const Color(0xFFD5E1D2)
-      ..strokeWidth = 12
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    final path = Path()
-      ..moveTo(-10, size.height * 0.28)
-      ..cubicTo(
-        size.width * 0.28,
-        size.height * 0.48,
-        size.width * 0.63,
-        size.height * 0.12,
-        size.width + 10,
-        size.height * 0.37,
-      );
-    canvas.drawPath(path, roadPaint);
-
-    final secondaryRoadPaint = Paint()
-      ..color = const Color(0xFFDCE7D9)
-      ..strokeWidth = 8
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-    final secondaryPath = Path()
-      ..moveTo(size.width * 0.35, -10)
-      ..cubicTo(
-        size.width * 0.46,
-        size.height * 0.3,
-        size.width * 0.23,
-        size.height * 0.7,
-        size.width * 0.45,
-        size.height + 10,
-      );
-    canvas.drawPath(secondaryPath, secondaryRoadPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
+import 'package:myshopzy/features/orders/presentation/live_order_map.dart';
 import 'package:myshopzy/features/orders/presentation/order_tracking_page.dart';
 import 'package:myshopzy/features/orders/presentation/orders_page.dart';
 
@@ -44,6 +48,45 @@ void main() {
     expect(find.text('Delivered'), findsWidgets);
     expect(find.text('View Receipt'), findsOneWidget);
     expect(find.text('Track Order'), findsNothing);
+  });
+
+  testWidgets('live map displays home and streamed rider markers', (
+    tester,
+  ) async {
+    final riderUpdates = StreamController<LatLng>.broadcast();
+    addTearDown(riderUpdates.close);
+    const home = LatLng(16.84, 81.93);
+    const rider = LatLng(16.85, 81.94);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LiveOrderMap(
+            initialCustomerLocation: home,
+            initialRiderLocation: rider,
+            riderLocationStream: riderUpdates.stream,
+            tileProvider: _TestTileProvider(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.home_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.two_wheeler_rounded), findsOneWidget);
+    expect(find.byTooltip('Center on rider'), findsOneWidget);
+    expect(
+      tester.widget<MarkerLayer>(find.byType(MarkerLayer)).markers,
+      hasLength(2),
+    );
+
+    const updatedRider = LatLng(16.86, 81.95);
+    riderUpdates.add(updatedRider);
+    await tester.pump();
+    await tester.pump();
+
+    final markerLayer = tester.widget<MarkerLayer>(find.byType(MarkerLayer));
+    expect(markerLayer.markers.last.point, updatedRider);
   });
 
   testWidgets('backend tracking refreshes status and delivery details', (
@@ -119,4 +162,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Rice × 1'), findsOneWidget);
   });
+}
+
+class _TestTileProvider extends TileProvider {
+  @override
+  ImageProvider getImage(TileCoordinates coordinates, TileLayer options) {
+    return MemoryImage(
+      base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=',
+      ),
+    );
+  }
 }
