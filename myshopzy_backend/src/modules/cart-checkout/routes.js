@@ -1,5 +1,6 @@
 const { createHash, randomBytes, randomUUID } = require('node:crypto');
 const express = require('express');
+const { isOpenNow } = require('../shared/store-hours');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -68,6 +69,13 @@ function parseProductId(value) {
   return { value };
 }
 
+function parseVariantId(value) {
+  if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+    return { error: 'variantId must be a valid UUID.' };
+  }
+  return { value };
+}
+
 function getCartToken(req) {
   const token = req.get('x-cart-token');
   if (typeof token !== 'string' || !CART_TOKEN_PATTERN.test(token)) {
@@ -124,10 +132,7 @@ async function findProduct(client, productId, { lock = false } = {}) {
        p.shop_id,
        p.partner_id,
        p.name,
-       p.sku,
-       p.price_minor::text AS price_minor,
        p.currency,
-       p.inventory_quantity,
        p.is_available,
        p.status AS product_status,
        s.status AS shop_status,
@@ -159,11 +164,43 @@ async function findProduct(client, productId, { lock = false } = {}) {
   return product;
 }
 
-function assertStock(product, quantity) {
-  if (
-    product.inventory_quantity !== null &&
-    Number(product.inventory_quantity) < quantity
-  ) {
+async function findVariant(client, product, variantId, { lock = false } = {}) {
+  const result = await client.query(
+    `SELECT
+       id,
+       product_id,
+       shop_id,
+       partner_id,
+       label,
+       unit,
+       quantity,
+       price_minor::text AS price_minor,
+       stock,
+       sku,
+       is_available
+     FROM app.product_variants
+     WHERE id = $1
+       AND product_id = $2
+       AND shop_id = $3
+       AND partner_id = $4${lock ? ' FOR UPDATE' : ' FOR SHARE'}`,
+    [variantId, product.id, product.shop_id, product.partner_id],
+  );
+  if (result.rows.length === 0) {
+    throw new ApiError(404, 'VARIANT_NOT_FOUND', 'Product variant not found.');
+  }
+  const variant = result.rows[0];
+  if (!variant.is_available) {
+    throw new ApiError(
+      409,
+      'PRODUCT_UNAVAILABLE',
+      'The product or shop is currently unavailable.',
+    );
+  }
+  return variant;
+}
+
+function assertStock(item, quantity) {
+  if (item.stock !== null && Number(item.stock) < quantity) {
     throw new ApiError(
       409,
       'INSUFFICIENT_STOCK',
@@ -176,28 +213,40 @@ async function readCartItems(client, cartId, { lock = false } = {}) {
   const result = await client.query(
     `SELECT
        ci.product_id,
+       ci.variant_id,
        ci.quantity,
        p.shop_id,
        p.partner_id,
        p.name,
-       p.sku,
-       p.price_minor::text AS price_minor,
        p.currency,
-       p.inventory_quantity,
-       p.is_available,
+       p.is_available AS product_is_available,
        p.status AS product_status,
+       v.label AS variant_label,
+       v.unit AS variant_unit,
+       v.quantity AS variant_quantity,
+       v.sku AS variant_sku,
+       v.price_minor::text AS price_minor,
+       v.stock AS variant_stock,
+       v.is_available AS variant_is_available,
        s.status AS shop_status,
+       s.operating_details,
+       partner.timezone,
        partner.status AS partner_status
      FROM app.customer_cart_items AS ci
      JOIN app.products AS p
        ON p.id = ci.product_id
       AND p.shop_id = ci.shop_id
       AND p.partner_id = ci.partner_id
+     JOIN app.product_variants AS v
+       ON v.id = ci.variant_id
+      AND v.product_id = ci.product_id
+      AND v.shop_id = ci.shop_id
+      AND v.partner_id = ci.partner_id
      JOIN app.shops AS s
        ON s.id = p.shop_id AND s.partner_id = p.partner_id
      JOIN app.partners AS partner ON partner.id = p.partner_id
      WHERE ci.cart_id = $1
-     ORDER BY p.name, p.id${lock ? ' FOR UPDATE OF p, s, partner' : ''}`,
+     ORDER BY p.name, p.id, v.sort_order, v.id${lock ? ' FOR UPDATE OF p, s, partner, v' : ''}`,
     [cartId],
   );
   return result.rows;
@@ -213,20 +262,23 @@ function formatCart(cart, items) {
     itemCount += Number(item.quantity);
     return {
       productId: item.product_id,
+      variantId: item.variant_id,
+      variantLabel: item.variant_label,
       shopId: item.shop_id,
       name: item.name,
-      sku: item.sku,
+      sku: item.variant_sku,
       quantity: Number(item.quantity),
       priceMinor: priceMinor.toString(),
       lineTotalMinor: lineTotalMinor.toString(),
       currency: item.currency.trim(),
       available:
         item.product_status === 'active' &&
-        item.is_available &&
+        item.product_is_available &&
+        item.variant_is_available &&
         item.shop_status === 'active' &&
         item.partner_status === 'approved' &&
-        (item.inventory_quantity === null ||
-          Number(item.inventory_quantity) >= Number(item.quantity)),
+        (item.variant_stock === null ||
+          Number(item.variant_stock) >= Number(item.quantity)),
     };
   });
 
@@ -259,7 +311,8 @@ async function loadCheckoutItems(client, cart, { lock = false } = {}) {
     }
     if (
       item.product_status !== 'active' ||
-      !item.is_available ||
+      !item.product_is_available ||
+      !item.variant_is_available ||
       item.shop_status !== 'active' ||
       item.partner_status !== 'approved'
     ) {
@@ -269,7 +322,7 @@ async function loadCheckoutItems(client, cart, { lock = false } = {}) {
         'One or more cart items are currently unavailable.',
       );
     }
-    assertStock(item, Number(item.quantity));
+    assertStock({ stock: item.variant_stock }, Number(item.quantity));
     if (currency !== null && currency !== item.currency.trim()) {
       throw new ApiError(
         409,
@@ -360,10 +413,15 @@ function createCartCheckoutRouter({
   });
 
   router.post('/cart/items', async (req, res, next) => {
-    const body = parseObjectBody(req.body, new Set(['productId', 'quantity']));
+    const body = parseObjectBody(
+      req.body,
+      new Set(['productId', 'variantId', 'quantity']),
+    );
     if (body.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
     const product = parseProductId(body.value.productId);
     if (product.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', product.error));
+    const variant = parseVariantId(body.value.variantId);
+    if (variant.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', variant.error));
     const quantity = parseQuantity(body.value.quantity, { optional: true });
     if (quantity.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', quantity.error));
     if (!databasePool) return sendDatabaseUnavailable(res);
@@ -373,6 +431,11 @@ function createCartCheckoutRouter({
       const cart = await withTransaction(databasePool, async (client) => {
         const currentCart = await findCart(client, tokenHash, { lock: true });
         const currentProduct = await findProduct(client, product.value);
+        const currentVariant = await findVariant(
+          client,
+          currentProduct,
+          variant.value,
+        );
         if (
           currentCart.shop_id &&
           (currentCart.shop_id !== currentProduct.shop_id ||
@@ -408,9 +471,9 @@ function createCartCheckoutRouter({
         const currentItemResult = await client.query(
           `SELECT quantity
            FROM app.customer_cart_items
-           WHERE cart_id = $1 AND product_id = $2
+           WHERE cart_id = $1 AND product_id = $2 AND variant_id = $3
            FOR UPDATE`,
-          [currentCart.id, product.value],
+          [currentCart.id, product.value, variant.value],
         );
         const totalQuantity =
           Number(currentItemResult.rows[0]?.quantity ?? 0) + quantity.value;
@@ -418,10 +481,10 @@ function createCartCheckoutRouter({
           throw new ApiError(
             400,
             'INVALID_QUANTITY',
-            `quantity must not exceed ${MAX_QUANTITY} for a product.`,
+            `quantity must not exceed ${MAX_QUANTITY} for a variant.`,
           );
         }
-        assertStock(currentProduct, totalQuantity);
+        assertStock(currentVariant, totalQuantity);
 
         if (!currentCart.shop_id) {
           await client.query(
@@ -433,14 +496,15 @@ function createCartCheckoutRouter({
         }
         const itemResult = await client.query(
           `INSERT INTO app.customer_cart_items
-             (cart_id, product_id, shop_id, partner_id, quantity)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (cart_id, product_id)
+             (cart_id, product_id, variant_id, shop_id, partner_id, quantity)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (cart_id, product_id, variant_id)
            DO UPDATE SET quantity = EXCLUDED.quantity, updated_at = now()
            RETURNING quantity`,
           [
             currentCart.id,
             product.value,
+            variant.value,
             currentProduct.shop_id,
             currentProduct.partner_id,
             totalQuantity,
@@ -448,6 +512,7 @@ function createCartCheckoutRouter({
         );
         return {
           productId: product.value,
+          variantId: variant.value,
           quantity: Number(itemResult.rows[0].quantity),
         };
       });
@@ -458,9 +523,11 @@ function createCartCheckoutRouter({
     }
   });
 
-  router.patch('/cart/items/:productId', async (req, res, next) => {
+  router.patch('/cart/items/:productId/:variantId', async (req, res, next) => {
     const product = parseProductId(req.params.productId);
     if (product.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', product.error));
+    const variant = parseVariantId(req.params.variantId);
+    if (variant.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', variant.error));
     const body = parseObjectBody(req.body, new Set(['quantity']));
     if (body.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
     const quantity = parseQuantity(body.value.quantity);
@@ -472,27 +539,34 @@ function createCartCheckoutRouter({
       const item = await withTransaction(databasePool, async (client) => {
         const cart = await findCart(client, tokenHash, { lock: true });
         const productRecord = await findProduct(client, product.value);
+        const variantRecord = await findVariant(
+          client,
+          productRecord,
+          variant.value,
+          { lock: true },
+        );
         const existing = await client.query(
           `SELECT quantity
            FROM app.customer_cart_items
-           WHERE cart_id = $1 AND product_id = $2
+           WHERE cart_id = $1 AND product_id = $2 AND variant_id = $3
            FOR UPDATE`,
-          [cart.id, product.value],
+          [cart.id, product.value, variant.value],
         );
         if (existing.rows.length === 0) {
           throw new ApiError(404, 'CART_ITEM_NOT_FOUND', 'Cart item not found.');
         }
-        assertStock(productRecord, quantity.value);
+        assertStock(variantRecord, quantity.value);
 
         const result = await client.query(
           `UPDATE app.customer_cart_items
            SET quantity = $3, updated_at = now()
-           WHERE cart_id = $1 AND product_id = $2
+           WHERE cart_id = $1 AND product_id = $2 AND variant_id = $4
            RETURNING quantity`,
-          [cart.id, product.value, quantity.value],
+          [cart.id, product.value, quantity.value, variant.value],
         );
         return {
           productId: product.value,
+          variantId: variant.value,
           quantity: Number(result.rows[0].quantity),
         };
       });
@@ -503,9 +577,11 @@ function createCartCheckoutRouter({
     }
   });
 
-  router.delete('/cart/items/:productId', async (req, res, next) => {
+  router.delete('/cart/items/:productId/:variantId', async (req, res, next) => {
     const product = parseProductId(req.params.productId);
     if (product.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', product.error));
+    const variant = parseVariantId(req.params.variantId);
+    if (variant.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', variant.error));
     if (!databasePool) return sendDatabaseUnavailable(res);
 
     try {
@@ -514,8 +590,8 @@ function createCartCheckoutRouter({
         const cart = await findCart(client, tokenHash, { lock: true });
         const result = await client.query(
           `DELETE FROM app.customer_cart_items
-           WHERE cart_id = $1 AND product_id = $2`,
-          [cart.id, product.value],
+           WHERE cart_id = $1 AND product_id = $2 AND variant_id = $3`,
+          [cart.id, product.value, variant.value],
         );
         if (result.rowCount === 0) {
           throw new ApiError(404, 'CART_ITEM_NOT_FOUND', 'Cart item not found.');
@@ -577,18 +653,26 @@ function createCartCheckoutRouter({
       const quote = await withTransaction(databasePool, async (client) => {
         const cart = await findCart(client, tokenHash, { lock: true });
         const checkout = await loadCheckoutItems(client, cart);
-        return checkout;
+        return {
+          ...checkout,
+          storeHours: isOpenNow(checkout.items[0]),
+        };
       });
       return res.status(200).json({
         data: {
           items: quote.items.map((item) => ({
             productId: item.product_id,
+            variantId: item.variant_id,
+            variantLabel: item.variant_label,
             name: item.name,
             quantity: Number(item.quantity),
             priceMinor: item.price_minor,
             lineTotalMinor: item.line_total_minor,
           })),
           currency: quote.currency,
+          storeOpen: quote.storeHours.open,
+          opensAt: quote.storeHours.opensAt,
+          closesAt: quote.storeHours.closesAt,
           itemSubtotalMinor: quote.subtotal.toString(),
           deliveryFeeMinor: '0',
           discountMinor: '0',
@@ -672,6 +756,13 @@ function createCartCheckoutRouter({
             throw new ApiError(422, 'EMPTY_CART', 'Add at least one item before checkout.');
           }
           const checkout = await loadCheckoutItems(client, cart, { lock: true });
+          if (!isOpenNow(checkout.items[0]).open) {
+            throw new ApiError(
+              409,
+              'STORE_CLOSED',
+              'Orders are accepted between 7:00 AM and 11:00 PM',
+            );
+          }
           const orderId = randomUUID();
           const deliveryFee = 0n;
           const discount = 0n;
@@ -699,15 +790,15 @@ function createCartCheckoutRouter({
           );
 
           for (const item of checkout.items) {
-            if (item.inventory_quantity !== null) {
+            if (item.variant_stock !== null) {
               const stock = await client.query(
-                `UPDATE app.products
-                 SET inventory_quantity = inventory_quantity - $2,
+                `UPDATE app.product_variants
+                 SET stock = stock - $2,
                      updated_at = now()
                  WHERE id = $1
-                   AND inventory_quantity >= $2
+                   AND stock >= $2
                  RETURNING id`,
-                [item.product_id, Number(item.quantity)],
+                [item.variant_id, Number(item.quantity)],
               );
               if (stock.rows.length === 0) {
                 throw new ApiError(
@@ -724,7 +815,7 @@ function createCartCheckoutRouter({
                  product_name_snapshot, sku_snapshot, unit_price_minor,
                  quantity, line_total_minor, currency, variant_snapshot
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, '{}'::jsonb)`,
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)`,
               [
                 randomUUID(),
                 orderId,
@@ -732,11 +823,19 @@ function createCartCheckoutRouter({
                 item.shop_id,
                 item.product_id,
                 item.name,
-                item.sku,
+                item.variant_sku,
                 item.price_minor,
                 Number(item.quantity),
                 item.line_total_minor,
                 checkout.currency,
+                JSON.stringify({
+                  variantId: item.variant_id,
+                  label: item.variant_label,
+                  unit: item.variant_unit,
+                  quantity: Number(item.variant_quantity),
+                  sku: item.variant_sku,
+                  unitPriceMinor: item.price_minor,
+                }),
               ],
             );
           }

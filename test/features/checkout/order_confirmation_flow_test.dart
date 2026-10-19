@@ -126,6 +126,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(BackendOrderDetailsPage), findsOneWidget);
     expect(find.text('Backend order'), findsOneWidget);
+    expect(find.text('Backend product · 500 g × 1'), findsOneWidget);
     expect(find.text('Payment status'), findsNothing);
     expect(find.text('Track Order'), findsNothing);
   });
@@ -346,6 +347,8 @@ http.Response _backendSetupResponse(http.Request request) {
         'items': [
           {
             'productId': 'product-id',
+            'variantId': 'variant-id',
+            'variantLabel': '500 g',
             'name': 'Backend product',
             'quantity': 1,
             'priceMinor': '25000',
@@ -415,7 +418,14 @@ http.Response _backendOrderDetailResponse() => _response({
         'quantity': 1,
         'line_total_minor': '25000',
         'currency': 'INR',
-        'variant_snapshot': null,
+        'variant_snapshot': {
+          'variantId': 'variant-id',
+          'label': '500 g',
+          'unit': 'g',
+          'quantity': 500,
+          'sku': 'SKU-500',
+          'unitPriceMinor': '25000',
+        },
       },
     ],
   },
@@ -427,6 +437,8 @@ http.Response _response(Object body, {int statusCode = 200}) =>
 void _addBackendCartItem() {
   CartStore.instance.addItem(
     productId: 'product-id',
+    productVariantId: 'variant-id',
+    variantLabel: '500 g',
     serviceType: 'backend_catalog',
     merchantId: 'shop-id',
     name: 'Backend product',

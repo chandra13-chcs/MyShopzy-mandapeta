@@ -29,7 +29,11 @@ class _CartPageState extends State<CartPage> {
   bool _loadingBackendCart = false;
   String? _cartLoadError;
   bool _cartOfflineError = false;
+  bool _storeOpen = true;
   Future<void> Function()? _offlineMutationRetry;
+
+  static const _storeClosedMessage =
+      'Store is closed. Orders open at 7:00 AM';
 
   @override
   void initState() {
@@ -49,6 +53,13 @@ class _CartPageState extends State<CartPage> {
     });
     try {
       await _cartStore.refreshBackendCart();
+      final items = _cartStore.items;
+      if (items.isEmpty) {
+        _storeOpen = true;
+      } else if (items.every((item) => item.isBackendProduct)) {
+        final quote = await CustomerApi.instance.getCheckoutQuote();
+        if (mounted) setState(() => _storeOpen = quote.storeOpen);
+      }
     } on CustomerApiException catch (error) {
       if (mounted) {
         setState(() {
@@ -118,6 +129,33 @@ class _CartPageState extends State<CartPage> {
           _cartOfflineError
               ? OfflineErrorState(onRetry: _refreshBackendCart, compact: true)
               : _buildCartLoadErrorBanner(),
+          const SizedBox(height: 10),
+        ],
+        if (!_storeOpen) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF4E5),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFF2D4A8)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.schedule_rounded, color: Color(0xFF9A5C00), size: 18),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _storeClosedMessage,
+                    style: TextStyle(
+                      color: Color(0xFF805000),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 10),
         ],
         if (_offlineMutationRetry != null) ...[
@@ -228,7 +266,7 @@ class _CartPageState extends State<CartPage> {
                 Row(
                   children: [
                     Text(
-                      _formatPrice(item.priceInPaise),
+                      _formatPrice(item.priceInPaise * item.quantity),
                       style: const TextStyle(
                         color: _mainText,
                         fontSize: 14,

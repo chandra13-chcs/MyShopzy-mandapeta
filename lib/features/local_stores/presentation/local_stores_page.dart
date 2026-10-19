@@ -133,7 +133,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
                 deliveryTime: 'Not provided',
                 distance: '—',
                 locality: shop.address ?? 'Address not provided',
-                isOpen: false,
+                isOpen: shop.storeOpen,
                 isBackendData: true,
               ),
             )
@@ -517,6 +517,29 @@ class _StoreCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (!store.isOpen && store.isBackendData)
+                    Positioned(
+                      bottom: 11,
+                      left: 11,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'Closed',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
                   if (!store.isOpen && !store.isBackendData)
                     Center(
                       child: Container(
@@ -638,11 +661,7 @@ class _StoreCard extends StatelessWidget {
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
-                          store.isBackendData
-                              ? 'Hours not provided'
-                              : store.isOpen
-                              ? 'Open'
-                              : 'Closed',
+                          store.isOpen ? 'Open' : 'Closed',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

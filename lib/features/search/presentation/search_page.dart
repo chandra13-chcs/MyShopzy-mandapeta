@@ -106,6 +106,7 @@ class _SearchPageState extends State<SearchPage> {
     merchantName: shop.name,
     partnerType: shop.partnerType,
     isBackendData: true,
+    storeOpen: shop.storeOpen,
     searchableText: '${shop.name} ${shop.partnerName ?? ''} ${shop.address ?? ''}',
   );
 
@@ -114,6 +115,7 @@ class _SearchPageState extends State<SearchPage> {
     type: SearchResultType.backendProduct,
     displayName: product.name,
     subtitle: product.shopName,
+    imageUrl: product.imageUrl,
     merchantId: product.shopId,
     merchantName: product.shopName,
     categoryId: product.categoryId,
@@ -121,6 +123,8 @@ class _SearchPageState extends State<SearchPage> {
     price: product.priceMinor / 100,
     available: product.available,
     isBackendData: true,
+    storeOpen: product.storeOpen,
+    variants: product.variants,
     searchableText: '${product.name} ${product.description} ${product.shopName ?? ''}',
   );
 
@@ -136,7 +140,9 @@ class _SearchPageState extends State<SearchPage> {
             cuisine: 'Details not provided',
             distance: '—',
             location: result.subtitle ?? 'Address not provided',
-            status: RestaurantStatus.unknown,
+            status: result.storeOpen
+                ? RestaurantStatus.open
+                : RestaurantStatus.closed,
             isBackendData: true,
           ),
         );
@@ -149,7 +155,7 @@ class _SearchPageState extends State<SearchPage> {
           deliveryTime: 'Not provided',
           distance: '—',
           locality: result.subtitle ?? 'Address not provided',
-          isOpen: false,
+          isOpen: result.storeOpen,
           isBackendData: true,
         );
         return LocalStoreCatalogPage(
@@ -173,9 +179,11 @@ class _SearchPageState extends State<SearchPage> {
         },
         merchantId: result.merchantId,
         merchantName: result.merchantName,
+        variants: result.variants,
         categoryId: result.categoryId,
         name: result.displayName,
         description: '',
+        imageUrl: result.imageUrl,
         priceInPaise: result.price == null ? null : (result.price! * 100).round(),
         available: result.available,
         icon: switch (type) {
@@ -590,6 +598,27 @@ class _SearchResultTile extends StatelessWidget {
                               'OUT OF STOCK',
                               style: TextStyle(
                                 color: Color(0xFFA85B5B),
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (!result.storeOpen) ...[
+                          const SizedBox(width: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0F0F0),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Closed',
+                              style: TextStyle(
+                                color: Color(0xFF5B5B5B),
                                 fontSize: 8,
                                 fontWeight: FontWeight.w700,
                               ),

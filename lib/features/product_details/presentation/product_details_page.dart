@@ -219,10 +219,13 @@ class _ProductDetailsPageState extends State<ProductDetailsPage> {
           merchantName: current.merchantName,
           categoryId: latest.categoryId,
           description: latest.description,
-          imageUrl: current.imageUrl,
+          imageUrl: latest.imageUrl ?? current.imageUrl,
           priceInPaise: latest.priceMinor,
           isVegetarian: current.isVegetarian,
           isBackendProduct: true,
+          variants: latest.variants.isEmpty
+              ? current.variants
+              : latest.variants,
           relatedProducts: current.relatedProducts,
         );
         _catalogLoading = false;

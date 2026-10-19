@@ -52,7 +52,7 @@ void main() {
     expect(find.text('₹154'), findsNWidgets(3));
     await tester.tap(find.byTooltip('Increase quantity'));
     await tester.pumpAndSettle();
-    expect(find.text('₹308'), findsNWidgets(2));
+    expect(find.text('₹308'), findsNWidgets(3));
 
     await tester.tap(find.byTooltip('Decrease quantity'));
     await tester.pumpAndSettle();
@@ -63,6 +63,42 @@ void main() {
     expect(find.text('Your cart is empty'), findsOneWidget);
     expect(find.text('Proceed to Checkout'), findsNothing);
   });
+
+  testWidgets(
+    'cart keeps different variants of one product as separate lines',
+    (tester) async {
+      cart.addItem(
+        productId: 'cart-page-multiple-variants',
+        serviceType: 'local_store',
+        merchantId: 'cart-page-store',
+        productVariantId: 'cart-page-500g',
+        variantLabel: '500 g',
+        name: 'Variant item',
+        description: 'Test item',
+        priceInPaise: 15400,
+        icon: Icons.shopping_bag_outlined,
+      );
+      cart.addItem(
+        productId: 'cart-page-multiple-variants',
+        serviceType: 'local_store',
+        merchantId: 'cart-page-store',
+        productVariantId: 'cart-page-1kg',
+        variantLabel: '1 kg',
+        name: 'Variant item',
+        description: 'Test item',
+        priceInPaise: 28400,
+        icon: Icons.shopping_bag_outlined,
+      );
+
+      await tester.pumpWidget(const MaterialApp(home: CartPage()));
+
+      expect(cart.items, hasLength(2));
+      expect(find.text('500 g'), findsOneWidget);
+      expect(find.text('1 kg'), findsOneWidget);
+      expect(find.text('₹154'), findsOneWidget);
+      expect(find.text('₹284'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'rapid backend quantity taps send one update and use the server quantity',
@@ -165,8 +201,7 @@ void main() {
     final api = CustomerApi(
       baseUrl: 'https://shop.example',
       httpClient: MockClient((request) async {
-        if (request.method == 'POST' &&
-            request.url.path.endsWith('/carts')) {
+        if (request.method == 'POST' && request.url.path.endsWith('/carts')) {
           return http.Response(
             jsonEncode({
               'data': {'cartToken': 'c' * 43},
@@ -194,6 +229,8 @@ void main() {
             productId: 'backend-product',
             serviceType: 'local_store',
             merchantId: 'backend-shop',
+            productVariantId: 'backend-variant',
+            variantLabel: '500 g',
             categoryId: 'groceries',
             name: 'Backend product',
             description: 'Catalog product',
@@ -216,6 +253,7 @@ void main() {
         productId: 'backend-product',
         serviceType: 'local_store',
         merchantId: 'backend-shop',
+        productVariantId: 'backend-variant',
       ),
       isTrue,
     );
@@ -224,7 +262,11 @@ void main() {
     addResponse.complete(
       http.Response(
         jsonEncode({
-          'data': {'productId': 'backend-product', 'quantity': 3},
+          'data': {
+            'productId': 'backend-product',
+            'variantId': 'backend-variant',
+            'quantity': 3,
+          },
         }),
         200,
       ),
@@ -236,93 +278,101 @@ void main() {
 
     expect(cart.items, hasLength(1));
     expect(cart.items.single.productId, 'backend-product');
+    expect(cart.items.single.productVariantId, 'backend-variant');
+    expect(cart.items.single.variantLabel, '500 g');
     expect(cart.items.single.quantity, 3);
     expect(
       cart.isCatalogItemAddPending(
         productId: 'backend-product',
         serviceType: 'local_store',
         merchantId: 'backend-shop',
+        productVariantId: 'backend-variant',
       ),
       isFalse,
     );
   });
 
-  testWidgets('failed backend catalog add leaves cart empty and reports error', (
-    tester,
-  ) async {
-    final addResponse = Completer<http.Response>();
-    final api = CustomerApi(
-      baseUrl: 'https://shop.example',
-      httpClient: MockClient((request) async {
-        if (request.method == 'POST' &&
-            request.url.path.endsWith('/carts')) {
-          return http.Response(
-            jsonEncode({
-              'data': {'cartToken': 'c' * 43},
-            }),
-            201,
+  testWidgets(
+    'failed backend catalog add leaves cart empty and reports error',
+    (tester) async {
+      final addResponse = Completer<http.Response>();
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          if (request.method == 'POST' && request.url.path.endsWith('/carts')) {
+            return http.Response(
+              jsonEncode({
+                'data': {'cartToken': 'c' * 43},
+              }),
+              201,
+            );
+          }
+          if (request.method == 'POST' &&
+              request.url.path.endsWith('/cart/items')) {
+            return addResponse.future;
+          }
+          throw StateError(
+            'Unexpected cart API request: ${request.method} ${request.url}',
           );
-        }
-        if (request.method == 'POST' &&
-            request.url.path.endsWith('/cart/items')) {
-          return addResponse.future;
-        }
-        throw StateError(
-          'Unexpected cart API request: ${request.method} ${request.url}',
-        );
-      }),
-    );
-    mockApi = api;
-    CustomerApi.instance = api;
+        }),
+      );
+      mockApi = api;
+      CustomerApi.instance = api;
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: CartProductControl(
-            productId: 'backend-product',
-            serviceType: 'local_store',
-            merchantId: 'backend-shop',
-            categoryId: 'groceries',
-            name: 'Backend product',
-            description: 'Catalog product',
-            priceInPaise: 7000,
-            icon: Icons.shopping_bag_outlined,
-            available: true,
-            backendCatalogItem: true,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CartProductControl(
+              productId: 'backend-product',
+              serviceType: 'local_store',
+              merchantId: 'backend-shop',
+              productVariantId: 'backend-variant',
+              categoryId: 'groceries',
+              name: 'Backend product',
+              description: 'Catalog product',
+              priceInPaise: 7000,
+              icon: Icons.shopping_bag_outlined,
+              available: true,
+              backendCatalogItem: true,
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    await tester.tap(find.text('ADD'));
-    await tester.pump();
-    addResponse.complete(
-      http.Response(
-        jsonEncode({
-          'error': {
-            'code': 'PRODUCT_UNAVAILABLE',
-            'message': 'This product is currently unavailable.',
-          },
-        }),
-        409,
-      ),
-    );
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 10)),
-    );
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('ADD'));
+      await tester.pump();
+      addResponse.complete(
+        http.Response(
+          jsonEncode({
+            'error': {
+              'code': 'PRODUCT_UNAVAILABLE',
+              'message': 'This product is currently unavailable.',
+            },
+          }),
+          409,
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pumpAndSettle();
 
-    expect(cart.items, isEmpty);
-    expect(
-      cart.isCatalogItemAddPending(
-        productId: 'backend-product',
-        serviceType: 'local_store',
-        merchantId: 'backend-shop',
-      ),
-      isFalse,
-    );
-    expect(find.text('This product is currently unavailable.'), findsOneWidget);
-  });
+      expect(cart.items, isEmpty);
+      expect(
+        cart.isCatalogItemAddPending(
+          productId: 'backend-product',
+          serviceType: 'local_store',
+          merchantId: 'backend-shop',
+          productVariantId: 'backend-variant',
+        ),
+        isFalse,
+      );
+      expect(
+        find.text('This product is currently unavailable.'),
+        findsOneWidget,
+      );
+    },
+  );
 }
 
 void _configureBackendCart(
@@ -348,6 +398,8 @@ void _configureBackendCart(
               'items': [
                 {
                   'productId': 'cart-page-backend-item',
+                  'variantId': 'cart-page-backend-variant',
+                  'variantLabel': '1 kg',
                   'shopId': 'cart-page-backend-shop',
                   'name': 'Backend cart item',
                   'quantity': 1,
@@ -357,6 +409,32 @@ void _configureBackendCart(
                 },
               ],
               'itemSubtotalMinor': '15400',
+            },
+          }),
+          200,
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/checkout/quote')) {
+        return http.Response(
+          jsonEncode({
+            'data': {
+              'items': [
+                {
+                  'productId': 'cart-page-backend-item',
+                  'variantId': 'cart-page-backend-variant',
+                  'variantLabel': '1 kg',
+                  'name': 'Backend cart item',
+                  'quantity': 1,
+                  'priceMinor': '15400',
+                  'lineTotalMinor': '15400',
+                },
+              ],
+              'currency': 'INR',
+              'itemSubtotalMinor': '15400',
+              'deliveryFeeMinor': '0',
+              'discountMinor': '0',
+              'totalMinor': '15400',
             },
           }),
           200,
@@ -372,6 +450,8 @@ void _configureBackendCart(
   CustomerApi.instance = api;
   cart.addItem(
     productId: 'cart-page-backend-item',
+    productVariantId: 'cart-page-backend-variant',
+    variantLabel: '1 kg',
     serviceType: 'backend_catalog',
     merchantId: 'cart-page-backend-shop',
     name: 'Backend cart item',

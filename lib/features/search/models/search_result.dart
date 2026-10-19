@@ -1,3 +1,5 @@
+import '../../product_details/models/product_variant.dart';
+
 enum SearchResultType {
   restaurant,
   restaurantProduct,
@@ -32,6 +34,8 @@ class SearchResult {
     this.available = true,
     this.isBackendData = false,
     this.partnerType,
+    this.storeOpen = true,
+    this.variants = const [],
   });
 
   final String id;
@@ -47,6 +51,8 @@ class SearchResult {
   final bool available;
   final bool isBackendData;
   final String? partnerType;
+  final bool storeOpen;
+  final List<ProductVariant> variants;
 
   bool get isProductResult => switch (type) {
     SearchResultType.restaurantProduct ||

@@ -108,6 +108,9 @@ test('searches catalog products with parameterized filters and pagination', asyn
   });
   assert.match(calls[0].sql, /pr\.status = 'active'/);
   assert.match(calls[0].sql, /pr\.is_available = true/);
+  assert.match(calls[0].sql, /jsonb_agg/);
+  assert.match(calls[0].sql, /app\.product_variants/);
+  assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].params, [
     '57a85a0c-7081-4eb7-9c13-4b9842216b54',
     '7512bb41-8bcb-4237-996e-eb54635b5b74',
@@ -129,6 +132,11 @@ test('reads active shop categories and product details from the catalog tables',
     name: 'Tea',
     price_minor: '1500',
     currency: 'INR',
+    image_url: null,
+    thumb_url: null,
+    variants: [],
+    operating_details: { open: '00:00', close: '00:00' },
+    timezone: 'Asia/Kolkata',
   };
   const databasePool = {
     async query(sql, params) {
@@ -148,13 +156,59 @@ test('reads active shop categories and product details from the catalog tables',
     `${baseUrl}/api/v1/products/${product.id}`,
   );
   assert.equal(productResponse.status, 200);
-  assert.deepEqual(await productResponse.json(), { data: product });
+  assert.deepEqual(await productResponse.json(), {
+    data: { ...product, storeOpen: false },
+  });
 
   assert.deepEqual(calls.map((call) => call.params), [[shopId], [product.id]]);
   assert.match(calls[0].sql, /app\.categories/);
   assert.match(calls[0].sql, /c\.is_active = true/);
   assert.match(calls[1].sql, /app\.products/);
+  assert.match(calls[1].sql, /jsonb_agg/);
+  assert.match(calls[1].sql, /app\.product_variants/);
   assert.match(calls[1].sql, /p\.status = 'approved'/);
+});
+
+test('returns product variants and images in one batched catalog-list query', async (t) => {
+  const calls = [];
+  const variant = {
+    id: '2f74a125-f7b7-4df5-bf8a-98cd183af04f',
+    label: '500 g',
+    unit: 'g',
+    quantity: 500,
+    price_minor: '1500',
+    stock: 8,
+    is_available: true,
+    sort_order: 0,
+  };
+  const databasePool = {
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return {
+        rows: [
+          {
+            id: '57a85a0c-7081-4eb7-9c13-4b9842216b54',
+            image_url: 'https://cdn.example.test/tea.jpg',
+            thumb_url: 'https://cdn.example.test/tea-thumb.jpg',
+            variants: [variant],
+            operating_details: { open: '00:00', close: '00:00' },
+            timezone: 'Asia/Kolkata',
+          },
+        ],
+      };
+    },
+  };
+  const baseUrl = await startTestServer(t, databasePool);
+  const response = await fetch(`${baseUrl}/api/v1/products?shopId=57a85a0c-7081-4eb7-9c13-4b9842216b54`);
+
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.deepEqual(result.data[0].variants, [variant]);
+  assert.equal(result.data[0].image_url, 'https://cdn.example.test/tea.jpg');
+  assert.equal(result.data[0].thumb_url, 'https://cdn.example.test/tea-thumb.jpg');
+  assert.equal(result.data[0].storeOpen, false);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].sql, /ORDER BY v\.sort_order, v\.id/);
 });
 
 test('validates ids and query options before accessing PostgreSQL', async (t) => {

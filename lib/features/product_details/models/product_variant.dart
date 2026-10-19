@@ -10,6 +10,9 @@ class ProductVariant {
     this.sku,
     this.imageUrl,
     this.value,
+    this.unit,
+    this.quantity,
+    this.stock,
   });
 
   final String id;
@@ -22,4 +25,7 @@ class ProductVariant {
   final String? sku;
   final String? imageUrl;
   final String? value;
+  final String? unit;
+  final double? quantity;
+  final int? stock;
 }

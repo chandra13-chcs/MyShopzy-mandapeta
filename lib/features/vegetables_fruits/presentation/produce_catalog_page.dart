@@ -477,9 +477,7 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
       _backendProducts = const [];
     });
     try {
-      final shops = await CustomerApi.instance.getShops(
-        partnerType: 'grocery',
-      );
+      final shops = await CustomerApi.instance.getShops(partnerType: 'grocery');
       final responses = await Future.wait<Object>([
         CustomerApi.instance.getAllProducts(partnerType: 'grocery'),
         Future.wait(
@@ -499,19 +497,20 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
       final usedCategoryIds = matchingProducts
           .map((product) => product.categoryId ?? 'other')
           .toSet();
-      final categories = usedCategoryIds
-          .map(
-            (id) => ProduceCategory(
-              id: id,
-              name: categoryNames[id] ?? 'Other',
-              type: widget.type,
-              icon: widget.type == ProduceType.fruit
-                  ? Icons.apple_rounded
-                  : Icons.eco_rounded,
-            ),
-          )
-          .toList(growable: false)
-        ..sort((first, second) => first.name.compareTo(second.name));
+      final categories =
+          usedCategoryIds
+              .map(
+                (id) => ProduceCategory(
+                  id: id,
+                  name: categoryNames[id] ?? 'Other',
+                  type: widget.type,
+                  icon: widget.type == ProduceType.fruit
+                      ? Icons.apple_rounded
+                      : Icons.eco_rounded,
+                ),
+              )
+              .toList(growable: false)
+            ..sort((first, second) => first.name.compareTo(second.name));
       final mappedProducts = matchingProducts
           .map(
             (product) => StoreProduct(
@@ -527,10 +526,12 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
               discount: product.discountPercent,
               rating: product.rating ?? -1,
               available: product.available,
+              variants: product.variants,
               serviceType: 'local_store',
               imageUrl: product.imageUrl,
               badge: product.badge,
               isBackendData: true,
+              storeOpen: product.storeOpen,
             ),
           )
           .toList(growable: false);
@@ -620,49 +621,51 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                                 () => _selectedCategoryId = category.id,
                               ),
                               child: Padding(
-                            padding: const EdgeInsets.fromLTRB(7, 5, 7, 10),
-                            child: Column(
-                              children: [
-                                AnimatedContainer(
-                                  duration: const Duration(milliseconds: 160),
-                                  width: 62,
-                                  height: 65,
-                                  decoration: BoxDecoration(
-                                    color: selected
-                                        ? const Color(0xFFE9F1E7)
-                                        : Colors.white,
-                                    borderRadius: BorderRadius.circular(13),
-                                    border: Border.all(
-                                      color: selected
-                                          ? const Color(0xFFBBD4B7)
-                                          : const Color(0xFFE9ECE7),
+                                padding: const EdgeInsets.fromLTRB(7, 5, 7, 10),
+                                child: Column(
+                                  children: [
+                                    AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 160,
+                                      ),
+                                      width: 62,
+                                      height: 65,
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? const Color(0xFFE9F1E7)
+                                            : Colors.white,
+                                        borderRadius: BorderRadius.circular(13),
+                                        border: Border.all(
+                                          color: selected
+                                              ? const Color(0xFFBBD4B7)
+                                              : const Color(0xFFE9ECE7),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        category.icon,
+                                        color: selected
+                                            ? _green
+                                            : const Color(0xFF8B948C),
+                                        size: 27,
+                                      ),
                                     ),
-                                  ),
-                                  child: Icon(
-                                    category.icon,
-                                    color: selected
-                                        ? _green
-                                        : const Color(0xFF8B948C),
-                                    size: 27,
-                                  ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      category.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: selected ? _ink : _muted,
+                                        fontSize: 10,
+                                        fontWeight: selected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 5),
-                                Text(
-                                  category.name,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: selected ? _ink : _muted,
-                                    fontSize: 10,
-                                    fontWeight: selected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    height: 1.2,
-                                  ),
-                                ),
-                              ],
-                            ),
                               ),
                             ),
                           ),
@@ -792,32 +795,34 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                     )
                   : _backendError != null
                   ? _backendOfflineError
-                      ? Center(
-                          child: OfflineErrorState(onRetry: _loadBackendCatalog),
-                        )
-                      : Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _backendError!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Color(0xFFA85B5B),
-                                fontSize: 12,
+                        ? Center(
+                            child: OfflineErrorState(
+                              onRetry: _loadBackendCatalog,
+                            ),
+                          )
+                        : Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _backendError!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Color(0xFFA85B5B),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: _loadBackendCatalog,
+                                    icon: const Icon(Icons.refresh_rounded),
+                                    label: const Text('Retry catalog'),
+                                  ),
+                                ],
                               ),
                             ),
-                            TextButton.icon(
-                              onPressed: _loadBackendCatalog,
-                              icon: const Icon(Icons.refresh_rounded),
-                              label: const Text('Retry catalog'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
+                          )
                   : _backendCategories.isEmpty
                   ? Center(
                       child: Padding(
@@ -843,7 +848,8 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                               final selected =
                                   category.id == _selectedCategoryId;
                               return fadeSlideItem(
-                                itemKey: 'backend-produce-category-${category.id}',
+                                itemKey:
+                                    'backend-produce-category-${category.id}',
                                 index: index,
                                 child: PressScaleFeedback(
                                   child: InkWell(
@@ -851,58 +857,57 @@ class _ProduceCatalogPageState extends State<ProduceCatalogPage> {
                                       () => _selectedCategoryId = category.id,
                                     ),
                                     child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    7,
-                                    5,
-                                    7,
-                                    10,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 160,
-                                        ),
-                                        width: 62,
-                                        height: 65,
-                                        decoration: BoxDecoration(
-                                          color: selected
-                                              ? const Color(0xFFE9F1E7)
-                                              : Colors.white,
-                                          borderRadius: BorderRadius.circular(
-                                            13,
-                                          ),
-                                          border: Border.all(
-                                            color: selected
-                                                ? const Color(0xFFBBD4B7)
-                                                : const Color(0xFFE9ECE7),
-                                          ),
-                                        ),
-                                        child: Icon(
-                                          category.icon,
-                                          color: selected
-                                              ? _green
-                                              : const Color(0xFF8B948C),
-                                          size: 27,
-                                        ),
+                                      padding: const EdgeInsets.fromLTRB(
+                                        7,
+                                        5,
+                                        7,
+                                        10,
                                       ),
-                                      const SizedBox(height: 5),
-                                      Text(
-                                        category.name,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: selected ? _ink : _muted,
-                                          fontSize: 10,
-                                          fontWeight: selected
-                                              ? FontWeight.w700
-                                              : FontWeight.w500,
-                                          height: 1.2,
-                                        ),
+                                      child: Column(
+                                        children: [
+                                          AnimatedContainer(
+                                            duration: const Duration(
+                                              milliseconds: 160,
+                                            ),
+                                            width: 62,
+                                            height: 65,
+                                            decoration: BoxDecoration(
+                                              color: selected
+                                                  ? const Color(0xFFE9F1E7)
+                                                  : Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(13),
+                                              border: Border.all(
+                                                color: selected
+                                                    ? const Color(0xFFBBD4B7)
+                                                    : const Color(0xFFE9ECE7),
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              category.icon,
+                                              color: selected
+                                                  ? _green
+                                                  : const Color(0xFF8B948C),
+                                              size: 27,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 5),
+                                          Text(
+                                            category.name,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color: selected ? _ink : _muted,
+                                              fontSize: 10,
+                                              fontWeight: selected
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500,
+                                              height: 1.2,
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
                                     ),
                                   ),
                                 ),

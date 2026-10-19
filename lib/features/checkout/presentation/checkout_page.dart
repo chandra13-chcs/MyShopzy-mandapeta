@@ -40,7 +40,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   ApiCartQuote? _backendQuote;
   String? _quoteError;
   bool _quoteLoading = false;
+  bool _storeClosedByServer = false;
   bool _placingOrder = false;
+  static const _storeClosedMessage =
+      'Store is closed. Orders open at 7:00 AM';
   final _couponCodeController = TextEditingController();
   final _receiverNameController = TextEditingController();
   final _receiverMobileController = TextEditingController();
@@ -236,6 +239,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       if (!mounted) return;
       setState(() {
         _backendQuote = quote;
+        _storeClosedByServer = !quote.storeOpen;
         _quoteLoading = false;
       });
     } on CustomerApiException catch (error) {
@@ -270,6 +274,31 @@ class _CheckoutPageState extends State<CheckoutPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_isBackendCart &&
+                      (_storeClosedByServer ||
+                          _backendQuote?.storeOpen == false)) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF4E5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFF2D4A8)),
+                      ),
+                      child: const Text(
+                        _storeClosedMessage,
+                        style: TextStyle(
+                          color: Color(0xFF805000),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   if (_cartStore.items.isEmpty) ...[
                     _buildEmptyCartState(context),
                     const SizedBox(height: 16),
@@ -382,6 +411,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   _serviceabilityResponse?.isDeliverable == true) &&
               !_serviceabilityChecking &&
               (!_isBackendCart || _backendQuote != null) &&
+              (!_isBackendCart || _backendQuote?.storeOpen != false) &&
+              !_storeClosedByServer &&
               (!_isBackendCart || (!_quoteLoading && _quoteError == null)) &&
               !_placingOrder &&
               !orderOutcomeUnknown;
@@ -1211,7 +1242,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
     ApiCartQuoteItem? quoteItem;
     if (_isBackendCart && _backendQuote != null) {
       for (final quoted in _backendQuote!.items) {
-        if (quoted.productId == item.productId) {
+        if (quoted.productId == item.productId &&
+            quoted.variantId == item.productVariantId) {
           quoteItem = quoted;
           break;
         }
@@ -1221,6 +1253,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final priceMinor = quoteItem?.priceMinor ?? item.priceInPaise;
     final lineTotalMinor =
         quoteItem?.lineTotalMinor ?? item.priceInPaise * item.quantity;
+    final variantLabel = quoteItem?.variantLabel ?? item.variantLabel;
     return Row(
       children: [
         Container(
@@ -1247,10 +1280,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   fontWeight: FontWeight.w600,
                 ),
               ),
-              if (item.variantLabel != null) ...[
+              if (variantLabel != null) ...[
                 const SizedBox(height: 3),
                 Text(
-                  item.variantLabel!,
+                  variantLabel,
                   style: const TextStyle(
                     color: _secondaryText,
                     fontSize: 11,
@@ -1946,10 +1979,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
     } on CustomerApiException catch (error) {
       if (!mounted) return;
+      if (error.code == 'STORE_CLOSED') {
+        setState(() => _storeClosedByServer = true);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            CustomerApi.instance.orderOutcomeUnknown
+            error.code == 'STORE_CLOSED'
+                ? _storeClosedMessage
+                : CustomerApi.instance.orderOutcomeUnknown
                 ? 'Order status is unknown. Do not submit again until checked.'
                 : error.message,
           ),

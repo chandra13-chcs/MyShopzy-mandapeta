@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:myshopzy/features/orders/models/order_record.dart';
 import 'package:myshopzy/features/orders/presentation/order_details_page.dart';
 import 'package:myshopzy/features/orders/presentation/orders_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
@@ -24,6 +25,22 @@ void main() {
     CustomerApi.instance = CustomerApi(baseUrl: '');
   });
 
+  testWidgets('renders the variant label saved in the order snapshot', (
+    tester,
+  ) async {
+    CustomerApi.instance = _api((request) async {
+      expect(request.url.path, '/api/v1/me/orders/$_orderId');
+      return _jsonResponse(_orderDetailJson());
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(home: BackendOrderDetailsPage(order: _backendOrderRecord())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('API Product · 500 g × 2'), findsOneWidget);
+  });
+
   testWidgets('loads backend orders and opens order details from API', (
     tester,
   ) async {
@@ -38,7 +55,7 @@ void main() {
     });
 
     await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byKey(const ValueKey('orders-loading')), findsOneWidget);
     ordersResponse.complete(
       _jsonResponse({
         'data': [_orderJson()],
@@ -62,7 +79,8 @@ void main() {
 
     expect(find.byType(BackendOrderDetailsPage), findsOneWidget);
     expect(find.text('Backend order'), findsOneWidget);
-    expect(find.text('API Product × 2'), findsOneWidget);
+    expect(find.text('API Product · 500 g × 2'), findsOneWidget);
+    expect(find.text('500 g'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -900));
     await tester.pumpAndSettle();
     expect(find.text('Home · 42 Backend Road'), findsOneWidget);
@@ -234,8 +252,35 @@ Map<String, Object?> _orderDetailJson() => {
         'quantity': 2,
         'line_total_minor': '2500',
         'currency': 'INR',
-        'variant_snapshot': null,
+        'variant_snapshot': {
+          'variantId': 'variant-id',
+          'label': '500 g',
+          'unit': 'g',
+          'quantity': 500,
+          'sku': 'SKU-1',
+          'unitPriceMinor': '1250',
+        },
       },
     ],
   },
 };
+
+OrderRecord _backendOrderRecord() => OrderRecord(
+  storeName: 'Backend Shop',
+  icon: Icons.storefront_outlined,
+  orderId: _orderId,
+  dateTime: '2026-10-11T06:00:00.000Z',
+  itemSummary: 'API Product',
+  totalInPaise: 2800,
+  status: 'placed',
+  statusMessage: 'Order placed',
+  orderTab: OrdersTab.ongoing,
+  serviceType: 'local_store',
+  items: const [],
+  deliveryAddress: 'Home · 42 Backend Road',
+  paymentMethod: 'UPI',
+  paymentStatus: 'Pending',
+  deliveryChargeInPaise: 300,
+  discountInPaise: 0,
+  isBackendData: true,
+);

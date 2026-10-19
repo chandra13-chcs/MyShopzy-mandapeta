@@ -173,7 +173,9 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
                   cuisine: 'Details not provided',
                   distance: '—',
                   location: shop.address ?? 'Address not provided',
-                  status: RestaurantStatus.unknown,
+                  status: shop.storeOpen
+                      ? RestaurantStatus.open
+                      : RestaurantStatus.closed,
                   isBackendData: true,
                 ),
               )
@@ -652,6 +654,30 @@ class _RestaurantCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  if (restaurant.status == RestaurantStatus.closed &&
+                      restaurant.isBackendData)
+                    Positioned(
+                      bottom: 11,
+                      left: 11,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'Closed',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
                   Positioned(
                     top: 9,
                     right: 9,
@@ -932,6 +958,7 @@ class _RestaurantCard extends StatelessWidget {
   }
 
   bool get _shouldShowUnavailableState =>
-      restaurant.status == RestaurantStatus.closed ||
-      restaurant.status == RestaurantStatus.unavailable;
+      !restaurant.isBackendData &&
+      (restaurant.status == RestaurantStatus.closed ||
+          restaurant.status == RestaurantStatus.unavailable);
 }

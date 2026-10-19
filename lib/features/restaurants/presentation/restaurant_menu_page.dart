@@ -7,6 +7,7 @@ import '../../../shared/presentation/offline_error_state.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../product_details/presentation/product_details_page.dart';
+import '../../product_details/models/product_variant.dart';
 import '../../wishlist/presentation/save_list_button.dart';
 import 'restaurants_page.dart';
 
@@ -39,6 +40,8 @@ class MenuItem {
     this.mrp,
     this.discount = 0,
     this.badge,
+    this.storeOpen = true,
+    this.variants = const [],
   });
 
   final String id;
@@ -59,6 +62,8 @@ class MenuItem {
   final double? mrp;
   final int discount;
   final String? badge;
+  final bool storeOpen;
+  final List<ProductVariant> variants;
 }
 
 const sampleRestaurantMenuCategories = [
@@ -288,6 +293,8 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         mrp: product.mrpMinor == null ? null : product.mrpMinor! / 100,
         discount: product.discountPercent,
         badge: product.badge,
+        storeOpen: product.storeOpen,
+        variants: product.variants,
       );
     }).toList();
     return _RestaurantCatalog(categories: menuCategories, items: items);
@@ -932,6 +939,8 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
     imageUrl: item.imageUrl,
     badge: item.badge,
     isBackendData: item.isBackendProduct,
+    storeOpen: item.storeOpen,
+    variants: item.variants,
   );
 }
 
@@ -1148,13 +1157,16 @@ class _MenuItemCard extends StatelessWidget {
                         name: item.name,
                         description: item.description,
                         imageUrl: item.imageUrl,
-                        priceInPaise: (item.price * 100).round(),
+                        priceInPaise: item.variants.length == 1
+                            ? item.variants.single.priceInPaise
+                            : (item.price * 100).round(),
                         available: item.available,
                         icon: Icons.restaurant_rounded,
                         isVegetarian: item.dietaryInfoAvailable
                             ? item.isVeg
                             : null,
                         isBackendProduct: item.isBackendProduct,
+                        variants: item.variants,
                       ),
                     ),
                   ),
@@ -1168,13 +1180,24 @@ class _MenuItemCard extends StatelessWidget {
                     productId: item.id,
                     serviceType: 'restaurant',
                     merchantId: item.restaurantId,
+                    productVariantId: item.variants.length == 1
+                        ? item.variants.single.id
+                        : null,
+                    variantLabel: item.variants.length == 1
+                        ? item.variants.single.label
+                        : null,
                     categoryId: item.categoryId,
                     name: item.name,
                     description: item.description,
-                    priceInPaise: (item.price * 100).round(),
+                    priceInPaise: item.variants.length == 1
+                        ? item.variants.single.priceInPaise
+                        : (item.price * 100).round(),
                     imageUrl: item.imageUrl,
                     icon: Icons.restaurant_rounded,
                     backendCatalogItem: item.isBackendProduct,
+                    onVariantRequired: item.variants.length != 1
+                        ? () => _openDetails(context)
+                        : null,
                     width: 84,
                     unavailableLabel: 'OUT OF STOCK',
                   ),

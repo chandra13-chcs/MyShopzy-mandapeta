@@ -227,3 +227,63 @@ INSERT INTO app.products (
     'active'
   )
 ON CONFLICT DO NOTHING;
+
+INSERT INTO app.product_variants (
+  product_id,
+  partner_id,
+  shop_id,
+  label,
+  unit,
+  quantity,
+  price_minor,
+  stock,
+  sku,
+  is_available,
+  sort_order
+)
+SELECT
+  p.id,
+  p.partner_id,
+  p.shop_id,
+  seeded.label,
+  seeded.unit,
+  seeded.quantity,
+  seeded.price_minor,
+  seeded.stock,
+  seeded.sku,
+  true,
+  seeded.sort_order
+FROM (
+  VALUES
+    ('40000000-0000-4000-8000-000000000001'::uuid, '1 serving', 'each', 1::numeric, 24900::bigint, 30, 'MK-BIR-001-S1', 1),
+    ('40000000-0000-4000-8000-000000000001'::uuid, '2 servings', 'each', 2::numeric, 44900::bigint, 15, 'MK-BIR-001-S2', 2),
+    ('40000000-0000-4000-8000-000000000002'::uuid, '1 serving', 'each', 1::numeric, 18900::bigint, 25, 'MK-BIR-002-S1', 1),
+    ('40000000-0000-4000-8000-000000000002'::uuid, '2 servings', 'each', 2::numeric, 34900::bigint, 12, 'MK-BIR-002-S2', 2),
+    ('40000000-0000-4000-8000-000000000003'::uuid, '1 serving', 'each', 1::numeric, 21900::bigint, 20, 'MK-BIR-003-S1', 1),
+    ('40000000-0000-4000-8000-000000000003'::uuid, '2 servings', 'each', 2::numeric, 39900::bigint, 10, 'MK-BIR-003-S2', 2),
+    ('40000000-0000-4000-8000-000000000004'::uuid, '1 serving', 'each', 1::numeric, 27900::bigint, 18, 'MK-CUR-001-S1', 1),
+    ('40000000-0000-4000-8000-000000000004'::uuid, '2 servings', 'each', 2::numeric, 49900::bigint, 9, 'MK-CUR-001-S2', 2),
+    ('40000000-0000-4000-8000-000000000005'::uuid, '1 serving', 'each', 1::numeric, 23900::bigint, 20, 'MK-CUR-002-S1', 1),
+    ('40000000-0000-4000-8000-000000000005'::uuid, '2 servings', 'each', 2::numeric, 42900::bigint, 10, 'MK-CUR-002-S2', 2),
+    ('40000000-0000-4000-8000-000000000006'::uuid, '6 each', 'each', 6::numeric, 3500::bigint, 40, 'GB-FRU-001-6', 1),
+    ('40000000-0000-4000-8000-000000000006'::uuid, '12 each', 'each', 12::numeric, 6000::bigint, 20, 'GB-FRU-001-12', 2),
+    ('40000000-0000-4000-8000-000000000007'::uuid, '500 g', 'g', 500::numeric, 8000::bigint, 25, 'GB-FRU-002-500G', 1),
+    ('40000000-0000-4000-8000-000000000007'::uuid, '1 kg', 'kg', 1::numeric, 16000::bigint, 25, 'GB-FRU-002-1KG', 2),
+    ('40000000-0000-4000-8000-000000000008'::uuid, '500 g', 'g', 500::numeric, 2500::bigint, 35, 'GB-VEG-001-500G', 1),
+    ('40000000-0000-4000-8000-000000000008'::uuid, '1 kg', 'kg', 1::numeric, 4000::bigint, 35, 'GB-VEG-001-1KG', 2),
+    ('40000000-0000-4000-8000-000000000009'::uuid, '1 kg', 'kg', 1::numeric, 3000::bigint, 50, 'GB-VEG-002-1KG', 1),
+    ('40000000-0000-4000-8000-000000000009'::uuid, '5 kg', 'kg', 5::numeric, 13500::bigint, 10, 'GB-VEG-002-5KG', 2),
+    ('40000000-0000-4000-8000-000000000010'::uuid, '1 bunch', 'bunch', 1::numeric, 2500::bigint, 30, 'GB-VEG-003-1B', 1),
+    ('40000000-0000-4000-8000-000000000010'::uuid, '2 bunches', 'bunch', 2::numeric, 4500::bigint, 15, 'GB-VEG-003-2B', 2)
+) AS seeded (
+  product_id,
+  label,
+  unit,
+  quantity,
+  price_minor,
+  stock,
+  sku,
+  sort_order
+)
+JOIN app.products AS p ON p.id = seeded.product_id
+ON CONFLICT DO NOTHING;

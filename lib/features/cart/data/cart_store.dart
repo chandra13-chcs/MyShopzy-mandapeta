@@ -21,11 +21,13 @@ class CartStore extends ChangeNotifier {
     required String productId,
     required String serviceType,
     required String merchantId,
+    String? productVariantId,
   }) => _pendingCatalogAdds.contains(
     CartItem.keyFor(
       serviceType: serviceType,
       merchantId: merchantId,
       productId: productId,
+      productVariantId: productVariantId,
     ),
   );
 
@@ -124,6 +126,8 @@ class CartStore extends ChangeNotifier {
     required String serviceType,
     required String merchantId,
     required String categoryId,
+    String? productVariantId,
+    String? variantLabel,
     required String name,
     required String description,
     required int priceInPaise,
@@ -136,6 +140,8 @@ class CartStore extends ChangeNotifier {
         serviceType: serviceType,
         merchantId: merchantId,
         categoryId: categoryId,
+        productVariantId: productVariantId,
+        variantLabel: variantLabel,
         name: name,
         description: description,
         priceInPaise: priceInPaise,
@@ -148,6 +154,13 @@ class CartStore extends ChangeNotifier {
         statusCode: null,
         code: 'DEMO_CART_NOT_SYNCED',
         message: 'Clear demo cart items before using the live catalog.',
+      );
+    }
+    if (productVariantId == null || productVariantId.isEmpty) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'VARIANT_REQUIRED',
+        message: 'Choose a product variant before adding it to your cart.',
       );
     }
     final incomingContext = CartOrderContext(
@@ -167,16 +180,21 @@ class CartStore extends ChangeNotifier {
       serviceType: serviceType,
       merchantId: merchantId,
       productId: productId,
+      productVariantId: productVariantId,
     );
     if (_pendingCatalogAdds.contains(pendingKey)) return false;
     _pendingCatalogAdds.add(pendingKey);
     notifyListeners();
     try {
-      final updatedQuantity = await api.addCartItem(productId);
+      final updatedQuantity = await api.addCartItem(
+        productId,
+        variantId: productVariantId,
+      );
       for (final item in _items) {
         if (item.isBackendProduct &&
             item.productId == productId &&
-            item.merchantId == merchantId) {
+            item.merchantId == merchantId &&
+            item.productVariantId == productVariantId) {
           item.quantity = updatedQuantity;
           item.name = name;
           item.description = description;
@@ -191,6 +209,8 @@ class CartStore extends ChangeNotifier {
         serviceType: serviceType,
         merchantId: merchantId,
         categoryId: categoryId,
+        productVariantId: productVariantId,
+        variantLabel: variantLabel,
         name: name,
         description: description,
         priceInPaise: priceInPaise,
@@ -220,14 +240,17 @@ class CartStore extends ChangeNotifier {
     final cart = await CustomerApi.instance.getCart();
     final existingItems = {
       for (final item in _items)
-        if (item.isBackendProduct) '${item.merchantId}:${item.productId}': item,
+        if (item.isBackendProduct)
+          '${item.merchantId}:${item.productId}:${item.productVariantId}': item,
     };
     _items
       ..clear()
       ..addAll(
         cart.items.map((apiItem) {
           final existing =
-              existingItems['${apiItem.shopId}:${apiItem.productId}'];
+              existingItems[
+                '${apiItem.shopId}:${apiItem.productId}:${apiItem.variantId}'
+              ];
           if (existing != null) {
             return existing
               ..quantity = apiItem.quantity
@@ -239,10 +262,13 @@ class CartStore extends ChangeNotifier {
             serviceType: 'backend_catalog',
             merchantId: apiItem.shopId,
             productId: apiItem.productId,
+            productVariantId: apiItem.variantId,
           );
           return CartItem(
             key: key,
             productId: apiItem.productId,
+            productVariantId: apiItem.variantId,
+            variantLabel: apiItem.variantLabel,
             serviceType: 'backend_catalog',
             merchantId: apiItem.shopId,
             name: apiItem.name,
@@ -341,6 +367,7 @@ class CartStore extends ChangeNotifier {
     try {
       final updatedQuantity = await CustomerApi.instance.updateCartItem(
         item.productId,
+        item.productVariantId!,
         quantity,
       );
       final currentItem = _findItem(key);
@@ -362,7 +389,10 @@ class CartStore extends ChangeNotifier {
     final item = _findItem(key);
     if (item == null) return;
     if (item.isBackendProduct) {
-      await CustomerApi.instance.removeCartItem(item.productId);
+      await CustomerApi.instance.removeCartItem(
+        item.productId,
+        item.productVariantId!,
+      );
     }
     removeItem(key);
   }

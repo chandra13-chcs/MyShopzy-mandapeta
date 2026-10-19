@@ -20,15 +20,18 @@ responses have `{ "data": { ... } }`. Errors have
 | `GET /partner-categories` | No parameters | Distinct `partner_type`, derived `display_name`, active `partner_count` | `app.partners`; `is_active` is generated from the existing approved status |
 | `GET /shops` | Optional normalized `partnerType` slug, `q`, `limit` (1–100), `offset` | Shop `id`, `partner_id`, `name`, `slug`, `address`, `operating_details`, `partner_name`, `partner_type` | `app.shops`, `app.partners`; only active shops of approved partners |
 | `GET /shops/:shopId/categories` | UUID `shopId` | Category `id`, `shop_id`, `parent_category_id`, `name`, `slug`, `sort_order` | `app.categories`, `app.shops`, `app.partners`; active categories of an active shop and approved partner |
-| `GET /products` | Optional UUID `shopId`, UUID `categoryId`, `partnerType`, `q`, `limit` (1–100), `offset` | Product `id`, `partner_id`, `shop_id`, `category_id`, `sku`, `name`, `description`, `price_minor`, `currency`, `inventory_quantity`, `is_available`, `attributes`, `shop_name`, `partner_name`, `partner_type` | `app.products`, `app.shops`, `app.partners`; only active and available products from active shops and approved partners |
-| `GET /products/:productId` | UUID `productId` | Same product fields as `GET /products` | Same tables and public/available visibility rules |
+| `GET /products` | Optional UUID `shopId`, UUID `categoryId`, `partnerType`, `q`, `limit` (1–100), `offset` | Product fields plus nullable `image_url`, `thumb_url`, and `variants[]` (`id`, `label`, `unit`, `quantity`, string `price_minor`, nullable `stock`, `is_available`, `sort_order`) | `app.products`, `app.product_variants`, `app.shops`, `app.partners`; variants are aggregated in the product-list query in `sort_order` order |
+| `GET /products/:productId` | UUID `productId` | Same product fields and variants as `GET /products` | Same tables and public/available visibility rules |
 | `POST /delivery/serviceability` | `{ "latitude": number, "longitude": number, "pincode": "533308" }` | `{ "isDeliverable": boolean, "message": string }` | Validates coordinate ranges and checks `app.serviceable_pincodes`; returns `503 DATABASE_UNAVAILABLE` if PostgreSQL is unavailable |
 
-Prices are returned in the database's minor currency unit (`price_minor`, paise
-for INR). Presentation metadata (`image_url`, `rating`, `mrp_minor`,
-`discount_percent`, `badge`, `brand`, `pack_size`, and `produce_type`) can be
-stored in product `attributes` and is returned as stored. The app recognizes
-these keys; absent values are not fabricated.
+Variant prices are returned in the database's minor currency unit (`price_minor`,
+paise for INR) as strings to preserve bigint precision. The legacy product-level
+price and inventory columns remain in catalog responses for compatibility;
+cart and checkout calculations use the selected variant's price and stock.
+Presentation metadata such as `rating`, `mrp_minor`, `discount_percent`,
+`badge`, `brand`, `pack_size`, and `produce_type` may be stored in product
+`attributes`; product images use the dedicated `image_url` and `thumb_url`
+columns.
 All request values are passed separately as PostgreSQL parameters. Invalid
 query values return `400`, missing public resources return `404`, unavailable
 PostgreSQL returns `503`, and database failures return a generic `500`.
@@ -80,30 +83,34 @@ claim that a parcel has been accepted or delivered.
 ## Cart, checkout, and order API foundations
 
 The additive migration `002_customer_carts.sql` adds
-`app.customer_carts` and `app.customer_cart_items`. Each cart is addressed
-only by a random 256-bit bearer token returned once by cart creation; the
-database stores its SHA-256 hash. This is an anonymous cart capability, not a
-customer identity. A caller must protect the token, and possession grants
-access to that cart.
+`app.customer_carts` and `app.customer_cart_items`; migration
+`008_product_variants_and_images.sql` adds `variant_id` and changes cart-line
+identity to `(cart_id, product_id, variant_id)`. Each cart is addressed only by
+a random 256-bit bearer token returned once by cart creation; the database
+stores its SHA-256 hash. This is an anonymous cart capability, not a customer
+identity. A caller must protect the token, and possession grants access to
+that cart.
 
 | Endpoint | Request | Response / behavior | PostgreSQL tables |
 |---|---|---|---|
 | `POST /carts` | Empty JSON body or no body | `201` with one-time `data.cartToken` | `app.customer_carts` |
-| `GET /cart` | `X-Cart-Token` header | Cart shop, current product prices, quantities, availability, and subtotal | Cart tables, products, shops, partners |
-| `POST /cart/items` | `X-Cart-Token`; `{ "productId": "<uuid>", "quantity": 1 }` (quantity optional, defaults to 1) | Adds quantity to the product's cart quantity; server reads product price and stock | Cart tables and catalog tables |
-| `PATCH /cart/items/:productId` | `X-Cart-Token`; `{ "quantity": 1 }` | Sets quantity; quantity must be 1–99 and within available inventory when inventory is tracked | Cart tables and catalog tables |
-| `DELETE /cart/items/:productId` | `X-Cart-Token` | `204` after removal | Cart tables |
+| `GET /cart` | `X-Cart-Token` header | Cart shop, current variant price, `variantId`, `variantLabel`, quantities, availability, and subtotal | Cart tables, products, product variants, shops, partners |
+| `POST /cart/items` | `X-Cart-Token`; `{ "productId": "<uuid>", "variantId": "<uuid>", "quantity": 1 }` (quantity optional, defaults to 1) | Adds quantity to the product/variant cart line; variant must belong to the product and its shop; server reads variant price and stock | Cart tables and catalog tables |
+| `PATCH /cart/items/:productId/:variantId` | `X-Cart-Token`; `{ "quantity": 1 }` | Sets quantity for that product/variant line; quantity must be 1–99 and within variant stock when tracked | Cart tables and catalog tables |
+| `DELETE /cart/items/:productId/:variantId` | `X-Cart-Token` | `204` after removal of that product/variant line | Cart tables |
 | `DELETE /cart/items` | `X-Cart-Token` | Clears cart contents and releases the cart's single-shop binding | Cart tables |
-| `POST /checkout/quote` | `X-Cart-Token`; no client price/total fields | Items, currency, subtotal, delivery fee, discount, and total; prices are freshly read from PostgreSQL | Cart tables, products, shops, partners |
-| `POST /orders` | `X-Cart-Token`; `{ "deliveryAddress": { ... , "pincode": "533308" } }`; trusted authenticated customer context | `201` with order ID/status and server-calculated totals. Requires the address pincode to be active in `app.serviceable_pincodes`; order and immutable item snapshots are inserted transactionally. | Customers, users, cart tables, products, shops, partners, serviceable pincodes, orders, order items |
+| `POST /checkout/quote` | `X-Cart-Token`; no client price/total fields | Items (including `variantId` and `variantLabel`), currency, subtotal, delivery fee, discount, and total; prices are freshly read from PostgreSQL variants | Cart tables, products, product variants, shops, partners |
+| `POST /orders` | `X-Cart-Token`; `{ "deliveryAddress": { ... , "pincode": "533308" } }`; trusted authenticated customer context | `201` with order ID/status and server-calculated totals. Requires the address pincode to be active in `app.serviceable_pincodes`; order and immutable item snapshots are inserted transactionally. | Customers, users, cart tables, products, product variants, shops, partners, serviceable pincodes, orders, order items |
 
 Order placement checks that every product, shop, and partner is active/approved,
-that all products belong to the cart's one shop, that inventory is sufficient,
+that all products belong to the cart's one shop, that each variant's stock is
+sufficient,
 and that monetary totals fit PostgreSQL `bigint`. It does not accept submitted
 prices, line totals, subtotal, delivery fee, or discount. Delivery fee and
 discount are fixed to zero because no delivery pricing/coupon rules exist.
-Order items snapshot the schema-supported product name, SKU, unit price,
-quantity, line total, and currency. Unsupported product variants, delivery
+Order items snapshot the schema-supported product name, variant SKU and unit
+price, cart quantity, line total, currency, and variant details (`variantId`,
+label, unit, variant quantity, SKU, and unit price). Delivery
 instructions, payment details, and cancellation reason are not persisted.
 
 `POST /orders` returns `401` unless `createApp` receives a trusted
@@ -125,8 +132,8 @@ geofence coordinates. Customer order cancellation remains unavailable.
 | Delivery location bottom sheet | `POST /delivery/serviceability` during checkout | Requires coordinates and a six-digit pincode; checks `app.serviceable_pincodes`, not geocoding or a delivery polygon. |
 | Categories | `GET /shops`, then `GET /shops/:shopId/categories` and `GET /products?shopId=...&categoryId=...` | Shops, partners, categories, products. App-wide category groups are not represented separately. |
 | Search | `GET /products?q=...` and `GET /shops?q=...` | Product/shop name and description. The Flutter search index also assembles demo results; image and rating metadata are optional product attributes. |
-| Product details and availability badge | `GET /products/:productId` | Products, shops, partners; response reflects `status`, `is_available`, and inventory. Optional image/rating metadata may be supplied through the documented `attributes` keys. |
-| Product variants and related products | Related products can use `GET /products?shopId=...&categoryId=...` | No product-variant table exists; `attributes` has no agreed variant contract. |
+| Product details and availability badge | `GET /products/:productId` | Products, variants, shops, partners; response includes image URLs and selectable variant prices/availability. |
+| Product variants and related products | `GET /products` and `GET /products/:productId` | Variants include a stable `id`; the customer must select one before adding a product to the cart. |
 | Recently viewed | No backend endpoint | Currently an in-memory Flutter store; no viewed-history table exists. |
 | Restaurants list | `GET /shops?partnerType=restaurant` | Shops and partners. Rating, cuisine, ETA, distance, live open state, cover image, and offers have no schema fields. |
 | Restaurant menu | `GET /shops/:shopId/categories` and `GET /products?shopId=...` | Categories and products belonging to the restaurant shop. |
@@ -140,9 +147,9 @@ geofence coordinates. Customer order cancellation remains unavailable.
 | Meat catalog | `GET /shops/:shopId/categories` and `GET /products?shopId=...` | Products and categories for an identified meat shop. |
 | Vegetables/fruits landing page | `GET /shops?partnerType=grocery` | Produce remains a grocery subtype; product `attributes.produce_type` distinguishes fruit and vegetable. |
 | Produce catalog | `GET /shops?partnerType=grocery`, categories and `GET /products?partnerType=grocery` | Filters `attributes.produce_type` to `fruit` or `vegetable`; products without the attribute are not shown as produce. |
-| Cart and cart access controls | `POST /carts`, `GET /cart`, `POST /cart/items`, `PATCH /cart/items/:productId`, `DELETE /cart/items/:productId`, `DELETE /cart/items` | Implemented using anonymous bearer cart tokens and migration 002. Configured backend products use these APIs; demo products remain local-only. |
-| Checkout quote | `POST /checkout/quote` | Implemented; uses current PostgreSQL prices, one-shop validation, and zero delivery/discount pending pricing rules. |
-| Checkout, delivery options, instructions, address entry | `POST /delivery/serviceability`, `POST /orders`; trusted auth middleware required | Serviceability is checked before checkout and again at order placement. Delivery-fee rules, coupons, and instruction fields are not modeled. Running-server authentication is development-only. |
+| Cart and cart access controls | `POST /carts`, `GET /cart`, `POST /cart/items`, `PATCH /cart/items/:productId/:variantId`, `DELETE /cart/items/:productId/:variantId`, `DELETE /cart/items` | Implemented using anonymous bearer cart tokens. Add requests require `{ "productId": "<uuid>", "variantId": "<uuid>", "quantity": 1 }`; cart lines are unique by product and variant and expose `variantId`, `variantLabel`, and variant `priceMinor`. |
+| Checkout quote | `POST /checkout/quote` | Uses server-side variant prices and stock, one-shop validation, and zero delivery/discount pending pricing rules. Quote lines include `variantId`, `variantLabel`, `priceMinor`, and `lineTotalMinor`. |
+| Checkout, delivery options, instructions, address entry | `POST /delivery/serviceability`, `POST /orders`; trusted auth middleware required | Order totals and immutable variant snapshots are generated from server-side cart variants. Serviceability is checked before checkout and again at order placement. Delivery-fee rules, coupons, and instruction fields are not modeled. Running-server authentication is development-only. |
 | Coupon picker and coupon validation | No endpoint available | Coupons/validation are demo data; no coupon or promotion table exists. |
 | Payment choice | No endpoint available | Options are demo UI; no payment table or provider is configured. |
 | Order success and receipt | `POST /orders` response and `GET /me/orders/:orderId` | Order creation requires injected trusted auth; detail read is implemented behind the same boundary. Payment state, payment method, delivery OTP, and cancellation reason are not stored. |

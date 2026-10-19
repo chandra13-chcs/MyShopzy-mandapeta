@@ -1335,65 +1335,94 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
                   return fadeSlideItem(
                     itemKey: 'home-live-shop-${shop.id}',
                     index: index,
-                    child: Material(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      child: InkWell(
-                        key: ValueKey('home-live-shop-${shop.id}'),
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () {
-                          final destination = _shopDestination(shop);
-                          if (destination == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'This shop type does not have a customer catalog screen yet.',
+                    child: Stack(
+                      children: [
+                        Material(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          child: InkWell(
+                            key: ValueKey('home-live-shop-${shop.id}'),
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              final destination = _shopDestination(shop);
+                              if (destination == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'This shop type does not have a customer catalog screen yet.',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+                              Navigator.of(context).push(
+                                AppPageRoute<void>.builder(
+                                  builder: (context) => destination,
+                                ),
+                              );
+                            },
+                            child: Container(
+                              constraints: const BoxConstraints(maxWidth: 220),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 9,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFE5E9E3),
                                 ),
                               ),
-                            );
-                            return;
-                          }
-                          Navigator.of(context).push(
-                            AppPageRoute<void>.builder(
-                              builder: (context) => destination,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    shop.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: HomePage._ink,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Text(
+                                    shop.partnerType,
+                                    style: const TextStyle(
+                                      color: HomePage._muted,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          );
-                        },
-                        child: Container(
-                          constraints: const BoxConstraints(maxWidth: 220),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 9,
                           ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE5E9E3)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                shop.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: HomePage._ink,
-                                  fontSize: 12,
+                        ),
+                        if (!shop.storeOpen)
+                          Positioned(
+                            top: 3,
+                            right: 6,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF5B5B5B),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: const Text(
+                                'Closed',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              Text(
-                                shop.partnerType,
-                                style: const TextStyle(
-                                  color: HomePage._muted,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
+                      ],
                     ),
                   );
                 },
@@ -1463,6 +1492,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
     discount: product.discountPercent,
     rating: product.rating ?? -1,
     available: product.available,
+    variants: product.variants,
     serviceType: switch (product.partnerType) {
       'restaurant' => 'restaurant',
       'meat_shop' => 'meat',
@@ -1472,6 +1502,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
     imageUrl: product.imageUrl,
     badge: product.badge,
     isBackendData: true,
+    storeOpen: product.storeOpen,
   );
 
   Widget _sectionTitle(String title) => Text(

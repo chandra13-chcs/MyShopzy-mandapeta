@@ -225,6 +225,7 @@ class CartProductControl extends StatelessWidget {
     this.categoryId,
     this.imageUrl,
     this.backendCatalogItem = false,
+    this.onVariantRequired,
     this.width = 88,
     this.height = 34,
     this.unavailableLabel = 'OUT OF STOCK',
@@ -242,6 +243,7 @@ class CartProductControl extends StatelessWidget {
   final int priceInPaise;
   final String? imageUrl;
   final bool backendCatalogItem;
+  final VoidCallback? onVariantRequired;
   final IconData icon;
   final bool available;
   final double width;
@@ -282,6 +284,7 @@ class CartProductControl extends StatelessWidget {
                   productId: productId,
                   serviceType: serviceType,
                   merchantId: merchantId!,
+                  productVariantId: productVariantId,
                 );
             return SizedBox(
               width: width,
@@ -317,6 +320,12 @@ class CartProductControl extends StatelessWidget {
       isAvailable: isAvailable,
       onTap: isAvailable && !isPending
           ? () async {
+              if (backendCatalogItem &&
+                  productVariantId == null &&
+                  onVariantRequired != null) {
+                onVariantRequired!();
+                return;
+              }
               try {
                 final added = backendCatalogItem
                     ? await store.addCatalogItem(
@@ -324,6 +333,8 @@ class CartProductControl extends StatelessWidget {
                         serviceType: serviceType,
                         merchantId: merchantId!,
                         categoryId: categoryId ?? '',
+                        productVariantId: productVariantId,
+                        variantLabel: variantLabel,
                         name: name,
                         description: description,
                         priceInPaise: priceInPaise,

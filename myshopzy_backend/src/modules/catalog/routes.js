@@ -1,4 +1,5 @@
 const express = require('express');
+const { isOpenNow } = require('../shared/store-hours');
 
 const PARTNER_TYPE_PATTERN = /^[a-z][a-z0-9_]{0,39}$/;
 const DEFAULT_LIMIT = 20;
@@ -141,6 +142,7 @@ function createCatalogRouter({ databasePool }) {
            s.slug,
            s.address,
            s.operating_details,
+           p.timezone,
            p.name AS partner_name,
            p.partner_type
          FROM app.shops AS s
@@ -161,7 +163,10 @@ function createCatalogRouter({ databasePool }) {
       );
 
       return res.status(200).json({
-        data: result.rows,
+        data: result.rows.map((shop) => ({
+          ...shop,
+          storeOpen: isOpenNow(shop).open,
+        })),
         pagination: page.value,
       });
     } catch (error) {
@@ -248,7 +253,27 @@ function createCatalogRouter({ databasePool }) {
            pr.inventory_quantity,
            pr.is_available,
            pr.attributes,
+           pr.image_url,
+           pr.thumb_url,
+           COALESCE((
+             SELECT jsonb_agg(
+               jsonb_build_object(
+                 'id', v.id,
+                 'label', v.label,
+                 'unit', v.unit,
+                 'quantity', v.quantity,
+                 'price_minor', v.price_minor::text,
+                 'stock', v.stock,
+                 'is_available', v.is_available,
+                 'sort_order', v.sort_order
+               ) ORDER BY v.sort_order, v.id
+             )
+             FROM app.product_variants AS v
+             WHERE v.product_id = pr.id
+           ), '[]'::jsonb) AS variants,
            s.name AS shop_name,
+           s.operating_details,
+           p.timezone,
            p.name AS partner_name,
            p.partner_type
          FROM app.products AS pr
@@ -277,7 +302,10 @@ function createCatalogRouter({ databasePool }) {
       );
 
       return res.status(200).json({
-        data: result.rows,
+        data: result.rows.map((product) => ({
+          ...product,
+          storeOpen: isOpenNow(product).open,
+        })),
         pagination: page.value,
       });
     } catch (error) {
@@ -306,7 +334,27 @@ function createCatalogRouter({ databasePool }) {
            pr.inventory_quantity,
            pr.is_available,
            pr.attributes,
+           pr.image_url,
+           pr.thumb_url,
+           COALESCE((
+             SELECT jsonb_agg(
+               jsonb_build_object(
+                 'id', v.id,
+                 'label', v.label,
+                 'unit', v.unit,
+                 'quantity', v.quantity,
+                 'price_minor', v.price_minor::text,
+                 'stock', v.stock,
+                 'is_available', v.is_available,
+                 'sort_order', v.sort_order
+               ) ORDER BY v.sort_order, v.id
+             )
+             FROM app.product_variants AS v
+             WHERE v.product_id = pr.id
+           ), '[]'::jsonb) AS variants,
            s.name AS shop_name,
+           s.operating_details,
+           p.timezone,
            p.name AS partner_name,
            p.partner_type
          FROM app.products AS pr
@@ -327,7 +375,12 @@ function createCatalogRouter({ databasePool }) {
         });
       }
 
-      return res.status(200).json({ data: result.rows[0] });
+      return res.status(200).json({
+        data: {
+          ...result.rows[0],
+          storeOpen: isOpenNow(result.rows[0]).open,
+        },
+      });
     } catch (error) {
       return next(error);
     }

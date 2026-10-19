@@ -1056,7 +1056,9 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
                       'backend-order-line-${detail.items[index].name}-$index',
                   index: index,
                   child: _row(
-                    '${detail.items[index].name} × ${detail.items[index].quantity}',
+                    '${detail.items[index].name}'
+                    '${detail.items[index].variantLabel == null ? '' : ' · ${detail.items[index].variantLabel}'}'
+                    ' × ${detail.items[index].quantity}',
                     _formatMinor(
                       detail.items[index].lineTotalMinor,
                       detail.items[index].currency,

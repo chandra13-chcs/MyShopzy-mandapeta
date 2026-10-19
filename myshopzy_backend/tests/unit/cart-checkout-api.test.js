@@ -7,6 +7,10 @@ const { createApp } = require('../../src/app');
 const productId = '57a85a0c-7081-4eb7-9c13-4b9842216b54';
 const otherProductId = '7512bb41-8bcb-4237-996e-eb54635b5b74';
 const otherShopProductId = '7b579b9a-d128-40f2-8ee3-5c7018b69a2d';
+const teaVariantId = '2f74a125-f7b7-4df5-bf8a-98cd183af04f';
+const teaLargeVariantId = 'a8823f8f-f327-4fe4-87a1-9beabdb1a784';
+const coffeeVariantId = '1d275bf2-4252-4c55-8d0c-64618790539e';
+const breadVariantId = '457314e2-47ae-49dc-a24f-92b356bbf001';
 const shopId = '49aa4a5f-9573-4e4c-a8d6-df98dfdab5fb';
 const otherShopId = '2301e7cc-e405-4148-8cfb-ddd8b59f6179';
 const partnerId = 'bc33d625-bbc1-4589-b2b2-6839d1f358d9';
@@ -32,6 +36,8 @@ function createDatabase({ failOn } = {}) {
         currency: 'INR',
         inventory_quantity: 8,
         is_available: true,
+        operating_details: { open: '00:00', close: '23:59' },
+        timezone: 'Asia/Kolkata',
         product_status: 'active',
         shop_status: 'active',
         partner_status: 'approved',
@@ -46,6 +52,8 @@ function createDatabase({ failOn } = {}) {
         currency: 'INR',
         inventory_quantity: null,
         is_available: true,
+        operating_details: { open: '00:00', close: '23:59' },
+        timezone: 'Asia/Kolkata',
         product_status: 'active',
         shop_status: 'active',
         partner_status: 'approved',
@@ -60,9 +68,69 @@ function createDatabase({ failOn } = {}) {
         currency: 'INR',
         inventory_quantity: 6,
         is_available: true,
+        operating_details: { open: '00:00', close: '23:59' },
+        timezone: 'Asia/Kolkata',
         product_status: 'active',
         shop_status: 'active',
         partner_status: 'approved',
+      },
+    },
+    variants: {
+      [teaVariantId]: {
+        id: teaVariantId,
+        product_id: productId,
+        shop_id: shopId,
+        partner_id: partnerId,
+        label: '500 g',
+        unit: 'g',
+        quantity: 500,
+        price_minor: '1500',
+        stock: 8,
+        sku: 'TEA-500',
+        is_available: true,
+        sort_order: 0,
+      },
+      [teaLargeVariantId]: {
+        id: teaLargeVariantId,
+        product_id: productId,
+        shop_id: shopId,
+        partner_id: partnerId,
+        label: '1 kg',
+        unit: 'kg',
+        quantity: 1,
+        price_minor: '2500',
+        stock: 4,
+        sku: 'TEA-1KG',
+        is_available: true,
+        sort_order: 1,
+      },
+      [coffeeVariantId]: {
+        id: coffeeVariantId,
+        product_id: otherProductId,
+        shop_id: shopId,
+        partner_id: partnerId,
+        label: '1 unit',
+        unit: 'each',
+        quantity: 1,
+        price_minor: '2500',
+        stock: null,
+        sku: 'COFFEE-01',
+        is_available: true,
+        sort_order: 0,
+      },
+      [breadVariantId]: {
+        id: breadVariantId,
+        product_id: otherShopProductId,
+        shop_id: otherShopId,
+        partner_id: otherPartnerId,
+        label: '1 unit',
+        unit: 'each',
+        quantity: 1,
+        price_minor: '2000',
+        stock: 6,
+        sku: 'BREAD-01',
+        is_available: true,
+        sort_order: 0,
       },
     },
     orders: [],
@@ -112,6 +180,15 @@ function createDatabase({ failOn } = {}) {
       const product = state.products[params[0]];
       return { rows: product ? [{ ...product }] : [], rowCount: product ? 1 : 0 };
     }
+    if (normalized.startsWith('SELECT id, product_id, shop_id, partner_id, label')) {
+      const variant = state.variants[params[0]];
+      const matches =
+        variant &&
+        variant.product_id === params[1] &&
+        variant.shop_id === params[2] &&
+        variant.partner_id === params[3];
+      return { rows: matches ? [{ ...variant }] : [], rowCount: matches ? 1 : 0 };
+    }
     if (normalized.startsWith('SELECT ci.quantity, p.currency')) {
       const cartItems = Object.values(state.items).filter(
         (item) => item.cart_id === params[0],
@@ -126,10 +203,10 @@ function createDatabase({ failOn } = {}) {
     }
     if (
       normalized.startsWith(
-        'SELECT quantity FROM app.customer_cart_items WHERE cart_id = $1 AND product_id = $2',
+        'SELECT quantity FROM app.customer_cart_items WHERE cart_id = $1 AND product_id = $2 AND variant_id = $3',
       )
     ) {
-      const item = state.items[`${params[0]}:${params[1]}`];
+      const item = state.items[`${params[0]}:${params[1]}:${params[2]}`];
       return { rows: item ? [{ quantity: item.quantity }] : [], rowCount: item ? 1 : 0 };
     }
     if (normalized.startsWith('UPDATE app.customer_carts SET shop_id = $2')) {
@@ -139,11 +216,18 @@ function createDatabase({ failOn } = {}) {
       return { rows: [], rowCount: 1 };
     }
     if (normalized.startsWith('INSERT INTO app.customer_cart_items')) {
-      const [cartId, selectedProductId, selectedShopId, selectedPartnerId, quantity] =
-        params;
-      state.items[`${cartId}:${selectedProductId}`] = {
+      const [
+        cartId,
+        selectedProductId,
+        selectedVariantId,
+        selectedShopId,
+        selectedPartnerId,
+        quantity,
+      ] = params;
+      state.items[`${cartId}:${selectedProductId}:${selectedVariantId}`] = {
         cart_id: cartId,
         product_id: selectedProductId,
+        variant_id: selectedVariantId,
         shop_id: selectedShopId,
         partner_id: selectedPartnerId,
         quantity,
@@ -151,13 +235,13 @@ function createDatabase({ failOn } = {}) {
       return { rows: [{ quantity }], rowCount: 1 };
     }
     if (normalized.startsWith('UPDATE app.customer_cart_items SET quantity')) {
-      const [cartId, selectedProductId, quantity] = params;
-      state.items[`${cartId}:${selectedProductId}`].quantity = quantity;
+      const [cartId, selectedProductId, quantity, selectedVariantId] = params;
+      state.items[`${cartId}:${selectedProductId}:${selectedVariantId}`].quantity = quantity;
       return { rows: [{ quantity }], rowCount: 1 };
     }
-    if (normalized.startsWith('DELETE FROM app.customer_cart_items WHERE cart_id = $1 AND product_id = $2')) {
-      const [cartId, selectedProductId] = params;
-      const key = `${cartId}:${selectedProductId}`;
+    if (normalized.startsWith('DELETE FROM app.customer_cart_items WHERE cart_id = $1 AND product_id = $2 AND variant_id = $3')) {
+      const [cartId, selectedProductId, selectedVariantId] = params;
+      const key = `${cartId}:${selectedProductId}:${selectedVariantId}`;
       const existed = state.items[key] !== undefined;
       delete state.items[key];
       return { rows: [], rowCount: existed ? 1 : 0 };
@@ -168,12 +252,20 @@ function createDatabase({ failOn } = {}) {
       );
       return { rows: items.length ? [{ '?column?': 1 }] : [], rowCount: items.length ? 1 : 0 };
     }
-    if (normalized.startsWith('SELECT ci.product_id, ci.quantity')) {
+    if (normalized.startsWith('SELECT ci.product_id, ci.variant_id, ci.quantity')) {
       const items = Object.values(state.items)
         .filter((item) => item.cart_id === params[0])
         .map((item) => ({
           ...item,
           ...state.products[item.product_id],
+          variant_label: state.variants[item.variant_id].label,
+          variant_unit: state.variants[item.variant_id].unit,
+          variant_quantity: state.variants[item.variant_id].quantity,
+          variant_sku: state.variants[item.variant_id].sku,
+          price_minor: state.variants[item.variant_id].price_minor,
+          variant_stock: state.variants[item.variant_id].stock,
+          variant_is_available: state.variants[item.variant_id].is_available,
+          product_is_available: state.products[item.product_id].is_available,
         }))
         .sort((first, second) => first.name.localeCompare(second.name));
       return { rows: items, rowCount: items.length };
@@ -206,14 +298,14 @@ function createDatabase({ failOn } = {}) {
       state.orders.push({ params: [...params] });
       return { rows: [], rowCount: 1 };
     }
-    if (normalized.startsWith('UPDATE app.products SET inventory_quantity')) {
-      const [selectedProductId, quantity] = params;
-      const product = state.products[selectedProductId];
-      if (product.inventory_quantity < quantity) {
+    if (normalized.startsWith('UPDATE app.product_variants SET stock')) {
+      const [selectedVariantId, quantity] = params;
+      const variant = state.variants[selectedVariantId];
+      if (variant.stock < quantity) {
         return { rows: [], rowCount: 0 };
       }
-      product.inventory_quantity -= quantity;
-      return { rows: [{ id: selectedProductId }], rowCount: 1 };
+      variant.stock -= quantity;
+      return { rows: [{ id: selectedVariantId }], rowCount: 1 };
     }
     if (normalized.startsWith('INSERT INTO app.order_items')) {
       state.orderItems.push({ params: [...params] });
@@ -284,17 +376,27 @@ test('creates and manages a capability-token cart without trusting submitted pri
 
   const added = await fetch(
     `${baseUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId, quantity: 2, priceMinor: 1 }, token),
+    jsonRequest(
+      'POST',
+      { productId, variantId: teaVariantId, quantity: 2, priceMinor: 1 },
+      token,
+    ),
   );
   assert.equal(added.status, 400);
 
-  const validAdd = await fetch(
+  const missingVariant = await fetch(
     `${baseUrl}/api/v1/cart/items`,
     jsonRequest('POST', { productId, quantity: 2 }, token),
   );
+  assert.equal(missingVariant.status, 400);
+
+  const validAdd = await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId, quantity: 2 }, token),
+  );
   assert.equal(validAdd.status, 200);
   assert.deepEqual(await validAdd.json(), {
-    data: { productId, quantity: 2 },
+    data: { productId, variantId: teaVariantId, quantity: 2 },
   });
 
   const read = await fetch(`${baseUrl}/api/v1/cart`, {
@@ -307,9 +409,11 @@ test('creates and manages a capability-token cart without trusting submitted pri
       items: [
         {
           productId,
+          variantId: teaVariantId,
+          variantLabel: '500 g',
           shopId,
           name: 'Tea',
-          sku: 'TEA-01',
+          sku: 'TEA-500',
           quantity: 2,
           priceMinor: '1500',
           lineTotalMinor: '3000',
@@ -323,21 +427,23 @@ test('creates and manages a capability-token cart without trusting submitted pri
   });
 
   const updated = await fetch(
-    `${baseUrl}/api/v1/cart/items/${productId}`,
+    `${baseUrl}/api/v1/cart/items/${productId}/${teaVariantId}`,
     jsonRequest('PATCH', { quantity: 3 }, token),
   );
   assert.equal(updated.status, 200);
-  assert.deepEqual(await updated.json(), { data: { productId, quantity: 3 } });
+  assert.deepEqual(await updated.json(), {
+    data: { productId, variantId: teaVariantId, quantity: 3 },
+  });
 
   const removed = await fetch(
-    `${baseUrl}/api/v1/cart/items/${productId}`,
+    `${baseUrl}/api/v1/cart/items/${productId}/${teaVariantId}`,
     jsonRequest('DELETE', undefined, token),
   );
   assert.equal(removed.status, 204);
 
   await fetch(
     `${baseUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId }, token),
+    jsonRequest('POST', { productId, variantId: teaVariantId }, token),
   );
   const cleared = await fetch(
     `${baseUrl}/api/v1/cart/items`,
@@ -359,27 +465,42 @@ test('rejects invalid quantities, inactive products, and cross-shop carts', asyn
   for (const quantity of [0, -1, 1.5, 100, '2']) {
     const response = await fetch(
       `${baseUrl}/api/v1/cart/items`,
-      jsonRequest('POST', { productId, quantity }, token),
+      jsonRequest('POST', { productId, variantId: teaVariantId, quantity }, token),
     );
     assert.equal(response.status, 400);
   }
 
   const inactive = await fetch(
     `${baseUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId: otherProductId }, token),
+    jsonRequest('POST', { productId: otherProductId, variantId: coffeeVariantId }, token),
   );
   assert.equal(inactive.status, 409);
   assert.equal((await inactive.json()).error.code, 'PRODUCT_UNAVAILABLE');
 
+  const mismatchedVariant = await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest(
+      'POST',
+      { productId, variantId: coffeeVariantId },
+      token,
+    ),
+  );
+  assert.equal(mismatchedVariant.status, 404);
+  assert.equal((await mismatchedVariant.json()).error.code, 'VARIANT_NOT_FOUND');
+
   const added = await fetch(
     `${baseUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId }, token),
+    jsonRequest('POST', { productId, variantId: teaVariantId }, token),
   );
   assert.equal(added.status, 200);
 
   const otherShop = await fetch(
     `${baseUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId: otherShopProductId }, token),
+    jsonRequest(
+      'POST',
+      { productId: otherShopProductId, variantId: breadVariantId },
+      token,
+    ),
   );
   assert.equal(otherShop.status, 409);
   assert.equal((await otherShop.json()).error.code, 'CART_SHOP_MISMATCH');
@@ -393,13 +514,22 @@ test('quotes and creates a single-shop order with server-calculated prices and s
 
   await fetch(
     `${baseUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId, quantity: 2 }, token),
+    jsonRequest('POST', { productId, variantId: teaVariantId, quantity: 2 }, token),
   );
   await fetch(
     `${baseUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId: otherProductId, quantity: 1 }, token),
+    jsonRequest('POST', { productId, variantId: teaLargeVariantId }, token),
   );
-  database.state.products[productId].price_minor = '1750';
+  await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest(
+      'POST',
+      { productId: otherProductId, variantId: coffeeVariantId, quantity: 1 },
+      token,
+    ),
+  );
+  database.state.variants[teaVariantId].price_minor = '1750';
+  database.state.variants[teaLargeVariantId].price_minor = '3000';
 
   const quote = await fetch(
     `${baseUrl}/api/v1/checkout/quote`,
@@ -411,6 +541,8 @@ test('quotes and creates a single-shop order with server-calculated prices and s
       items: [
         {
           productId: otherProductId,
+          variantId: coffeeVariantId,
+          variantLabel: '1 unit',
           name: 'Coffee',
           quantity: 1,
           priceMinor: '2500',
@@ -418,17 +550,31 @@ test('quotes and creates a single-shop order with server-calculated prices and s
         },
         {
           productId,
+          variantId: teaVariantId,
+          variantLabel: '500 g',
           name: 'Tea',
           quantity: 2,
           priceMinor: '1750',
           lineTotalMinor: '3500',
         },
+        {
+          productId,
+          variantId: teaLargeVariantId,
+          variantLabel: '1 kg',
+          name: 'Tea',
+          quantity: 1,
+          priceMinor: '3000',
+          lineTotalMinor: '3000',
+        },
       ],
       currency: 'INR',
-      itemSubtotalMinor: '6000',
+      storeOpen: true,
+      opensAt: '00:00',
+      closesAt: '23:59',
+      itemSubtotalMinor: '9000',
       deliveryFeeMinor: '0',
       discountMinor: '0',
-      totalMinor: '6000',
+      totalMinor: '9000',
     },
   });
 
@@ -451,18 +597,18 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   const order = (await orderResponse.json()).data;
   assert.equal(order.status, 'placed');
   assert.equal(order.currency, 'INR');
-  assert.equal(order.itemSubtotalMinor, '6000');
+  assert.equal(order.itemSubtotalMinor, '9000');
   assert.equal(order.deliveryFeeMinor, '0');
   assert.equal(order.discountMinor, '0');
-  assert.equal(order.totalMinor, '6000');
-  assert.equal(order.items, 2);
+  assert.equal(order.totalMinor, '9000');
+  assert.equal(order.items, 3);
 
   const insertOrder = database.queries.find((query) =>
     query.sql.startsWith('INSERT INTO app.orders'),
   );
   assert.equal(insertOrder.params[1], customerId);
-  assert.equal(insertOrder.params[5], '6000');
-  assert.equal(insertOrder.params[8], '6000');
+  assert.equal(insertOrder.params[5], '9000');
+  assert.equal(insertOrder.params[8], '9000');
   const teaSnapshot = database.state.orderItems.find(
     ({ params }) => params[4] === productId,
   );
@@ -470,16 +616,74 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   assert.equal(teaSnapshot.params[7], '1750');
   assert.equal(teaSnapshot.params[8], 2);
   assert.equal(teaSnapshot.params[9], '3500');
+  assert.deepEqual(JSON.parse(teaSnapshot.params[11]), {
+    variantId: teaVariantId,
+    label: '500 g',
+    unit: 'g',
+    quantity: 500,
+    sku: 'TEA-500',
+    unitPriceMinor: '1750',
+  });
   assert.equal(
     database.queries.filter((query) =>
       query.sql.startsWith('INSERT INTO app.order_items'),
     ).length,
-    2,
+    3,
   );
-  assert.equal(database.state.products[productId].inventory_quantity, 6);
+  assert.equal(database.state.variants[teaVariantId].stock, 6);
+  assert.equal(database.state.variants[teaLargeVariantId].stock, 3);
+  assert.equal(database.state.products[productId].inventory_quantity, 8);
   assert.equal(database.state.orders.length, 1);
-  assert.equal(database.state.orderItems.length, 2);
+  assert.equal(database.state.orderItems.length, 3);
   assert.equal(Object.keys(database.state.items).length, 0);
+});
+
+test('rejects order placement while closed and leaves cart mutations available', async (t) => {
+  const database = createDatabase();
+  database.state.products[productId].operating_details = {
+    open: '00:00',
+    close: '00:00',
+  };
+  const baseUrl = await startServer(t, database.pool, { authenticated: true });
+  const token = await createCart(baseUrl);
+  await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId }, token),
+  );
+
+  const quote = await fetch(
+    `${baseUrl}/api/v1/checkout/quote`,
+    jsonRequest('POST', {}, token),
+  );
+  assert.equal(quote.status, 200);
+  assert.equal((await quote.json()).data.storeOpen, false);
+
+  const updated = await fetch(
+    `${baseUrl}/api/v1/cart/items/${productId}/${teaVariantId}`,
+    jsonRequest('PATCH', { quantity: 2 }, token),
+  );
+  assert.equal(updated.status, 200);
+  const removed = await fetch(
+    `${baseUrl}/api/v1/cart/items/${productId}/${teaVariantId}`,
+    jsonRequest('DELETE', undefined, token),
+  );
+  assert.equal(removed.status, 204);
+
+  await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId }, token),
+  );
+  const response = await fetch(
+    `${baseUrl}/api/v1/orders`,
+    jsonRequest('POST', { deliveryAddress }, token),
+  );
+
+  assert.equal(response.status, 409);
+  assert.deepEqual((await response.json()).error, {
+    code: 'STORE_CLOSED',
+    message: 'Orders are accepted between 7:00 AM and 11:00 PM',
+  });
+  assert.equal(database.state.orders.length, 0);
 });
 
 test('rejects cross-shop checkout, unavailable checkout products, and unauthenticated orders', async (t) => {
@@ -488,7 +692,7 @@ test('rejects cross-shop checkout, unavailable checkout products, and unauthenti
   const token = await createCart(publicUrl);
   await fetch(
     `${publicUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId }, token),
+    jsonRequest('POST', { productId, variantId: teaVariantId }, token),
   );
 
   const transactionsBeforeUnauthenticatedOrder = database.queries.filter(
@@ -515,21 +719,26 @@ test('rejects cross-shop checkout, unavailable checkout products, and unauthenti
   const separateCart = await createCart(publicUrl);
   const firstShop = await fetch(
     `${publicUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId: otherShopProductId }, separateCart),
+    jsonRequest(
+      'POST',
+      { productId: otherShopProductId, variantId: breadVariantId },
+      separateCart,
+    ),
   );
   assert.equal(firstShop.status, 200);
   const crossShopAdd = await fetch(
     `${publicUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId }, separateCart),
+    jsonRequest('POST', { productId, variantId: teaVariantId }, separateCart),
   );
   assert.equal(crossShopAdd.status, 409);
 
   const separateCartId = Object.values(database.state.carts).find(
     (cart) => cart.shop_id === otherShopId,
   ).id;
-  database.state.items[`${separateCartId}:${productId}`] = {
+  database.state.items[`${separateCartId}:${productId}:${teaVariantId}`] = {
     cart_id: separateCartId,
     product_id: productId,
+    variant_id: teaVariantId,
     shop_id: shopId,
     partner_id: partnerId,
     quantity: 1,
@@ -548,7 +757,7 @@ test('rolls back order creation, stock, and cart changes when a snapshot insert 
   const token = await createCart(baseUrl);
   await fetch(
     `${baseUrl}/api/v1/cart/items`,
-    jsonRequest('POST', { productId, quantity: 2 }, token),
+    jsonRequest('POST', { productId, variantId: teaVariantId, quantity: 2 }, token),
   );
   const transactionStart = database.queries.length;
 
@@ -563,7 +772,7 @@ test('rolls back order creation, stock, and cart changes when a snapshot insert 
   assert.equal(orderQueries.some((query) => query.sql === 'COMMIT'), false);
   assert.equal(database.state.orders.length, 0);
   assert.equal(database.state.orderItems.length, 0);
-  assert.equal(database.state.products[productId].inventory_quantity, 8);
+  assert.equal(database.state.variants[teaVariantId].stock, 8);
   assert.equal(Object.keys(database.state.items).length, 1);
 });
 

@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../features/product_details/models/product_variant.dart';
+
 class CustomerApiException implements Exception {
   const CustomerApiException({
     required this.statusCode,
@@ -26,6 +28,9 @@ class ApiShop {
     this.partnerId,
     this.address,
     this.partnerName,
+    this.storeOpen = true,
+    this.opensAt,
+    this.closesAt,
   });
 
   final String id;
@@ -34,6 +39,9 @@ class ApiShop {
   final String? partnerId;
   final String? address;
   final String? partnerName;
+  final bool storeOpen;
+  final String? opensAt;
+  final String? closesAt;
 
   factory ApiShop.fromJson(Map<String, dynamic> json) {
     return ApiShop(
@@ -43,6 +51,9 @@ class ApiShop {
       partnerId: _optionalString(json['partner_id']),
       address: _optionalString(json['address']),
       partnerName: _optionalString(json['partner_name']),
+      storeOpen: json['storeOpen'] is bool ? json['storeOpen'] as bool : true,
+      opensAt: _optionalString(json['opensAt']),
+      closesAt: _optionalString(json['closesAt']),
     );
   }
 }
@@ -103,6 +114,7 @@ class ApiProduct {
     this.partnerType,
     this.shopName,
     this.imageUrl,
+    this.thumbUrl,
     this.rating,
     this.mrpMinor,
     this.discountPercent = 0,
@@ -110,6 +122,10 @@ class ApiProduct {
     this.brand,
     this.packSize,
     this.produceType,
+    this.storeOpen = true,
+    this.opensAt,
+    this.closesAt,
+    this.variants = const [],
   });
 
   final String id;
@@ -123,6 +139,7 @@ class ApiProduct {
   final String? partnerType;
   final String? shopName;
   final String? imageUrl;
+  final String? thumbUrl;
   final double? rating;
   final int? mrpMinor;
   final int discountPercent;
@@ -130,6 +147,10 @@ class ApiProduct {
   final String? brand;
   final String? packSize;
   final String? produceType;
+  final bool storeOpen;
+  final String? opensAt;
+  final String? closesAt;
+  final List<ProductVariant> variants;
 
   factory ApiProduct.fromJson(Map<String, dynamic> json) {
     final priceValue = json['price_minor'];
@@ -145,6 +166,10 @@ class ApiProduct {
       throw const FormatException('Invalid product availability.');
     }
     final attributes = _optionalObject(json['attributes']) ?? const {};
+    final rawVariants = json['variants'];
+    if (rawVariants != null && rawVariants is! List) {
+      throw const FormatException('Invalid product variants.');
+    }
     final mrpMinor = _optionalMinorMetadata(attributes, const [
       'mrp_minor',
       'mrpMinor',
@@ -164,10 +189,12 @@ class ApiProduct {
       categoryId: _optionalString(json['category_id']),
       partnerType: _optionalString(json['partner_type']),
       shopName: _optionalString(json['shop_name']),
-      imageUrl: _optionalStringMetadata(attributes, const [
-        'image_url',
-        'imageUrl',
-      ]),
+      imageUrl:
+          _optionalString(json['image_url']) ??
+          _optionalStringMetadata(attributes, const ['image_url', 'imageUrl']),
+      thumbUrl:
+          _optionalString(json['thumb_url']) ??
+          _optionalStringMetadata(attributes, const ['thumb_url', 'thumbUrl']),
       rating: _optionalDoubleMetadata(attributes, const ['rating']),
       mrpMinor: mrpMinor,
       discountPercent:
@@ -188,6 +215,17 @@ class ApiProduct {
         'produce_type',
         'produceType',
       ]),
+      storeOpen: json['storeOpen'] is bool ? json['storeOpen'] as bool : true,
+      opensAt: _optionalString(json['opensAt']),
+      closesAt: _optionalString(json['closesAt']),
+      variants: (rawVariants as List? ?? const [])
+          .map((variant) {
+            if (variant is! Map<String, dynamic>) {
+              throw const FormatException('Invalid product variant.');
+            }
+            return _productVariantFromJson(variant, _requiredString(json, 'id'));
+          })
+          .toList(growable: false),
     );
   }
 }
@@ -200,6 +238,9 @@ class ApiCartQuote {
     required this.discountMinor,
     required this.totalMinor,
     required this.items,
+    this.storeOpen = true,
+    this.opensAt,
+    this.closesAt,
   });
 
   final String currency;
@@ -208,6 +249,9 @@ class ApiCartQuote {
   final int discountMinor;
   final int totalMinor;
   final List<ApiCartQuoteItem> items;
+  final bool storeOpen;
+  final String? opensAt;
+  final String? closesAt;
 
   factory ApiCartQuote.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
@@ -218,6 +262,9 @@ class ApiCartQuote {
       deliveryFeeMinor: _requiredMinor(json, 'deliveryFeeMinor'),
       discountMinor: _requiredMinor(json, 'discountMinor'),
       totalMinor: _requiredMinor(json, 'totalMinor'),
+      storeOpen: json['storeOpen'] is bool ? json['storeOpen'] as bool : true,
+      opensAt: _optionalString(json['opensAt']),
+      closesAt: _optionalString(json['closesAt']),
       items: rawItems
           .map((item) {
             if (item is! Map<String, dynamic>) {
@@ -237,6 +284,8 @@ class ApiCartQuoteItem {
     required this.quantity,
     required this.priceMinor,
     required this.lineTotalMinor,
+    this.variantId,
+    this.variantLabel,
   });
 
   final String productId;
@@ -244,6 +293,8 @@ class ApiCartQuoteItem {
   final int quantity;
   final int priceMinor;
   final int lineTotalMinor;
+  final String? variantId;
+  final String? variantLabel;
 
   factory ApiCartQuoteItem.fromJson(Map<String, dynamic> json) {
     final quantity = _requiredMinor(json, 'quantity');
@@ -254,6 +305,8 @@ class ApiCartQuoteItem {
       quantity: quantity,
       priceMinor: _requiredMinor(json, 'priceMinor'),
       lineTotalMinor: _requiredMinor(json, 'lineTotalMinor'),
+      variantId: _optionalString(json['variantId']),
+      variantLabel: _optionalString(json['variantLabel']),
     );
   }
 }
@@ -261,6 +314,8 @@ class ApiCartQuoteItem {
 class ApiCartItem {
   const ApiCartItem({
     required this.productId,
+    required this.variantId,
+    required this.variantLabel,
     required this.shopId,
     required this.name,
     required this.quantity,
@@ -271,6 +326,8 @@ class ApiCartItem {
   });
 
   final String productId;
+  final String variantId;
+  final String variantLabel;
   final String shopId;
   final String name;
   final int quantity;
@@ -287,6 +344,8 @@ class ApiCartItem {
     }
     return ApiCartItem(
       productId: _requiredString(json, 'productId'),
+      variantId: _requiredString(json, 'variantId'),
+      variantLabel: _requiredString(json, 'variantLabel'),
       shopId: _requiredString(json, 'shopId'),
       name: _requiredString(json, 'name'),
       quantity: quantity,
@@ -536,6 +595,7 @@ class ApiCustomerOrderItem {
   final String currency;
   final String? sku;
   final Map<String, dynamic>? variantSnapshot;
+  String? get variantLabel => _optionalString(variantSnapshot?['label']);
 
   factory ApiCustomerOrderItem.fromJson(Map<String, dynamic> json) {
     final rawVariant = json['variant_snapshot'];
@@ -1036,18 +1096,27 @@ class CustomerApi {
     }
   }
 
-  Future<int> addCartItem(String productId, {int quantity = 1}) async {
+  Future<int> addCartItem(
+    String productId, {
+    required String variantId,
+    int quantity = 1,
+  }) async {
     await ensureCart();
     final payload = await _request(
       'POST',
       '/cart/items',
-      body: {'productId': productId, 'quantity': quantity},
+      body: {
+        'productId': productId,
+        'variantId': variantId,
+        'quantity': quantity,
+      },
       useCartToken: true,
     );
     try {
       final item = _dataObject(payload);
-      if (_requiredString(item, 'productId') != productId) {
-        throw const FormatException('Cart response product did not match.');
+      if (_requiredString(item, 'productId') != productId ||
+          _requiredString(item, 'variantId') != variantId) {
+        throw const FormatException('Cart response product variant did not match.');
       }
       return _requiredInteger(item, 'quantity', minimum: 1);
     } on FormatException {
@@ -1055,10 +1124,14 @@ class CustomerApi {
     }
   }
 
-  Future<int> updateCartItem(String productId, int quantity) async {
+  Future<int> updateCartItem(
+    String productId,
+    String variantId,
+    int quantity,
+  ) async {
     final payload = await _request(
       'PATCH',
-      '/cart/items/$productId',
+      '/cart/items/$productId/$variantId',
       body: {'quantity': quantity},
       useCartToken: true,
     );
@@ -1069,8 +1142,12 @@ class CustomerApi {
     }
   }
 
-  Future<void> removeCartItem(String productId) async {
-    await _request('DELETE', '/cart/items/$productId', useCartToken: true);
+  Future<void> removeCartItem(String productId, String variantId) async {
+    await _request(
+      'DELETE',
+      '/cart/items/$productId/$variantId',
+      useCartToken: true,
+    );
   }
 
   Future<void> clearCart() async {
@@ -1419,6 +1496,33 @@ String? _optionalString(Object? value) => value is String ? value : null;
 Map<String, dynamic>? _optionalObject(Object? value) {
   if (value is! Map) return null;
   return value.map((key, value) => MapEntry(key.toString(), value));
+}
+
+ProductVariant _productVariantFromJson(
+  Map<String, dynamic> json,
+  String productId,
+) {
+  if (json['is_available'] is! bool) {
+    throw const FormatException('Invalid variant availability.');
+  }
+  final quantity = _optionalDouble(json['quantity']);
+  final stock = json['stock'] == null
+      ? null
+      : _requiredInteger(json, 'stock', minimum: 0);
+  if (quantity == null || quantity <= 0) {
+    throw const FormatException('Invalid variant quantity.');
+  }
+  return ProductVariant(
+    id: _requiredString(json, 'id'),
+    productId: productId,
+    label: _requiredString(json, 'label'),
+    priceInPaise: _requiredMinor(json, 'price_minor'),
+    available: json['is_available'] as bool,
+    sku: _nullableString(json, 'sku'),
+    unit: _requiredString(json, 'unit'),
+    quantity: quantity,
+    stock: stock,
+  );
 }
 
 String? _optionalStringMetadata(

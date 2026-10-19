@@ -7,95 +7,102 @@ import 'package:myshopzy/shared/data/customer_api.dart';
 
 void main() {
   group('CustomerApi', () {
-    test('requests and verifies OTP through the production API contract', () async {
-      final requests = <http.Request>[];
-      final api = CustomerApi(
-        baseUrl: 'https://shop.example',
-        httpClient: MockClient((request) async {
-          requests.add(request);
-          if (request.url.path.endsWith('/auth/otp/request')) {
+    test(
+      'requests and verifies OTP through the production API contract',
+      () async {
+        final requests = <http.Request>[];
+        final api = CustomerApi(
+          baseUrl: 'https://shop.example',
+          httpClient: MockClient((request) async {
+            requests.add(request);
+            if (request.url.path.endsWith('/auth/otp/request')) {
+              return http.Response(
+                jsonEncode({
+                  'data': {
+                    'message': 'If this number can receive verification messages, a code may be sent.',
+                    'expiresIn': 300,
+                    'resendAfter': 30,
+                  },
+                }),
+                202,
+              );
+            }
+            if (request.url.path.endsWith('/auth/otp/verify')) {
+              return http.Response(
+                jsonEncode({
+                  'data': {
+                    'accessToken': 'header.payload.signature',
+                    'tokenType': 'Bearer',
+                    'expiresIn': 900,
+                  },
+                }),
+                200,
+              );
+            }
             return http.Response(
               jsonEncode({
-                'data': {
-                  'message': 'If this number can receive verification messages, a code may be sent.',
-                  'expiresIn': 300,
-                  'resendAfter': 30,
-                },
-              }),
-              202,
-            );
-          }
-          if (request.url.path.endsWith('/auth/otp/verify')) {
-            return http.Response(
-              jsonEncode({
-                'data': {
-                  'accessToken': 'header.payload.signature',
-                  'tokenType': 'Bearer',
-                  'expiresIn': 900,
-                },
+                'data': [],
+                'pagination': {'limit': 20, 'offset': 0},
               }),
               200,
             );
-          }
-          return http.Response(
-            jsonEncode({'data': [], 'pagination': {'limit': 20, 'offset': 0}}),
-            200,
-          );
-        }),
-      );
-      addTearDown(api.close);
+          }),
+        );
+        addTearDown(api.close);
 
-      await api.requestOtp(phoneNumber: '+919876543210');
-      expect(api.hasCustomerSession, isFalse);
-      await api.verifyOtp(phoneNumber: '+919876543210', otp: '123456');
-      expect(api.hasCustomerSession, isTrue);
-      await api.getShops();
+        await api.requestOtp(phoneNumber: '+919876543210');
+        expect(api.hasCustomerSession, isFalse);
+        await api.verifyOtp(phoneNumber: '+919876543210', otp: '123456');
+        expect(api.hasCustomerSession, isTrue);
+        await api.getShops();
 
-      expect(requests.map((request) => request.url.path), [
-        '/api/v1/auth/otp/request',
-        '/api/v1/auth/otp/verify',
-        '/api/v1/shops',
-      ]);
-      expect(jsonDecode(requests[0].body), {
-        'phoneNumber': '+919876543210',
-      });
-      expect(jsonDecode(requests[1].body), {
-        'phoneNumber': '+919876543210',
-        'otp': '123456',
-      });
-      expect(
-        requests[2].headers['Authorization'],
-        'Bearer header.payload.signature',
-      );
-    });
+        expect(requests.map((request) => request.url.path), [
+          '/api/v1/auth/otp/request',
+          '/api/v1/auth/otp/verify',
+          '/api/v1/shops',
+        ]);
+        expect(jsonDecode(requests[0].body), {'phoneNumber': '+919876543210'});
+        expect(jsonDecode(requests[1].body), {
+          'phoneNumber': '+919876543210',
+          'otp': '123456',
+        });
+        expect(
+          requests[2].headers['Authorization'],
+          'Bearer header.payload.signature',
+        );
+      },
+    );
 
-    test('does not create a customer session when OTP verification fails', () async {
-      final api = CustomerApi(
-        baseUrl: 'https://shop.example',
-        httpClient: MockClient(
-          (_) async => http.Response(
-            jsonEncode({
-              'error': {
-                'code': 'INVALID_OTP',
-                'message': 'The verification code is invalid or expired.',
-              },
-            }),
-            401,
+    test(
+      'does not create a customer session when OTP verification fails',
+      () async {
+        final api = CustomerApi(
+          baseUrl: 'https://shop.example',
+          httpClient: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                'error': {
+                  'code': 'INVALID_OTP',
+                  'message': 'The verification code is invalid or expired.',
+                },
+              }),
+              401,
+            ),
           ),
-        ),
-      );
-      addTearDown(api.close);
+        );
+        addTearDown(api.close);
 
-      await expectLater(
-        api.verifyOtp(phoneNumber: '+919876543210', otp: '123456'),
-        throwsA(
-          isA<CustomerApiException>()
-              .having((error) => error.statusCode, 'statusCode', 401)
-              .having((error) => error.code, 'code', 'INVALID_OTP'),
-        ),
-      );
-      expect(api.hasCustomerSession, isFalse);
-    });
+        await expectLater(
+          api.verifyOtp(phoneNumber: '+919876543210', otp: '123456'),
+          throwsA(
+            isA<CustomerApiException>()
+                .having((error) => error.statusCode, 'statusCode', 401)
+                .having((error) => error.code, 'code', 'INVALID_OTP'),
+          ),
+        );
+        expect(api.hasCustomerSession, isFalse);
+      },
+    );
 
     test('uses configured base URL and parses catalog resources', () async {
       final requests = <http.Request>[];
@@ -148,8 +155,21 @@ void main() {
                   'price_minor': '12345',
                   'currency': 'INR',
                   'is_available': true,
+                  'image_url': 'https://shop.example/rice.jpg',
+                  'thumb_url': 'https://shop.example/rice-thumb.jpg',
+                  'variants': [
+                    {
+                      'id': 'variant-id',
+                      'label': '500 g',
+                      'unit': 'g',
+                      'quantity': 500,
+                      'price_minor': '7650',
+                      'stock': 12,
+                      'is_available': true,
+                      'sort_order': 0,
+                    },
+                  ],
                   'attributes': {
-                    'image_url': 'https://shop.example/rice.jpg',
                     'rating': 4.6,
                     'mrp_minor': 15000,
                     'discount_percent': 18,
@@ -175,10 +195,19 @@ void main() {
       expect(shops.single.name, 'Kitchen');
       expect(shops.single.partnerId, 'partner-id');
       expect(shops.single.address, 'Main Road');
+      expect(shops.single.storeOpen, isTrue);
       expect(categories.single.name, 'Meals');
       expect(products.single.priceMinor, 12345);
+      expect(products.single.storeOpen, isTrue);
       expect(products.single.priceMinor ~/ 100, 123);
       expect(products.single.imageUrl, 'https://shop.example/rice.jpg');
+      expect(products.single.thumbUrl, 'https://shop.example/rice-thumb.jpg');
+      expect(products.single.variants.single.id, 'variant-id');
+      expect(products.single.variants.single.label, '500 g');
+      expect(products.single.variants.single.unit, 'g');
+      expect(products.single.variants.single.quantity, 500);
+      expect(products.single.variants.single.priceInPaise, 7650);
+      expect(products.single.variants.single.stock, 12);
       expect(products.single.rating, 4.6);
       expect(products.single.mrpMinor, 15000);
       expect(products.single.discountPercent, 18);
@@ -189,6 +218,60 @@ void main() {
       expect(requests.last.url.queryParameters['shopId'], 'shop-id');
       expect(requests.last.url.queryParameters['limit'], '100');
       expect(requests.last.url.queryParameters['offset'], '0');
+    });
+
+    test('parses optional store hours and defaults storeOpen to true', () {
+      final shop = ApiShop.fromJson({
+        'id': 'shop-id',
+        'name': 'Kitchen',
+        'partner_type': 'restaurant',
+        'storeOpen': false,
+        'opensAt': '07:00',
+        'closesAt': '23:00',
+      });
+      final product = ApiProduct.fromJson({
+        'id': 'product-id',
+        'shop_id': 'shop-id',
+        'name': 'Rice meal',
+        'price_minor': '12345',
+        'currency': 'INR',
+        'is_available': true,
+        'storeOpen': false,
+        'opensAt': '07:00',
+        'closesAt': '23:00',
+      });
+      final quote = ApiCartQuote.fromJson({
+        'currency': 'INR',
+        'itemSubtotalMinor': '100',
+        'deliveryFeeMinor': '0',
+        'discountMinor': '0',
+        'totalMinor': '100',
+        'items': const [],
+        'storeOpen': false,
+        'opensAt': '07:00',
+        'closesAt': '23:00',
+      });
+
+      expect(shop.storeOpen, isFalse);
+      expect(shop.opensAt, '07:00');
+      expect(shop.closesAt, '23:00');
+      expect(product.storeOpen, isFalse);
+      expect(product.opensAt, '07:00');
+      expect(product.closesAt, '23:00');
+      expect(quote.storeOpen, isFalse);
+      expect(quote.opensAt, '07:00');
+      expect(quote.closesAt, '23:00');
+      expect(
+        ApiCartQuote.fromJson({
+          'currency': 'INR',
+          'itemSubtotalMinor': '0',
+          'deliveryFeeMinor': '0',
+          'discountMinor': '0',
+          'totalMinor': '0',
+          'items': const [],
+        }).storeOpen,
+        isTrue,
+      );
     });
 
     test('loads every product page within the API page-size limit', () async {
@@ -452,6 +535,8 @@ void main() {
                   'items': [
                     {
                       'productId': 'product-id',
+                      'variantId': 'variant-id',
+                      'variantLabel': '500 g',
                       'name': 'Server-priced item',
                       'quantity': 2,
                       'priceMinor': '12345',
@@ -459,10 +544,10 @@ void main() {
                     },
                   ],
                   'currency': 'INR',
-                  'itemSubtotalMinor': '12345',
+                  'itemSubtotalMinor': '24690',
                   'deliveryFeeMinor': '0',
                   'discountMinor': '0',
-                  'totalMinor': '12345',
+                  'totalMinor': '24690',
                 },
               }),
               200,
@@ -470,7 +555,11 @@ void main() {
           }
           return http.Response(
             jsonEncode({
-              'data': {'productId': 'product-id', 'quantity': 2},
+              'data': {
+                'productId': 'product-id',
+                'variantId': 'variant-id',
+                'quantity': 2,
+              },
             }),
             200,
           );
@@ -478,20 +567,30 @@ void main() {
       );
       addTearDown(api.close);
 
-      expect(await api.addCartItem('product-id', quantity: 2), 2);
+      expect(
+        await api.addCartItem(
+          'product-id',
+          variantId: 'variant-id',
+          quantity: 2,
+        ),
+        2,
+      );
       final quote = await api.getCheckoutQuote();
 
       expect(api.hasCartToken, isTrue);
       expect(requests[1].headers['X-Cart-Token'], 'a' * 43);
       expect(jsonDecode(requests[1].body), {
         'productId': 'product-id',
+        'variantId': 'variant-id',
         'quantity': 2,
       });
       expect(jsonDecode(requests[1].body), isNot(contains('price')));
       expect(requests[2].headers['X-Cart-Token'], 'a' * 43);
-      expect(quote.totalMinor, 12345);
+      expect(quote.totalMinor, 24690);
       expect(quote.items.single.priceMinor, 12345);
       expect(quote.items.single.lineTotalMinor, 24690);
+      expect(quote.items.single.variantId, 'variant-id');
+      expect(quote.items.single.variantLabel, '500 g');
     });
 
     test('supports cart quantity updates, removals, and clearing', () async {
@@ -511,7 +610,11 @@ void main() {
           if (request.method == 'PATCH') {
             return http.Response(
               jsonEncode({
-                'data': {'productId': 'product-id', 'quantity': 3},
+                'data': {
+                  'productId': 'product-id',
+                  'variantId': 'variant-id',
+                  'quantity': 3,
+                },
               }),
               200,
             );
@@ -522,8 +625,8 @@ void main() {
       addTearDown(api.close);
       await api.ensureCart();
 
-      final quantity = await api.updateCartItem('product-id', 3);
-      await api.removeCartItem('product-id');
+      final quantity = await api.updateCartItem('product-id', 'variant-id', 3);
+      await api.removeCartItem('product-id', 'variant-id');
       await api.clearCart();
 
       expect(quantity, 3);
@@ -535,7 +638,7 @@ void main() {
       ]);
       expect(requests[1].headers['X-Cart-Token'], 'd' * 43);
       expect(jsonDecode(requests[1].body), {'quantity': 3});
-      expect(requests[2].url.path, '/api/v1/cart/items/product-id');
+      expect(requests[2].url.path, '/api/v1/cart/items/product-id/variant-id');
       expect(requests[3].url.path, '/api/v1/cart/items');
       expect(
         requests
@@ -686,6 +789,8 @@ void main() {
                 'items': [
                   {
                     'productId': 'product-id',
+                    'variantId': 'variant-id',
+                    'variantLabel': '500 g',
                     'shopId': 'shop-id',
                     'name': 'Server cart item',
                     'sku': 'SKU-1',
@@ -710,6 +815,8 @@ void main() {
       await api.getCart();
 
       expect(cart.items.single.name, 'Server cart item');
+      expect(cart.items.single.variantId, 'variant-id');
+      expect(cart.items.single.variantLabel, '500 g');
       expect(cart.items.single.quantity, 2);
       expect(cart.items.single.priceMinor, 12345);
       expect(cart.items.single.available, isFalse);
@@ -718,6 +825,43 @@ void main() {
       expect(requests[1].url.path, '/api/v1/cart');
       expect(requests[1].headers['X-Cart-Token'], 'e' * 43);
       expect(requests[2].headers['X-Cart-Token'], 'e' * 43);
+    });
+
+    test('reads the product variant label from an order snapshot', () {
+      final order = ApiCustomerOrderDetail.fromJson({
+        'id': 'order-id',
+        'shop_id': 'shop-id',
+        'shop_name': 'Shop',
+        'status': 'placed',
+        'currency': 'INR',
+        'items_subtotal_minor': '25000',
+        'delivery_fee_minor': '0',
+        'discount_minor': '0',
+        'total_minor': '25000',
+        'placed_at': '2026-10-11T06:00:00.000Z',
+        'delivery_address_snapshot': {'formattedAddress': 'Home'},
+        'items': [
+          {
+            'product_name_snapshot': 'Backend product',
+            'sku_snapshot': 'SKU-500',
+            'unit_price_minor': '25000',
+            'quantity': 1,
+            'line_total_minor': '25000',
+            'currency': 'INR',
+            'variant_snapshot': {
+              'variantId': 'variant-id',
+              'label': '500 g',
+              'unit': 'g',
+              'quantity': 500,
+              'sku': 'SKU-500',
+              'unitPriceMinor': '25000',
+            },
+          },
+        ],
+      });
+
+      expect(order.items.single.variantLabel, '500 g');
+      expect(order.items.single.variantSnapshot?['variantId'], 'variant-id');
     });
 
     test(

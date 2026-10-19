@@ -53,6 +53,7 @@ class StoreProduct {
     this.badge,
     this.variants = const [],
     this.isBackendData = false,
+    this.storeOpen = true,
   });
 
   final String id;
@@ -72,6 +73,7 @@ class StoreProduct {
   final String? badge;
   final List<ProductVariant> variants;
   final bool isBackendData;
+  final bool storeOpen;
 }
 
 const commonLocalStoreCategories = [
@@ -684,6 +686,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
             discount: product.discountPercent,
             rating: product.rating ?? -1,
             available: product.available,
+            variants: product.variants,
             serviceType: switch (product.partnerType) {
               'restaurant' => 'restaurant',
               'meat_shop' => 'meat',
@@ -694,6 +697,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
             badge: product.badge,
             brand: product.brand ?? '',
             isBackendData: true,
+            storeOpen: product.storeOpen,
           ),
         )
         .toList(growable: false);
@@ -1148,6 +1152,29 @@ class _StoreProductCardState extends State<StoreProductCard> {
                           color: Colors.white,
                           fontSize: 8,
                           fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (!product.storeOpen)
+                  Positioned(
+                    bottom: 6,
+                    left: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.72),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'Closed',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),

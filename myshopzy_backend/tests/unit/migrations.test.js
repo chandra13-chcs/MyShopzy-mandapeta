@@ -37,6 +37,10 @@ const customerOtpSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/007_customer_otp_auth.sql',
 );
+const productVariantsSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/008_product_variants_and_images.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -115,9 +119,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const riderDeliverySchema = await readFile(riderDeliverySchemaPath, 'utf8');
   const riderEarningsSchema = await readFile(riderEarningsSchemaPath, 'utf8');
   const customerOtpSchema = await readFile(customerOtpSchemaPath, 'utf8');
+  const productVariantsSchema = await readFile(productVariantsSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
-  assert.equal(appliedCount, 7);
+  assert.equal(appliedCount, 8);
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
   assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
   assert.equal(
@@ -137,6 +142,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('007').name,
     '007_customer_otp_auth.sql',
   );
+  assert.equal(
+    pool.applied.get('008').name,
+    '008_product_variants_and_images.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -145,10 +154,34 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(riderDeliverySchema.trim()));
   assert.ok(calls.includes(riderEarningsSchema.trim()));
   assert.ok(calls.includes(customerOtpSchema.trim()));
+  assert.ok(calls.includes(productVariantsSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
   assert.equal(pool.released, true);
+});
+
+test('product variants migration backfills variants and upgrades cart/image schema', async () => {
+  const schema = await readFile(productVariantsSchemaPath, 'utf8');
+
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS app\.product_variants\b/);
+  assert.match(schema, /id uuid PRIMARY KEY DEFAULT gen_random_uuid\(\)/);
+  assert.match(schema, /UNIQUE \(product_id, label\)/);
+  assert.match(schema, /product_variants_shop_sku_unique/);
+  assert.match(
+    schema,
+    /ON app\.product_variants \(shop_id, sku\)\s+WHERE sku IS NOT NULL/,
+  );
+  assert.match(schema, /FOREIGN KEY \(product_id, shop_id, partner_id\)\s+REFERENCES app\.products \(id, shop_id, partner_id\)/);
+  assert.match(schema, /FOREIGN KEY \(shop_id, partner_id\)\s+REFERENCES app\.shops \(id, partner_id\)/);
+  assert.match(schema, /ON CONFLICT \(product_id, label\) DO NOTHING/);
+  assert.match(schema, /ADD COLUMN IF NOT EXISTS image_url text/);
+  assert.match(schema, /ADD COLUMN IF NOT EXISTS thumb_url text/);
+  assert.match(schema, /variant\.label = '1 unit'/);
+  assert.match(schema, /ALTER COLUMN variant_id SET NOT NULL/);
+  assert.match(schema, /PRIMARY KEY \(cart_id, product_id, variant_id\)/);
+  assert.match(schema, /customer_cart_items_variant_idx/);
+  assert.match(schema, /FOREIGN KEY \(variant_id, product_id, shop_id, partner_id\)\s+REFERENCES app\.product_variants \(id, product_id, shop_id, partner_id\)/);
 });
 
 test('dynamic category and serviceability migration supports live partner types', async () => {
