@@ -4,6 +4,7 @@ const { createCatalogRouter } = require('./modules/catalog/routes');
 const { createCartCheckoutRouter } = require('./modules/cart-checkout/routes');
 const { createCustomerAccountRouter } = require('./modules/customer-account/routes');
 const { createAdminReadRouter } = require('./modules/admin-read/routes');
+const { createPartnerRouter } = require('./modules/partner-types/routes');
 const {
   createDeliveryServiceabilityRouter,
 } = require('./modules/delivery-serviceability/routes');
@@ -15,7 +16,9 @@ function createApp({
   authenticateCustomer = null,
   authenticateRider = null,
   authenticateAdmin = null,
+  authenticatePartner = null,
   superAdminOrigin = null,
+  partnerPortalOrigins = ['http://localhost:5173'],
   customerOtpAuthRouter = null,
   developmentCustomerAuthRouter = null,
   nodeEnv = 'development',
@@ -66,6 +69,24 @@ function createApp({
   app.use(
     '/api/v1',
     createCustomerAccountRouter({ databasePool, authenticateCustomer }),
+  );
+  app.use('/api/v1/partner', (req, res, next) => {
+    const origin = req.get('origin');
+    if (origin && partnerPortalOrigins.includes(origin)) {
+      res.set('Access-Control-Allow-Origin', origin);
+      res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.set(
+        'Access-Control-Allow-Headers',
+        'Authorization, Content-Type, X-Request-ID',
+      );
+      res.vary('Origin');
+      if (req.method === 'OPTIONS') return res.status(204).end();
+    }
+    return next();
+  });
+  app.use(
+    '/api/v1',
+    createPartnerRouter({ databasePool, authenticatePartner }),
   );
   if (typeof authenticateAdmin === 'function') {
     if (superAdminOrigin) {

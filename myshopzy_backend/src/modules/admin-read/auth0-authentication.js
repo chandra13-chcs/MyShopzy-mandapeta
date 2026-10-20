@@ -1,12 +1,6 @@
 const ADMIN_USER_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-let joseModule;
-
-function loadJose() {
-  joseModule ??= import('jose');
-  return joseModule;
-}
+const { createAuth0JwtVerifier } = require('../shared/auth0-jwt');
 
 function sendAuthError(res, req, status, code, message) {
   return res.status(status).json({
@@ -25,7 +19,7 @@ function createAuth0AdminAuthenticator({
     throw new TypeError('Database and complete Auth0 admin configuration are required.');
   }
 
-  let verificationKeySet;
+  const verifyAuth0Jwt = createAuth0JwtVerifier({ issuerUrl, audience });
 
   return async function authenticateAdmin(req, res, next) {
     const authorization = req.get('authorization') ?? '';
@@ -42,16 +36,7 @@ function createAuth0AdminAuthenticator({
 
     let payload;
     try {
-      const { createRemoteJWKSet, jwtVerify } = await loadJose();
-      verificationKeySet ??= createRemoteJWKSet(
-        new URL('.well-known/jwks.json', issuerUrl),
-      );
-      ({ payload } = await jwtVerify(match[1], verificationKeySet, {
-        issuer: issuerUrl,
-        audience,
-        algorithms: ['RS256'],
-        requiredClaims: ['exp', 'sub'],
-      }));
+      payload = await verifyAuth0Jwt(match[1]);
     } catch {
       return sendAuthError(
         res,

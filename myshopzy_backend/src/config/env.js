@@ -57,33 +57,28 @@ function loadConfig(env = process.env) {
   const auth0Audience = env.AUTH0_AUDIENCE?.trim() || null;
   const auth0AdminUserIdClaim =
     env.AUTH0_ADMIN_USER_ID_CLAIM?.trim() || null;
+  const auth0PartnerEmailClaim =
+    env.AUTH0_PARTNER_EMAIL_CLAIM?.trim() || 'email';
+  const auth0PartnerEmailVerifiedClaim =
+    env.AUTH0_PARTNER_EMAIL_VERIFIED_CLAIM?.trim() || 'email_verified';
   const superAdminOrigin = env.SUPER_ADMIN_ORIGIN?.trim() || null;
-  const auth0ConfigProvided = Boolean(
-    auth0IssuerUrl ||
-      auth0Audience ||
-      superAdminOrigin,
-  );
-  let auth0Admin = null;
+  const partnerPortalOrigins = (
+    env.PARTNER_PORTAL_ORIGINS?.trim() || 'http://localhost:5173'
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
-  if (auth0ConfigProvided) {
-    const missingKeys = [
-      ['AUTH0_ISSUER_URL', auth0IssuerUrl],
-      ['AUTH0_AUDIENCE', auth0Audience],
-      ['SUPER_ADMIN_ORIGIN', superAdminOrigin],
-    ].filter(([, value]) => !value).map(([key]) => key);
-    if (missingKeys.length > 0) {
-      throw new Error(
-        `Super Admin authentication configuration is incomplete. Set: ${missingKeys.join(', ')}.`,
-      );
-    }
+  if (Boolean(auth0IssuerUrl) !== Boolean(auth0Audience)) {
+    throw new Error('Set both AUTH0_ISSUER_URL and AUTH0_AUDIENCE.');
+  }
 
-    let issuer;
-    let origin;
+  let issuer = null;
+  if (auth0IssuerUrl) {
     try {
       issuer = new URL(auth0IssuerUrl);
-      origin = new URL(superAdminOrigin);
     } catch {
-      throw new Error('Auth0 issuer and Super Admin origin must be valid URLs.');
+      throw new Error('AUTH0_ISSUER_URL must be a valid URL.');
     }
     if (
       issuer.protocol !== 'https:' ||
@@ -95,33 +90,80 @@ function loadConfig(env = process.env) {
     ) {
       throw new Error('AUTH0_ISSUER_URL must be an HTTPS Auth0 issuer origin.');
     }
-    if (auth0AdminUserIdClaim) {
-      let adminUserIdClaim;
-      try {
-        adminUserIdClaim = new URL(auth0AdminUserIdClaim);
-      } catch {
-        throw new Error('AUTH0_ADMIN_USER_ID_CLAIM must be an HTTPS claim namespace URI.');
-      }
-      if (adminUserIdClaim.protocol !== 'https:') {
-        throw new Error('AUTH0_ADMIN_USER_ID_CLAIM must be an HTTPS claim namespace URI.');
-      }
+  }
+
+  let normalizedSuperAdminOrigin = null;
+  if (superAdminOrigin) {
+    let origin;
+    try {
+      origin = new URL(superAdminOrigin);
+    } catch {
+      throw new Error('SUPER_ADMIN_ORIGIN must be a valid URL.');
     }
     if (
       origin.origin !== superAdminOrigin.replace(/\/+$/, '') ||
       (origin.protocol !== 'https:' &&
-        !(origin.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(origin.hostname)))
+        !(origin.protocol === 'http:' &&
+          ['localhost', '127.0.0.1'].includes(origin.hostname)))
     ) {
       throw new Error('SUPER_ADMIN_ORIGIN must be a valid HTTPS origin.');
     }
+    normalizedSuperAdminOrigin = origin.origin;
+  }
 
-    if (auth0AdminUserIdClaim) {
-      auth0Admin = Object.freeze({
+  for (const configuredOrigin of partnerPortalOrigins) {
+    let origin;
+    try {
+      origin = new URL(configuredOrigin);
+    } catch {
+      throw new Error('PARTNER_PORTAL_ORIGINS must contain valid origins.');
+    }
+    if (
+      configuredOrigin === '*' ||
+      origin.origin !== configuredOrigin.replace(/\/+$/, '') ||
+      (origin.protocol !== 'https:' &&
+        !(origin.protocol === 'http:' &&
+          ['localhost', '127.0.0.1'].includes(origin.hostname)))
+    ) {
+      throw new Error('PARTNER_PORTAL_ORIGINS must contain HTTPS origins or localhost origins.');
+    }
+  }
+  const normalizedPartnerPortalOrigins = [
+    ...new Set(partnerPortalOrigins.map((origin) => new URL(origin).origin)),
+  ];
+
+  if (auth0AdminUserIdClaim) {
+    if (!auth0IssuerUrl || !auth0Audience || !normalizedSuperAdminOrigin) {
+      throw new Error(
+        'Super Admin authentication requires AUTH0_ISSUER_URL, AUTH0_AUDIENCE, and SUPER_ADMIN_ORIGIN.',
+      );
+    }
+    let adminUserIdClaim;
+    try {
+      adminUserIdClaim = new URL(auth0AdminUserIdClaim);
+    } catch {
+      throw new Error('AUTH0_ADMIN_USER_ID_CLAIM must be an HTTPS claim namespace URI.');
+    }
+    if (adminUserIdClaim.protocol !== 'https:') {
+      throw new Error('AUTH0_ADMIN_USER_ID_CLAIM must be an HTTPS claim namespace URI.');
+    }
+  }
+
+  const auth0Partner = issuer
+    ? Object.freeze({
+        issuerUrl: issuer.href,
+        audience: auth0Audience,
+        emailClaim: auth0PartnerEmailClaim,
+        emailVerifiedClaim: auth0PartnerEmailVerifiedClaim,
+      })
+    : null;
+  const auth0Admin = auth0AdminUserIdClaim
+    ? Object.freeze({
         issuerUrl: issuer.href,
         audience: auth0Audience,
         adminUserIdClaim: auth0AdminUserIdClaim,
-      });
-    }
-  }
+      })
+    : null;
 
   const otpConfigKeys = [
     'CUSTOMER_OTP_PEPPER',
@@ -189,7 +231,9 @@ function loadConfig(env = process.env) {
     customerSessionSecret,
     whatsapp,
     auth0Admin,
-    superAdminOrigin,
+    auth0Partner,
+    superAdminOrigin: normalizedSuperAdminOrigin,
+    partnerPortalOrigins: Object.freeze(normalizedPartnerPortalOrigins),
   });
 }
 

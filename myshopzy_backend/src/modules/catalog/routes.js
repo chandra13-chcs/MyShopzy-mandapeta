@@ -1,5 +1,6 @@
 const express = require('express');
 const { isOpenNow } = require('../shared/store-hours');
+const { getPartnerTypeProfile } = require('../partner-types/profiles');
 
 const PARTNER_TYPE_PATTERN = /^[a-z][a-z0-9_]{0,39}$/;
 const DEFAULT_LIMIT = 20;
@@ -76,14 +77,8 @@ function sendDatabaseUnavailable(res) {
 }
 
 function partnerTypeDisplayName(partnerType) {
-  const knownNames = {
-    restaurant: 'Restaurants',
-    grocery: 'Groceries',
-    meat_shop: 'Meat',
-    other: 'Local Stores',
-    vegetables_fruits: 'Fruits & Vegetables',
-  };
-  if (knownNames[partnerType]) return knownNames[partnerType];
+  const profile = getPartnerTypeProfile(partnerType);
+  if (profile) return profile.label;
   return partnerType
     .split('_')
     .map((word) => word[0].toUpperCase() + word.slice(1))

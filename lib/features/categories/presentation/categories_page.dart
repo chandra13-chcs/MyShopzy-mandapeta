@@ -8,9 +8,7 @@ import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/data/local_store_session.dart';
 import '../../meat/presentation/meat_page.dart';
 import '../../orders/presentation/orders_page.dart';
-import '../../parcel/presentation/parcel_page.dart';
 import '../../profile/presentation/profile_page.dart';
-import '../../restaurants/presentation/restaurants_page.dart';
 import '../../search/presentation/search_page.dart';
 import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import '../../../shared/presentation/bottom_navigation_bar.dart';
@@ -23,105 +21,94 @@ class CategoriesPage extends StatelessWidget {
   static const _ink = AppTheme.primaryText;
   static const _page = AppTheme.lightBackground;
 
-  static const _shopCategories = [
-    _CategoryTile('Restaurants', Icons.restaurant_rounded, Color(0xFFFFE8D9)),
-    _CategoryTile('Bakery', Icons.bakery_dining_rounded, Color(0xFFF8E9D8)),
-    _CategoryTile('Meat', Icons.set_meal_rounded, Color(0xFFFFE4E2)),
-    _CategoryTile('Fruits & Vegetables', Icons.eco_rounded, Color(0xFFE1F2E4)),
-    _CategoryTile('Local Stores', Icons.storefront_rounded, Color(0xFFECE5FA)),
-    _CategoryTile('Parcel', Icons.local_shipping_rounded, Color(0xFFE5ECFA)),
-  ];
-
-  static const _shoppingCategories = [
+  static const _freshCategories = [
     _CategoryTile(
-      'Dairy, Bread & Eggs',
+      'Fresh Vegetables',
+      Icons.eco_rounded,
+      Color(0xFFE1F2E4),
+      imagePath: 'assets/category_tiles/fruits_vegetables.jpg',
+    ),
+    _CategoryTile(
+      'Fresh Fruits',
+      Icons.apple_rounded,
+      Color(0xFFFFE8D9),
+      imagePath: 'assets/category_tiles/fruits_vegetables.jpg',
+    ),
+    _CategoryTile(
+      'Dairy, Bread and Eggs',
       Icons.breakfast_dining_rounded,
       Color(0xFFF4E8D9),
     ),
     _CategoryTile(
-      'Fruits & Fresh Vegetables',
-      Icons.eco_rounded,
-      Color(0xFFE1F0DF),
+      'Meat and Seafood',
+      Icons.set_meal_rounded,
+      Color(0xFFFFE4E2),
     ),
+  ];
+
+  static const _groceryCategories = [
     _CategoryTile(
-      'Cold Drinks & Juices',
-      Icons.local_drink_rounded,
-      Color(0xFFE1EAF1),
-    ),
-    _CategoryTile(
-      'Snacks & Munchies',
-      Icons.fastfood_rounded,
-      Color(0xFFF4E9D3),
-    ),
-    _CategoryTile(
-      'Breakfast & Instant Food',
-      Icons.ramen_dining_rounded,
-      Color(0xFFF1E3D5),
-    ),
-    _CategoryTile(
-      'Sweet Tooth & Chocolates',
-      Icons.cake_rounded,
-      Color(0xFFEBDDD9),
-    ),
-    _CategoryTile(
-      'Bakery & Biscuits',
-      Icons.bakery_dining_rounded,
-      Color(0xFFF2E5D5),
-    ),
-    _CategoryTile(
-      'Tea, Coffee & Milk Drinks',
-      Icons.coffee_rounded,
-      Color(0xFFE9E0D8),
-    ),
-    _CategoryTile(
-      'Atta, Rice & Dal',
+      'Atta, Rice and Dal',
       Icons.rice_bowl_rounded,
       Color(0xFFF0E7D8),
     ),
     _CategoryTile(
-      'Masala, Cooking Oil & Ghee',
-      Icons.water_drop_rounded,
+      'Masalas',
+      Icons.local_fire_department_rounded,
       Color(0xFFF6EDD4),
     ),
+    _CategoryTile('Oils and Ghee', Icons.water_drop_rounded, Color(0xFFF6EDD4)),
     _CategoryTile(
-      'Sauces & Spreads',
+      'Cereals and Breakfast',
+      Icons.breakfast_dining_rounded,
+      Color(0xFFF4E9D3),
+    ),
+  ];
+
+  static const _snackCategories = [
+    _CategoryTile(
+      'Cold Drinks and Juices',
+      Icons.local_drink_rounded,
+      Color(0xFFE1EAF1),
+    ),
+    _CategoryTile(
+      'Ice Creams and Frozen Foods',
+      Icons.icecream_rounded,
+      Color(0xFFE9E0D8),
+    ),
+    _CategoryTile(
+      'Chips and Namkeens',
+      Icons.fastfood_rounded,
+      Color(0xFFF4E9D3),
+    ),
+    _CategoryTile('Chocolates', Icons.cake_rounded, Color(0xFFEBDDD9)),
+    _CategoryTile(
+      'Biscuits and Cakes',
+      Icons.bakery_dining_rounded,
+      Color(0xFFF2E5D5),
+      imagePath: 'assets/category_tiles/bakery.jpg',
+    ),
+    _CategoryTile(
+      'Tea, Coffee and Milk Drinks',
+      Icons.coffee_rounded,
+      Color(0xFFE9E0D8),
+    ),
+    _CategoryTile(
+      'Sauces and Spreads',
       Icons.lunch_dining_rounded,
       Color(0xFFF3E2DD),
     ),
+    _CategoryTile('Sweet Corner', Icons.cake_rounded, Color(0xFFEBDDD9)),
     _CategoryTile(
-      'Chicken, Meat & Fresh Fish',
-      Icons.set_meal_rounded,
-      Color(0xFFFFE4E2),
+      'Noodles, Pasta, Vermicelli',
+      Icons.ramen_dining_rounded,
+      Color(0xFFF1E3D5),
     ),
+    _CategoryTile('Frozen Food', Icons.ac_unit_rounded, Color(0xFFE1EAF1)),
     _CategoryTile(
-      'Organic & Healthy Living',
+      'Dry Fruits and Seeds Mix',
       Icons.spa_rounded,
       Color(0xFFE2F0E3),
-    ),
-    _CategoryTile(
-      'Baby Care Essentials',
-      Icons.child_care_rounded,
-      Color(0xFFE6EDF5),
-    ),
-    _CategoryTile(
-      'Pharma & Wellness',
-      Icons.health_and_safety_rounded,
-      Color(0xFFE3EAF2),
-    ),
-    _CategoryTile(
-      'Cleaning Essentials',
-      Icons.cleaning_services_rounded,
-      Color(0xFFE3EAF2),
-    ),
-    _CategoryTile(
-      'Home & Office Needs',
-      Icons.home_work_rounded,
-      Color(0xFFECE5FA),
-    ),
-    _CategoryTile(
-      'Personal Care & Hygiene',
-      Icons.spa_rounded,
-      Color(0xFFF1E3EC),
     ),
   ];
 
@@ -134,8 +121,9 @@ class CategoriesPage extends StatelessWidget {
         child: CustomScrollView(
           slivers: [
             SliverToBoxAdapter(child: _buildHeader(context)),
-            SliverToBoxAdapter(child: _buildShopByStore(context)),
-            _buildGridSection(context, 'Shop by Category', _shoppingCategories),
+            _buildGridSection(context, 'Fresh items', _freshCategories),
+            _buildGridSection(context, 'Grocery & Kitchen', _groceryCategories),
+            _buildGridSection(context, 'Snacks & Drinks', _snackCategories),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
           ],
         ),
@@ -172,71 +160,48 @@ class CategoriesPage extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'Categories',
-              style: TextStyle(
-                color: _ink,
-                fontSize: 23,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: Tooltip(
+          message: 'Search categories',
+          child: InkWell(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (context) => const SearchPage()),
+            ),
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              height: 48,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE8EBE6)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.search_rounded,
+                    color: Color(0xFF68746B),
+                    size: 22,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Search categories and products',
+                      style: TextStyle(
+                        color: Color(0xFF68746B),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          IconButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (context) => const SearchPage()),
-            ),
-            tooltip: 'Search categories',
-            icon: const Icon(Icons.search_rounded, color: _ink, size: 25),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.white,
-              side: const BorderSide(color: Color(0xFFE8EBE6)),
-              minimumSize: const Size(42, 42),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildShopByStore(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(context).scale(10) / 10;
-    final listHeight = (101 + 23 * textScale)
-        .clamp(124.0, double.infinity)
-        .toDouble();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SectionHeading(title: 'Shop by Store'),
-        SizedBox(
-          height: listHeight,
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 3, 16, 8),
-            scrollDirection: Axis.horizontal,
-            itemCount: _shopCategories.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 13),
-            itemBuilder: (context, index) {
-              final category = _shopCategories[index];
-              final tile = PressScaleFeedback(
-                child: _HorizontalCategory(
-                  category: category,
-                  onTap: () => _openShopCategory(context, category.name),
-                ),
-              );
-              return fadeSlideItem(
-                itemKey: 'shop-store-${category.name}',
-                index: index,
-                child: tile,
-              );
-            },
-          ),
         ),
-      ],
+      ),
     );
   }
 
@@ -252,38 +217,35 @@ class CategoriesPage extends StatelessWidget {
           builder: (context, constraints) {
             final crossAxisCount = switch (constraints.crossAxisExtent) {
               < 280 => 2,
-              < 360 => 3,
+              < 320 => 3,
               _ => 4,
             };
             final textScale = MediaQuery.textScalerOf(context).scale(10) / 10;
-            final mainAxisExtent = (77 + 34.5 * textScale)
-                .clamp(112.0, double.infinity)
+            final mainAxisExtent = (140 + 200 * (textScale - 1))
+                .clamp(140.0, double.infinity)
                 .toDouble();
 
             return SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
               sliver: SliverGrid(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final category = categories[index];
-                    final tile = PressScaleFeedback(
-                      child: _GridCategory(
-                        category: category,
-                        onTap: _gridCategoryAction(context, category.name),
-                      ),
-                    );
-                    return fadeSlideItem(
-                      itemKey: 'category-${category.name}',
-                      index: index,
-                      child: tile,
-                    );
-                  },
-                  childCount: categories.length,
-                ),
+                delegate: SliverChildBuilderDelegate((context, index) {
+                  final category = categories[index];
+                  final tile = PressScaleFeedback(
+                    child: _GridCategory(
+                      category: category,
+                      onTap: _gridCategoryAction(context, category.name),
+                    ),
+                  );
+                  return fadeSlideItem(
+                    itemKey: 'category-${category.name}',
+                    index: index,
+                    child: tile,
+                  );
+                }, childCount: categories.length),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 11,
-                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
                   mainAxisExtent: mainAxisExtent,
                 ),
               ),
@@ -294,49 +256,30 @@ class CategoriesPage extends StatelessWidget {
     );
   }
 
-  void _openShopCategory(BuildContext context, String name) {
-    final page = switch (name) {
-      'Restaurants' => const RestaurantsPage(),
-      'Bakery' => const BakeryPage(),
-      'Meat' => const MeatPage(),
-      'Fruits & Vegetables' => const VegetablesFruitsPage(),
-      'Local Stores' => const LocalStoresPage(),
-      'Parcel' => const ParcelPage(),
-      _ => null,
-    };
-
-    if (page != null) {
-      _pushPage(context, page);
-    }
-  }
-
   VoidCallback? _gridCategoryAction(BuildContext context, String name) {
     final action = switch (name) {
-      'Dairy, Bread & Eggs' => () => _openLocalStoreCategory(context, 'dairy'),
-      'Fruits & Fresh Vegetables' => () => _pushPage(
+      'Dairy, Bread and Eggs' => () => _openLocalStoreCategory(
         context,
-        const VegetablesFruitsPage(),
+        'dairy',
       ),
-      'Cold Drinks & Juices' || 'Tea, Coffee & Milk Drinks' =>
+      'Fresh Vegetables' ||
+      'Fresh Fruits' => () => _pushPage(context, const VegetablesFruitsPage()),
+      'Meat and Seafood' => () => _pushPage(context, const MeatPage()),
+      'Cold Drinks and Juices' || 'Tea, Coffee and Milk Drinks' =>
         () => _openLocalStoreCategory(context, 'beverages'),
-      'Snacks & Munchies' => () => _openLocalStoreCategory(context, 'snacks'),
-      'Breakfast & Instant Food' => () => _openLocalStoreCategory(
+      'Chips and Namkeens' => () => _openLocalStoreCategory(context, 'snacks'),
+      'Chocolates' ||
+      'Sweet Corner' => () => _pushPage(context, const BakeryPage()),
+      'Biscuits and Cakes' => () => _openLocalStoreCategory(
+        context,
+        'biscuits',
+      ),
+      'Atta, Rice and Dal' => () => _openLocalStoreCategory(context, 'rice'),
+      'Masalas' => () => _openLocalStoreCategory(context, 'spices'),
+      'Oils and Ghee' => () => _openLocalStoreCategory(context, 'cooking-oil'),
+      'Noodles, Pasta, Vermicelli' => () => _openLocalStoreCategory(
         context,
         'noodles',
-      ),
-      'Sweet Tooth & Chocolates' => () => _pushPage(
-        context,
-        const BakeryPage(),
-      ),
-      'Bakery & Biscuits' => () => _openLocalStoreCategory(context, 'biscuits'),
-      'Atta, Rice & Dal' => () => _openLocalStoreCategory(context, 'rice'),
-      'Masala, Cooking Oil & Ghee' => () => _openLocalStoreCategory(
-        context,
-        'cooking-oil',
-      ),
-      'Chicken, Meat & Fresh Fish' => () => _pushPage(
-        context,
-        const MeatPage(),
       ),
       _ => null,
     };
@@ -379,18 +322,17 @@ class CategoriesPage extends StatelessWidget {
   }
 
   void _pushPage(BuildContext context, Widget page) {
-    Navigator.of(
-      context,
-    ).push(AppPageRoute<void>(page: page));
+    Navigator.of(context).push(AppPageRoute<void>(page: page));
   }
 }
 
 class _CategoryTile {
-  const _CategoryTile(this.name, this.icon, this.color);
+  const _CategoryTile(this.name, this.icon, this.color, {this.imagePath});
 
   final String name;
   final IconData icon;
   final Color color;
+  final String? imagePath;
 }
 
 class _SectionHeading extends StatelessWidget {
@@ -401,7 +343,7 @@ class _SectionHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 13, 16, 9),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 7),
       child: Text(
         title,
         style: const TextStyle(
@@ -409,42 +351,6 @@ class _SectionHeading extends StatelessWidget {
           fontSize: 17,
           fontWeight: FontWeight.w800,
           letterSpacing: -0.25,
-        ),
-      ),
-    );
-  }
-}
-
-class _HorizontalCategory extends StatelessWidget {
-  const _HorizontalCategory({required this.category, required this.onTap});
-
-  final _CategoryTile category;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        width: 75,
-        child: Column(
-          children: [
-            _CategoryImage(category: category, size: 70),
-            const SizedBox(height: 6),
-            Text(
-              category.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: CategoriesPage._ink,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                height: 1.15,
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -462,23 +368,41 @@ class _GridCategory extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
-      child: Column(
-        children: [
-          _CategoryImage(category: category, size: 63),
-          const SizedBox(height: 6),
-          Text(
-            category.name,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: CategoriesPage._ink,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              height: 1.15,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final imageSize = constraints.maxWidth.clamp(48.0, 88.0).toDouble();
+          return Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFEBEEE9)),
             ),
-          ),
-        ],
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: _CategoryImage(category: category, size: imageSize),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(6, 5, 6, 7),
+                  child: Text(
+                    category.name,
+                    textAlign: TextAlign.left,
+                    softWrap: true,
+                    style: const TextStyle(
+                      color: CategoriesPage._ink,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w500,
+                      height: 1.15,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -499,11 +423,14 @@ class _CategoryImage extends StatelessWidget {
         color: category.color,
         borderRadius: BorderRadius.circular(17),
       ),
-      child: Icon(
-        category.icon,
-        color: const Color(0xFF34453A),
-        size: size * 0.47,
-      ),
+      clipBehavior: Clip.antiAlias,
+      child: category.imagePath == null
+          ? Icon(
+              category.icon,
+              color: const Color(0xFF34453A),
+              size: size * 0.47,
+            )
+          : Image.asset(category.imagePath!, fit: BoxFit.cover),
     );
   }
 }

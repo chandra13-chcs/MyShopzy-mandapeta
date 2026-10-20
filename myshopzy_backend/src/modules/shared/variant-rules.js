@@ -33,7 +33,6 @@ function validateProductName(name) {
 }
 
 function validateVariant(variant, categoryCode) {
-  const errors = [];
   const allowedUnits = Object.hasOwn(
     ALLOWED_UNITS_BY_CATEGORY_CODE,
     categoryCode,
@@ -41,8 +40,16 @@ function validateVariant(variant, categoryCode) {
     ? ALLOWED_UNITS_BY_CATEGORY_CODE[categoryCode]
     : null;
   if (!allowedUnits) {
-    errors.push(`Unknown category code: ${categoryCode}.`);
+    return {
+      valid: false,
+      errors: [`Unknown category code: ${categoryCode}.`],
+    };
   }
+  return validateVariantWithAllowedUnits(variant, allowedUnits);
+}
+
+function validateVariantWithAllowedUnits(variant, allowedUnits) {
+  const errors = [];
   if (!variant || typeof variant !== 'object' || Array.isArray(variant)) {
     errors.push('Variant must be an object.');
     return { valid: false, errors };
@@ -128,5 +135,6 @@ module.exports = {
   normalizeUnit,
   validateProductName,
   validateVariant,
+  validateVariantWithAllowedUnits,
   validateVariants,
 };

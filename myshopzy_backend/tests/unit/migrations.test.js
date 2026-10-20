@@ -41,6 +41,10 @@ const productVariantsSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/008_product_variants_and_images.sql',
 );
+const partnerTypeCodesSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/009_partner_type_codes.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -120,9 +124,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const riderEarningsSchema = await readFile(riderEarningsSchemaPath, 'utf8');
   const customerOtpSchema = await readFile(customerOtpSchemaPath, 'utf8');
   const productVariantsSchema = await readFile(productVariantsSchemaPath, 'utf8');
+  const partnerTypeCodesSchema = await readFile(partnerTypeCodesSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
-  assert.equal(appliedCount, 8);
+  assert.equal(appliedCount, 9);
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
   assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
   assert.equal(
@@ -146,6 +151,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('008').name,
     '008_product_variants_and_images.sql',
   );
+  assert.equal(
+    pool.applied.get('009').name,
+    '009_partner_type_codes.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -155,10 +164,21 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(riderEarningsSchema.trim()));
   assert.ok(calls.includes(customerOtpSchema.trim()));
   assert.ok(calls.includes(productVariantsSchema.trim()));
+  assert.ok(calls.includes(partnerTypeCodesSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
   assert.equal(pool.released, true);
+});
+
+test('normalizes existing partner types before enforcing the supported partner codes', async () => {
+  const migration = await readFile(partnerTypeCodesSchemaPath, 'utf8');
+  assert.match(migration, /WHEN 'grocery' THEN 'local_store'/);
+  assert.match(migration, /WHEN 'other' THEN 'local_store'/);
+  assert.match(migration, /WHEN 'meat_shop' THEN 'meat'/);
+  assert.match(migration, /WHEN 'vegetables_fruits' THEN 'fruits_vegetables'/);
+  assert.match(migration, /RAISE EXCEPTION 'Unsupported app\.partners\.partner_type values remain\.'/);
+  assert.match(migration, /'restaurant', 'meat', 'bakery', 'fruits_vegetables', 'local_store'/);
 });
 
 test('product variants migration backfills variants and upgrades cart/image schema', async () => {

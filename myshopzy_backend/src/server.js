@@ -11,6 +11,9 @@ const { createCustomerOtpAuth } = require('./modules/customer-auth/otp-auth');
 const {
   createAuth0AdminAuthenticator,
 } = require('./modules/admin-read/auth0-authentication');
+const {
+  createPartnerAuthenticator,
+} = require('./modules/partner-types/auth0-authentication');
 const { mockRiderAuth } = require('./middleware/mock-rider-auth');
 
 function shutdownServer(server, pool) {
@@ -60,6 +63,12 @@ function startServer({
         ...config.auth0Admin,
       })
     : null;
+  const authenticatePartner = config.auth0Partner && pool
+    ? createPartnerAuthenticator({
+        databasePool: pool,
+        ...config.auth0Partner,
+      })
+    : null;
   const app = createApp({
     databasePool: pool,
     authenticateCustomer: createCustomerAuthenticator({
@@ -70,8 +79,10 @@ function startServer({
       authenticateRider ??
       (config.nodeEnv === 'production' ? null : mockRiderAuth),
     authenticateAdmin,
+    authenticatePartner,
     nodeEnv: config.nodeEnv,
     superAdminOrigin: authenticateAdmin ? config.superAdminOrigin : null,
+    partnerPortalOrigins: config.partnerPortalOrigins,
     customerOtpAuthRouter,
     developmentCustomerAuthRouter: developmentCustomerAuth.router,
   });

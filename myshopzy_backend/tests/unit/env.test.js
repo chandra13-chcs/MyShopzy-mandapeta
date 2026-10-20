@@ -14,7 +14,9 @@ test('uses development defaults and permits health-only configuration', () => {
     customerSessionSecret: null,
     whatsapp: null,
     auth0Admin: null,
+    auth0Partner: null,
     superAdminOrigin: null,
+    partnerPortalOrigins: ['http://localhost:5173'],
   });
 
   test('parses complete backend-only customer OTP provider settings', () => {
@@ -148,7 +150,7 @@ test('rejects partial PostgreSQL configuration and only names missing keys', () 
 test('enables Auth0 admin configuration only when issuer, audience and origin are set', () => {
   assert.throws(
     () => loadConfig({ AUTH0_ISSUER_URL: 'https://tenant.example.test/' }),
-    /AUTH0_AUDIENCE, SUPER_ADMIN_ORIGIN/,
+    /Set both AUTH0_ISSUER_URL and AUTH0_AUDIENCE/,
   );
 
   const config = loadConfig({
@@ -162,16 +164,58 @@ test('enables Auth0 admin configuration only when issuer, audience and origin ar
     audience: 'https://api.example.test',
     adminUserIdClaim: 'https://claims.example.test/admin_user_id',
   });
+  assert.deepEqual(config.auth0Partner, {
+    issuerUrl: 'https://tenant.example.test/',
+    audience: 'https://api.example.test',
+    emailClaim: 'email',
+    emailVerifiedClaim: 'email_verified',
+  });
   assert.equal(config.superAdminOrigin, 'http://localhost:5173');
 });
 
-test('keeps admin authentication disabled until the namespaced identity claim is configured', () => {
+test('enables partner auth independently and keeps admin auth disabled without its identity claim', () => {
   const config = loadConfig({
     AUTH0_ISSUER_URL: 'https://tenant.example.test/',
     AUTH0_AUDIENCE: 'https://api.example.test',
-    SUPER_ADMIN_ORIGIN: 'http://localhost:5173',
   });
   assert.equal(config.auth0Admin, null);
+  assert.deepEqual(config.auth0Partner, {
+    issuerUrl: 'https://tenant.example.test/',
+    audience: 'https://api.example.test',
+    emailClaim: 'email',
+    emailVerifiedClaim: 'email_verified',
+  });
+  assert.equal(config.superAdminOrigin, null);
+});
+
+test('supports namespaced Auth0 email claims for partner identity lookup', () => {
+  const config = loadConfig({
+    AUTH0_ISSUER_URL: 'https://tenant.example.test/',
+    AUTH0_AUDIENCE: 'https://api.example.test',
+    AUTH0_PARTNER_EMAIL_CLAIM: 'https://claims.example.test/email',
+    AUTH0_PARTNER_EMAIL_VERIFIED_CLAIM:
+      'https://claims.example.test/email_verified',
+  });
+  assert.deepEqual(config.auth0Partner, {
+    issuerUrl: 'https://tenant.example.test/',
+    audience: 'https://api.example.test',
+    emailClaim: 'https://claims.example.test/email',
+    emailVerifiedClaim: 'https://claims.example.test/email_verified',
+  });
+});
+
+test('parses partner portal origins and rejects wildcard CORS origins', () => {
+  const config = loadConfig({
+    PARTNER_PORTAL_ORIGINS: 'http://localhost:5174,https://partner.example.test',
+  });
+  assert.deepEqual(config.partnerPortalOrigins, [
+    'http://localhost:5174',
+    'https://partner.example.test',
+  ]);
+  assert.throws(
+    () => loadConfig({ PARTNER_PORTAL_ORIGINS: '*' }),
+    /PARTNER_PORTAL_ORIGINS must contain HTTPS origins or localhost origins/,
+  );
 });
 
 test('rejects insecure Auth0 issuers and non-origin Super Admin URLs', () => {
