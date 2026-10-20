@@ -12,6 +12,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
 
     await tester.tap(
       find.byKey(const ValueKey('home-delivery-address-selector')),
@@ -29,7 +30,13 @@ void main() {
     );
     expect(find.text('Work'), findsOneWidget);
     expect(find.text('Other'), findsOneWidget);
-    expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('saved-delivery-address-home')),
+        matching: find.byIcon(Icons.home_outlined),
+      ),
+      findsOneWidget,
+    );
     for (final address in demoSavedAddresses) {
       expect(find.text('Demo address: ${address.address}'), findsOneWidget);
     }
@@ -39,10 +46,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('grant action reports location permission is not connected', (
+  testWidgets('grant action starts the current location request', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
 
     await tester.tap(
       find.byKey(const ValueKey('home-delivery-address-selector')),
@@ -51,17 +59,15 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('location-permission-grant')));
     await tester.pump();
 
-    expect(
-      find.text('Location permission is not connected yet.'),
-      findsOneWidget,
-    );
-    expect(find.text('Location Permission is Off'), findsOneWidget);
+    expect(find.text('Finding your location...'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
   testWidgets(
     'selecting an existing address labels it as demo and unverified',
     (tester) async {
       await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      await tester.pumpAndSettle();
 
       await tester.tap(
         find.byKey(const ValueKey('home-delivery-address-selector')),
@@ -84,6 +90,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
 
     await tester.tap(
       find.byKey(const ValueKey('home-delivery-address-selector')),
@@ -100,6 +107,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
 
     await tester.tap(
       find.byKey(const ValueKey('home-delivery-address-selector')),
@@ -120,6 +128,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(280, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
 
     await tester.tap(
       find.byKey(const ValueKey('home-delivery-address-selector')),

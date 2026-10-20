@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../profile/models/saved_address.dart';
 
-class DeliveryLocationBottomSheet extends StatelessWidget {
+class DeliveryLocationBottomSheet extends StatefulWidget {
   const DeliveryLocationBottomSheet({
     required this.onViewAll,
     required this.onEnterManually,
@@ -13,9 +17,91 @@ class DeliveryLocationBottomSheet extends StatelessWidget {
   final VoidCallback onViewAll;
   final VoidCallback onEnterManually;
 
+  @override
+  State<DeliveryLocationBottomSheet> createState() =>
+      _DeliveryLocationBottomSheetState();
+}
+
+class _DeliveryLocationBottomSheetState
+    extends State<DeliveryLocationBottomSheet> {
   static const _blue = Color(0xFF1769AA);
   static const _paleBlue = Color(0xFFEAF4FF);
   static const _divider = Color(0xFFE8ECEF);
+
+  bool _isLoadingLocation = false;
+
+  Future<void> _requestCurrentLocation() async {
+    setState(() => _isLoadingLocation = true);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        await Geolocator.openLocationSettings();
+        if (!await Geolocator.isLocationServiceEnabled()) {
+          _showLocationMessage(
+            'Turn on device location, then tap GRANT to try again.',
+          );
+          return;
+        }
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied) {
+        _showLocationMessage('Location permission was denied.');
+        return;
+      }
+      if (permission == LocationPermission.deniedForever) {
+        await Geolocator.openAppSettings();
+        _showLocationMessage(
+          'Allow location access in app settings, then tap GRANT again.',
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
+      );
+      if (!mounted) return;
+
+      Navigator.of(context).pop(
+        SavedAddress(
+          id: 'current-location',
+          label: 'Current location',
+          address:
+              '${position.latitude.toStringAsFixed(6)}, '
+              '${position.longitude.toStringAsFixed(6)}',
+          icon: Icons.my_location_rounded,
+          latitude: position.latitude,
+          longitude: position.longitude,
+        ),
+      );
+    } on LocationServiceDisabledException {
+      _showLocationMessage('Turn on device location, then tap GRANT again.');
+    } on PermissionDeniedException {
+      _showLocationMessage(
+        'Location permission is required to find your location.',
+      );
+    } on TimeoutException {
+      _showLocationMessage(
+        'Your location request timed out. Please try again.',
+      );
+    } on PlatformException {
+      _showLocationMessage('Your location is temporarily unavailable.');
+    } on MissingPluginException {
+      _showLocationMessage('Location services are unavailable on this device.');
+    } finally {
+      if (mounted) setState(() => _isLoadingLocation = false);
+    }
+  }
+
+  void _showLocationMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,12 +144,14 @@ class DeliveryLocationBottomSheet extends StatelessWidget {
                       size: 24,
                     ),
                     const SizedBox(width: 11),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Location Permission is Off',
+                            _isLoadingLocation
+                                ? 'Finding your location...'
+                                : 'Location Permission is Off',
                             style: TextStyle(
                               color: AppTheme.primaryText,
                               fontSize: 14,
@@ -72,8 +160,7 @@ class DeliveryLocationBottomSheet extends StatelessWidget {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Turn on location to find your delivery area. '
-                            'This feature is not connected yet.',
+                            'Turn on location to find your delivery area.',
                             style: TextStyle(
                               color: AppTheme.secondaryText,
                               fontSize: 12,
@@ -86,26 +173,27 @@ class DeliveryLocationBottomSheet extends StatelessWidget {
                     const SizedBox(width: 6),
                     TextButton(
                       key: const ValueKey('location-permission-grant'),
-                      onPressed: () => ScaffoldMessenger.of(context)
-                          .showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Location permission is not connected yet.',
-                              ),
-                            ),
-                          ),
+                      onPressed: _isLoadingLocation
+                          ? null
+                          : _requestCurrentLocation,
                       style: TextButton.styleFrom(
                         foregroundColor: _blue,
                         minimumSize: const Size(48, 44),
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                       ),
-                      child: const Text(
-                        'GRANT',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+                      child: _isLoadingLocation
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text(
+                              'GRANT',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                     ),
                   ],
                 ),
@@ -125,7 +213,7 @@ class DeliveryLocationBottomSheet extends StatelessWidget {
                   ),
                   TextButton(
                     key: const ValueKey('location-view-all'),
-                    onPressed: onViewAll,
+                    onPressed: widget.onViewAll,
                     style: TextButton.styleFrom(
                       foregroundColor: AppTheme.primaryGreen,
                       minimumSize: const Size(64, 44),
@@ -152,7 +240,7 @@ class DeliveryLocationBottomSheet extends StatelessWidget {
                 width: double.infinity,
                 child: TextButton.icon(
                   key: const ValueKey('location-enter-manually'),
-                  onPressed: onEnterManually,
+                  onPressed: widget.onEnterManually,
                   icon: const Icon(Icons.edit_location_alt_outlined, size: 21),
                   label: const Text('Enter Location Manually'),
                   style: TextButton.styleFrom(

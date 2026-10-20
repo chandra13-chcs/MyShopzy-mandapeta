@@ -318,9 +318,9 @@ class HomePage extends StatelessWidget {
                   categoryName: service.name,
                 ),
               };
-        Navigator.of(context).push(
-          AppPageRoute<void>.builder(builder: (context) => destination),
-        );
+        Navigator.of(
+          context,
+        ).push(AppPageRoute<void>.builder(builder: (context) => destination));
       },
     );
   }
@@ -649,9 +649,7 @@ class HomePage extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(17),
         onTap: () => Navigator.of(context).push(
-          AppPageRoute<void>.builder(
-            builder: (context) => const ParcelPage(),
-          ),
+          AppPageRoute<void>.builder(builder: (context) => const ParcelPage()),
         ),
         child: Container(
           width: double.infinity,
@@ -1032,6 +1030,9 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader> {
   String get _locationLabel {
     final selectedAddress = _selectedAddress;
     if (selectedAddress == null) return 'Mandapeta, Andhra Pradesh';
+    if (selectedAddress.id == 'current-location') {
+      return '${selectedAddress.label} · ${selectedAddress.address}';
+    }
     return '${selectedAddress.label} · Demo address: ${selectedAddress.address}';
   }
 

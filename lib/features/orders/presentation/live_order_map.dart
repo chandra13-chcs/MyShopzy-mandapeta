@@ -174,9 +174,7 @@ class _LiveOrderMapState extends State<LiveOrderMap> {
               ),
               children: [
                 TileLayer(
-                  urlTemplate:
-                      'https://a.basemaps.cartocdn.com/rastertiles/'
-                      'voyager/{z}/{x}/{y}@2x.png',
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.myshopzy.customer',
                   tileProvider: widget.tileProvider,
                 ),
@@ -211,9 +209,7 @@ class _LiveOrderMapState extends State<LiveOrderMap> {
                 RichAttributionWidget(
                   alignment: AttributionAlignment.bottomLeft,
                   attributions: [
-                    TextSourceAttribution(
-                      '© OpenStreetMap contributors · © CARTO',
-                    ),
+                    TextSourceAttribution('© OpenStreetMap contributors'),
                   ],
                 ),
               ],
