@@ -17,9 +17,14 @@ import '../../profile/models/saved_address.dart';
 import 'delivery_unavailable_page.dart';
 
 class CheckoutPage extends StatefulWidget {
-  const CheckoutPage({super.key, this.openNewAddressOnLoad = false});
+  const CheckoutPage({
+    super.key,
+    this.openNewAddressOnLoad = false,
+    this.onAddressSelected,
+  });
 
   final bool openNewAddressOnLoad;
+  final ValueChanged<CheckoutDeliveryAddress>? onAddressSelected;
 
   @override
   State<CheckoutPage> createState() => _CheckoutPageState();
@@ -42,8 +47,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool _quoteLoading = false;
   bool _storeClosedByServer = false;
   bool _placingOrder = false;
-  static const _storeClosedMessage =
-      'Store is closed. Orders open at 7:00 AM';
+  static const _storeClosedMessage = 'Store is closed. Orders open at 7:00 AM';
   final _couponCodeController = TextEditingController();
   final _receiverNameController = TextEditingController();
   final _receiverMobileController = TextEditingController();
@@ -1823,6 +1827,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _currentLocationSuggested = false;
       _someoneElseSelected = false;
     });
+    widget.onAddressSelected?.call(address);
     unawaited(_checkServiceability(address));
   }
 
@@ -1832,6 +1837,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _currentLocationSuggested = false;
       _someoneElseSelected = false;
     });
+    widget.onAddressSelected?.call(address);
     unawaited(_checkServiceability(address));
   }
 

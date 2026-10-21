@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
@@ -16,6 +18,7 @@ import '../../checkout/presentation/checkout_page.dart';
 import '../../profile/models/saved_address.dart';
 import '../../profile/presentation/saved_addresses_page.dart';
 import 'delivery_location_bottom_sheet.dart';
+import '../../parcel/data/parcel_location_service.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../local_stores/data/local_store_session.dart';
@@ -36,7 +39,9 @@ import '../../search/models/search_result.dart';
 import '../../search/presentation/search_page.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.locationService});
+
+  final ParcelLocationService? locationService;
 
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
@@ -140,7 +145,7 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return const _HomeLocationHeader();
+    return _HomeLocationHeader(locationService: locationService);
   }
 
   Widget _buildSearchBar(BuildContext context) {
@@ -940,26 +945,120 @@ Widget _catalogSkeletonCard(BuildContext context, int index) => const SizedBox(
 );
 
 class _HomeLocationHeader extends StatefulWidget {
-  const _HomeLocationHeader();
+  const _HomeLocationHeader({this.locationService});
+
+  final ParcelLocationService? locationService;
 
   @override
   State<_HomeLocationHeader> createState() => _HomeLocationHeaderState();
 }
 
-class _HomeLocationHeaderState extends State<_HomeLocationHeader> {
+class _HomeLocationHeaderState extends State<_HomeLocationHeader>
+    with WidgetsBindingObserver {
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
   static const _green = AppTheme.primaryGreen;
 
   SavedAddress? _selectedAddress;
+  bool _isDetectingLocation = false;
+  bool _isLocationSheetOpen = false;
+  bool _isRefreshingLocation = false;
+  bool _hasChosenManualLocation = false;
+  int _selectionRevision = 0;
+
+  late final ParcelLocationService _locationService =
+      widget.locationService ?? ParcelLocationService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshCurrentLocation());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_isLocationSheetOpen) {
+      unawaited(_refreshCurrentLocation());
+    }
+  }
 
   String get _locationLabel {
+    if (_isDetectingLocation) return 'Detecting location...';
     final selectedAddress = _selectedAddress;
-    if (selectedAddress == null) return 'Mandapeta, Andhra Pradesh';
+    if (selectedAddress == null) return 'Choose your location';
     if (selectedAddress.id == 'current-location') {
-      return '${selectedAddress.label} · ${selectedAddress.address}';
+      return selectedAddress.address;
     }
-    return '${selectedAddress.label} · Demo address: ${selectedAddress.address}';
+    if (demoSavedAddresses.any((address) => address.id == selectedAddress.id)) {
+      return '${selectedAddress.label} · Demo address: ${selectedAddress.address}';
+    }
+    return '${selectedAddress.label} · ${selectedAddress.address}';
+  }
+
+  Future<void> _refreshCurrentLocation() async {
+    if (_isRefreshingLocation || _isLocationSheetOpen) return;
+    _isRefreshingLocation = true;
+    final selectionRevision = _selectionRevision;
+    try {
+      final serviceEnabled = await _locationService.isLocationServiceEnabled();
+      final permission = await _locationService.checkPermission();
+      if (!mounted) return;
+      if (!serviceEnabled ||
+          (permission != LocationPermission.whileInUse &&
+              permission != LocationPermission.always) ||
+          _hasChosenManualLocation ||
+          (_selectedAddress != null &&
+              _selectedAddress!.id != 'current-location')) {
+        return;
+      }
+      await _fetchCurrentLocation(selectionRevision);
+    } on ParcelLocationException catch (error) {
+      debugPrint('Unable to refresh home location: ${error.message}');
+    } on PlatformException catch (error) {
+      debugPrint('Unable to check home location permission: $error');
+    } on MissingPluginException catch (error) {
+      debugPrint('Location is unavailable on this platform: $error');
+    } on Exception catch (error) {
+      debugPrint('Unable to refresh home location: $error');
+    } finally {
+      _isRefreshingLocation = false;
+    }
+  }
+
+  Future<void> _fetchCurrentLocation(int selectionRevision) async {
+    if (!mounted || selectionRevision != _selectionRevision) return;
+    setState(() => _isDetectingLocation = true);
+    try {
+      final location = await _locationService.detectCurrentLocation();
+      if (!mounted || selectionRevision != _selectionRevision) return;
+      setState(() {
+        _selectedAddress = SavedAddress(
+          id: 'current-location',
+          label: 'Current location',
+          address: location.address,
+          icon: Icons.my_location_rounded,
+          latitude: location.latitude,
+          longitude: location.longitude,
+        );
+      });
+    } on ParcelLocationException catch (error) {
+      debugPrint('Unable to fetch home location: ${error.message}');
+    } on PlatformException catch (error) {
+      debugPrint('Unable to fetch home location: $error');
+    } on MissingPluginException catch (error) {
+      debugPrint('Location is unavailable on this platform: $error');
+    } on Exception catch (error) {
+      debugPrint('Unable to fetch home location: $error');
+    } finally {
+      if (mounted) setState(() => _isDetectingLocation = false);
+    }
   }
 
   @override
@@ -1072,35 +1171,69 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader> {
   }
 
   Future<void> _showLocationSelector() async {
-    final selectedAddress = await showModalBottomSheet<SavedAddress>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) => DeliveryLocationBottomSheet(
-        onViewAll: () {
-          Navigator.of(sheetContext).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (context) => const SavedAddressesPage(),
-            ),
-          );
-        },
-        onEnterManually: () {
-          Navigator.of(sheetContext).pop();
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (context) =>
-                  const CheckoutPage(openNewAddressOnLoad: true),
-            ),
-          );
-        },
-      ),
-    );
+    _isLocationSheetOpen = true;
+    SavedAddress? selectedAddress;
+    try {
+      selectedAddress = await showModalBottomSheet<SavedAddress>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (sheetContext) => DeliveryLocationBottomSheet(
+          locationService: _locationService,
+          onViewAll: () {
+            Navigator.of(sheetContext).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const SavedAddressesPage(),
+              ),
+            );
+          },
+          onEnterManually: () {
+            _selectionRevision++;
+            _hasChosenManualLocation = true;
+            Navigator.of(sheetContext).pop();
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => CheckoutPage(
+                  openNewAddressOnLoad: true,
+                  onAddressSelected: _selectManualAddress,
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    } finally {
+      _isLocationSheetOpen = false;
+    }
     if (!mounted || selectedAddress == null) return;
-    setState(() => _selectedAddress = selectedAddress);
+    setState(() {
+      _selectionRevision++;
+      _selectedAddress = selectedAddress;
+    });
+  }
+
+  void _selectManualAddress(CheckoutDeliveryAddress address) {
+    if (!mounted) return;
+    setState(() {
+      _selectionRevision++;
+      _hasChosenManualLocation = true;
+      _selectedAddress = SavedAddress(
+        id: 'manual-${address.id}',
+        label: address.addressType,
+        address: address.formattedAddress,
+        icon: switch (address.addressType) {
+          'Home' => Icons.home_outlined,
+          'Work' => Icons.business_outlined,
+          _ => Icons.location_on_outlined,
+        },
+        latitude: address.latitude,
+        longitude: address.longitude,
+      );
+    });
   }
 }
 

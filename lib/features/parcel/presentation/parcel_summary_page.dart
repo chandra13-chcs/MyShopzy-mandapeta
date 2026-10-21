@@ -244,7 +244,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
         border: Border.all(color: const Color(0xFFEED9A8)),
       ),
       child: const Text(
-        'Demo mode · submitting here will not create a parcel request because the backend is not configured.',
+        'Demo mode · this request will not be submitted until MYSHOPZY_API_BASE_URL is set to a reachable backend origin.',
         style: TextStyle(color: _ink, fontSize: 12, height: 1.4),
       ),
     );
@@ -270,7 +270,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
     final api = CustomerApi.instance;
     if (!api.isConfigured) {
       setState(() {
-        _error = 'Demo mode: parcel request was not submitted. Configure the backend to submit requests.';
+        _error = 'Demo mode: parcel request was not submitted. Set MYSHOPZY_API_BASE_URL to a reachable backend origin and restart the app.';
       });
       return;
     }

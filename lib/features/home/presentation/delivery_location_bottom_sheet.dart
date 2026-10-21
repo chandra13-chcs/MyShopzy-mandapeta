@@ -1,21 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../parcel/data/parcel_location_service.dart';
 import '../../profile/models/saved_address.dart';
 
 class DeliveryLocationBottomSheet extends StatefulWidget {
   const DeliveryLocationBottomSheet({
     required this.onViewAll,
     required this.onEnterManually,
+    this.locationService,
     super.key,
   });
 
   final VoidCallback onViewAll;
   final VoidCallback onEnterManually;
+  final ParcelLocationService? locationService;
 
   @override
   State<DeliveryLocationBottomSheet> createState() =>
@@ -23,45 +25,160 @@ class DeliveryLocationBottomSheet extends StatefulWidget {
 }
 
 class _DeliveryLocationBottomSheetState
-    extends State<DeliveryLocationBottomSheet> {
+    extends State<DeliveryLocationBottomSheet>
+    with WidgetsBindingObserver {
   static const _blue = Color(0xFF1769AA);
   static const _paleBlue = Color(0xFFEAF4FF);
   static const _divider = Color(0xFFE8ECEF);
 
   bool _isLoadingLocation = false;
+  bool _isOpeningSettings = false;
+  bool? _locationServicesEnabled;
+  LocationPermission? _permission;
+  String? _locationError;
 
-  Future<void> _requestCurrentLocation() async {
+  late final ParcelLocationService _locationService =
+      widget.locationService ?? ParcelLocationService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshLocationStatus());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isOpeningSettings) {
+      _isOpeningSettings = false;
+      unawaited(_refreshLocationStatus(fetchWhenAvailable: true));
+    }
+  }
+
+  Future<void> _refreshLocationStatus({
+    bool fetchWhenAvailable = false,
+  }) async {
+    try {
+      final serviceEnabled = await _locationService.isLocationServiceEnabled();
+      final permission = await _locationService.checkPermission();
+      if (!mounted) return;
+      setState(() {
+        _locationServicesEnabled = serviceEnabled;
+        _permission = permission;
+        _locationError = null;
+      });
+      if (fetchWhenAvailable &&
+          serviceEnabled &&
+          _hasForegroundPermission(permission)) {
+        await _requestCurrentLocation(requestPermission: false);
+      }
+    } on ParcelLocationException catch (error) {
+      if (!mounted) return;
+      setState(() => _locationError = error.message);
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _locationServicesEnabled = null;
+        _locationError =
+            'Location is unavailable right now. Choose your location manually.';
+      });
+      debugPrint('Unable to check location status: $error');
+    }
+  }
+
+  bool _hasForegroundPermission(LocationPermission? permission) =>
+      permission == LocationPermission.whileInUse ||
+      permission == LocationPermission.always;
+
+  String get _locationTitle {
+    if (_isLoadingLocation) return 'Finding your location...';
+    if (_locationServicesEnabled == null || _permission == null) {
+      return 'Checking location access...';
+    }
+    if (!_locationServicesEnabled!) return 'Device location is off';
+    if (_permission == LocationPermission.deniedForever) {
+      return 'Location access is permanently denied';
+    }
+    if (_permission == LocationPermission.denied) {
+      return 'Location access is off';
+    }
+    return 'Location access is on';
+  }
+
+  String get _locationDescription {
+    if (_locationError != null) return _locationError!;
+    if (_locationServicesEnabled == null || _permission == null) {
+      return 'Checking permission and device location settings.';
+    }
+    if (!_locationServicesEnabled!) {
+      return 'Turn on device location to find your delivery area.';
+    }
+    if (_permission == LocationPermission.deniedForever) {
+      return 'Allow location in app settings, or choose an address manually.';
+    }
+    if (_permission == LocationPermission.denied) {
+      return 'Allow location access to find your delivery area, or choose an address manually.';
+    }
+    return 'Use your current location or choose an address manually.';
+  }
+
+  String get _locationActionLabel {
+    if (_locationServicesEnabled == false) return 'ENABLE';
+    if (_permission == LocationPermission.deniedForever) return 'SETTINGS';
+    if (_permission == null || _locationServicesEnabled == null) return '';
+    return _permission == LocationPermission.denied ? 'GRANT' : 'USE';
+  }
+
+  Future<void> _handleLocationAction() async {
+    if (_locationServicesEnabled == false) {
+      _isOpeningSettings = true;
+      try {
+        await _locationService.openLocationSettings();
+      } on Exception catch (error) {
+        _isOpeningSettings = false;
+        if (mounted) {
+          setState(
+            () => _locationError =
+                'Could not open device location settings. Choose your location manually.',
+          );
+        }
+        debugPrint('Unable to open device location settings: $error');
+      }
+      return;
+    }
+    if (_permission == LocationPermission.deniedForever) {
+      _isOpeningSettings = true;
+      try {
+        await _locationService.openAppSettings();
+      } on Exception catch (error) {
+        _isOpeningSettings = false;
+        if (mounted) {
+          setState(
+            () => _locationError =
+                'Could not open app settings. Choose your location manually.',
+          );
+        }
+        debugPrint('Unable to open app settings: $error');
+      }
+      return;
+    }
+    await _requestCurrentLocation(requestPermission: true);
+  }
+
+  Future<void> _requestCurrentLocation({
+    required bool requestPermission,
+  }) async {
+    if (_isLoadingLocation) return;
     setState(() => _isLoadingLocation = true);
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        await Geolocator.openLocationSettings();
-        if (!await Geolocator.isLocationServiceEnabled()) {
-          _showLocationMessage(
-            'Turn on device location, then tap GRANT to try again.',
-          );
-          return;
-        }
-      }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied) {
-        _showLocationMessage('Location permission was denied.');
-        return;
-      }
-      if (permission == LocationPermission.deniedForever) {
-        await Geolocator.openAppSettings();
-        _showLocationMessage(
-          'Allow location access in app settings, then tap GRANT again.',
-        );
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 15),
+      final location = await _locationService.detectCurrentLocation(
+        requestPermission: requestPermission,
       );
       if (!mounted) return;
 
@@ -69,38 +186,19 @@ class _DeliveryLocationBottomSheetState
         SavedAddress(
           id: 'current-location',
           label: 'Current location',
-          address:
-              '${position.latitude.toStringAsFixed(6)}, '
-              '${position.longitude.toStringAsFixed(6)}',
+          address: location.address,
           icon: Icons.my_location_rounded,
-          latitude: position.latitude,
-          longitude: position.longitude,
+          latitude: location.latitude,
+          longitude: location.longitude,
         ),
       );
-    } on LocationServiceDisabledException {
-      _showLocationMessage('Turn on device location, then tap GRANT again.');
-    } on PermissionDeniedException {
-      _showLocationMessage(
-        'Location permission is required to find your location.',
-      );
-    } on TimeoutException {
-      _showLocationMessage(
-        'Your location request timed out. Please try again.',
-      );
-    } on PlatformException {
-      _showLocationMessage('Your location is temporarily unavailable.');
-    } on MissingPluginException {
-      _showLocationMessage('Location services are unavailable on this device.');
+    } on ParcelLocationException catch (error) {
+      if (!mounted) return;
+      setState(() => _locationError = error.message);
+      await _refreshLocationStatus();
     } finally {
       if (mounted) setState(() => _isLoadingLocation = false);
     }
-  }
-
-  void _showLocationMessage(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -149,19 +247,17 @@ class _DeliveryLocationBottomSheetState
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _isLoadingLocation
-                                ? 'Finding your location...'
-                                : 'Location Permission is Off',
+                            _locationTitle,
                             style: TextStyle(
                               color: AppTheme.primaryText,
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
-                            'Turn on location to find your delivery area.',
-                            style: TextStyle(
+                            _locationDescription,
+                            style: const TextStyle(
                               color: AppTheme.secondaryText,
                               fontSize: 12,
                               height: 1.35,
@@ -173,9 +269,11 @@ class _DeliveryLocationBottomSheetState
                     const SizedBox(width: 6),
                     TextButton(
                       key: const ValueKey('location-permission-grant'),
-                      onPressed: _isLoadingLocation
+                      onPressed:
+                          _isLoadingLocation ||
+                              _locationActionLabel.isEmpty
                           ? null
-                          : _requestCurrentLocation,
+                          : _handleLocationAction,
                       style: TextButton.styleFrom(
                         foregroundColor: _blue,
                         minimumSize: const Size(48, 44),
@@ -187,9 +285,9 @@ class _DeliveryLocationBottomSheetState
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text(
-                              'GRANT',
-                              style: TextStyle(
+                          : Text(
+                              _locationActionLabel,
+                              style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
                               ),

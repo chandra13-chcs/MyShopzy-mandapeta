@@ -16,10 +16,12 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const MyShopzyApp());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.byType(HomePage), findsOneWidget);
     expect(find.text('30 mins'), findsOneWidget);
-    expect(find.text('Mandapeta, Andhra Pradesh'), findsOneWidget);
+    expect(find.text('Choose your location'), findsOneWidget);
     expect(
       find.text('Search restaurants, groceries, products...'),
       findsOneWidget,

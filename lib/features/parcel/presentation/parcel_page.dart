@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/presentation/promotional_banner.dart';
+import '../data/parcel_location_service.dart';
 import 'parcel_history_page.dart';
 import 'parcel_summary_page.dart';
 
 class ParcelPage extends StatefulWidget {
-  const ParcelPage({super.key});
+  const ParcelPage({this.locationService, super.key});
+
+  final ParcelLocationService? locationService;
 
   @override
   State<ParcelPage> createState() => _ParcelPageState();
@@ -26,6 +29,17 @@ class _ParcelPageState extends State<ParcelPage> {
   final _instructionsController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   String _selectedParcelType = _parcelTypes.first;
+  late final ParcelLocationService _locationService;
+  bool _detectingPickupLocation = false;
+  bool _pickupAddressEdited = false;
+  String? _pickupLocationMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _locationService = widget.locationService ?? ParcelLocationService();
+    _useCurrentLocation();
+  }
 
   @override
   void dispose() {
@@ -153,7 +167,7 @@ class _ParcelPageState extends State<ParcelPage> {
         border: Border.all(color: const Color(0xFFEED9A8)),
       ),
       child: const Text(
-        'Demo mode · parcel requests are not sent until the backend is configured.',
+        'Demo mode · parcel requests are not submitted. Set MYSHOPZY_API_BASE_URL to a reachable backend origin when starting the app.',
         style: TextStyle(color: _ink, fontSize: 12, height: 1.35),
       ),
     );
@@ -172,6 +186,57 @@ class _ParcelPageState extends State<ParcelPage> {
           iconColor: _green,
           controller: _pickupController,
           validator: (value) => _validateLocation(value, 'pickup'),
+          onChanged: (_) => _pickupAddressEdited = true,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 28, top: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextButton.icon(
+                key: const ValueKey('parcel-use-current-location'),
+                onPressed: _detectingPickupLocation
+                    ? null
+                    : () => _useCurrentLocation(overwriteManualAddress: true),
+                icon: _detectingPickupLocation
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.my_location_rounded, size: 17),
+                label: Text(
+                  _detectingPickupLocation
+                      ? 'Getting current location...'
+                      : 'Use current location',
+                ),
+                style: TextButton.styleFrom(
+                  foregroundColor: _green,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (_pickupLocationMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 4),
+                  child: Text(
+                    _pickupLocationMessage!,
+                    key: const ValueKey('parcel-location-message'),
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 11,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
         Padding(
           padding: const EdgeInsets.only(left: 21),
@@ -418,6 +483,36 @@ class _ParcelPageState extends State<ParcelPage> {
     return null;
   }
 
+  Future<void> _useCurrentLocation({
+    bool overwriteManualAddress = false,
+  }) async {
+    setState(() {
+      _detectingPickupLocation = true;
+      _pickupLocationMessage = null;
+    });
+    try {
+      final address = await _locationService.detectPickupAddress();
+      if (!mounted) return;
+      if (overwriteManualAddress || !_pickupAddressEdited) {
+        _pickupController.value = TextEditingValue(
+          text: address,
+          selection: TextSelection.collapsed(offset: address.length),
+        );
+        _pickupAddressEdited = false;
+        _pickupLocationMessage = 'Pickup address detected. You can edit it.';
+      } else {
+        _pickupLocationMessage =
+            'Location detected. Your manually entered pickup address was kept.';
+      }
+    } on ParcelLocationException catch (error) {
+      if (mounted) _pickupLocationMessage = error.message;
+    } finally {
+      if (mounted) {
+        setState(() => _detectingPickupLocation = false);
+      }
+    }
+  }
+
   String? _validateWeight(String? value) {
     final weightText = value?.trim() ?? '';
     final weight = double.tryParse(weightText);
@@ -477,6 +572,7 @@ class _LocationField extends StatelessWidget {
     required this.iconColor,
     required this.controller,
     required this.validator,
+    this.onChanged,
   });
 
   final String label;
@@ -485,6 +581,7 @@ class _LocationField extends StatelessWidget {
   final Color iconColor;
   final TextEditingController controller;
   final String? Function(String?) validator;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -516,6 +613,7 @@ class _LocationField extends StatelessWidget {
                   controller: controller,
                   textCapitalization: TextCapitalization.words,
                   validator: validator,
+                  onChanged: onChanged,
                   decoration: InputDecoration(
                     hintText: hint,
                     hintStyle: const TextStyle(
