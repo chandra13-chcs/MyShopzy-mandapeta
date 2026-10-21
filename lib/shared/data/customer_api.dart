@@ -223,7 +223,10 @@ class ApiProduct {
             if (variant is! Map<String, dynamic>) {
               throw const FormatException('Invalid product variant.');
             }
-            return _productVariantFromJson(variant, _requiredString(json, 'id'));
+            return _productVariantFromJson(
+              variant,
+              _requiredString(json, 'id'),
+            );
           })
           .toList(growable: false),
     );
@@ -793,22 +796,28 @@ class CustomerApi {
   String? _cartToken;
   Future<void>? _cartInitialization;
   bool _orderOutcomeUnknown = false;
+  bool _parcelOutcomeUnknown = false;
   String? _customerAccessToken;
 
   bool get isConfigured => _baseUrl.isNotEmpty;
   bool get hasCartToken => _cartToken != null;
   bool get hasCustomerSession => _customerAccessToken != null;
   bool get orderOutcomeUnknown => _orderOutcomeUnknown;
+  bool get parcelOutcomeUnknown => _parcelOutcomeUnknown;
   CustomerApiException get _unknownOrderOutcomeException =>
       const CustomerApiException(
         statusCode: null,
         code: 'ORDER_OUTCOME_UNKNOWN',
         message: 'The previous order outcome is still unknown.',
       );
+  CustomerApiException get _unknownParcelOutcomeException =>
+      const CustomerApiException(
+        statusCode: null,
+        code: 'PARCEL_OUTCOME_UNKNOWN',
+        message: 'The parcel request outcome could not be confirmed. Check parcel history before trying again.',
+      );
 
-  Future<void> requestOtp({
-    required String phoneNumber,
-  }) async {
+  Future<void> requestOtp({required String phoneNumber}) async {
     _customerAccessToken = null;
     final payload = await _request(
       'POST',
@@ -1116,7 +1125,9 @@ class CustomerApi {
       final item = _dataObject(payload);
       if (_requiredString(item, 'productId') != productId ||
           _requiredString(item, 'variantId') != variantId) {
-        throw const FormatException('Cart response product variant did not match.');
+        throw const FormatException(
+          'Cart response product variant did not match.',
+        );
       }
       return _requiredInteger(item, 'quantity', minimum: 1);
     } on FormatException {
@@ -1253,6 +1264,7 @@ class CustomerApi {
   Future<ApiParcelBooking> createParcelBooking(
     ApiParcelBookingRequest request,
   ) async {
+    if (_parcelOutcomeUnknown) throw _unknownParcelOutcomeException;
     final validationError = request.validationError;
     if (validationError != null) {
       throw CustomerApiException(
@@ -1261,21 +1273,32 @@ class CustomerApi {
         message: validationError,
       );
     }
-    final payload = await _request(
-      'POST',
-      '/me/parcels',
-      body: {
-        'pickupLocation': request.pickupLocation.trim(),
-        'dropLocation': request.dropLocation.trim(),
-        'parcelType': request.parcelType,
-        'weightKg': request.weightKg,
-        'instructions': request.instructions.trim(),
-      },
-    );
     try {
-      return ApiParcelBooking.fromJson(_dataObject(payload));
-    } on FormatException {
-      throw _invalidResponse();
+      final payload = await _request(
+        'POST',
+        '/me/parcels',
+        body: {
+          'pickupLocation': request.pickupLocation.trim(),
+          'dropLocation': request.dropLocation.trim(),
+          'parcelType': request.parcelType,
+          'weightKg': request.weightKg,
+          'instructions': request.instructions.trim(),
+        },
+      );
+      try {
+        return ApiParcelBooking.fromJson(_dataObject(payload));
+      } on FormatException {
+        _parcelOutcomeUnknown = true;
+        throw _invalidResponse();
+      }
+    } on CustomerApiException catch (error) {
+      if (error.code == 'REQUEST_TIMEOUT' ||
+          error.code == 'NETWORK_ERROR' ||
+          error.code == 'INVALID_RESPONSE' ||
+          (error.statusCode != null && error.statusCode! >= 500)) {
+        _parcelOutcomeUnknown = true;
+      }
+      rethrow;
     }
   }
 

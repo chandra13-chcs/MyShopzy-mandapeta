@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:myshopzy/features/parcel/data/parcel_location_service.dart';
 import 'package:myshopzy/features/parcel/presentation/parcel_history_page.dart';
 import 'package:myshopzy/features/parcel/presentation/parcel_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
@@ -106,6 +107,43 @@ void main() {
     expect(requestSent, isFalse);
   });
 
+  test('unknown parcel submission outcome cannot be blindly retried', () async {
+    var requestCount = 0;
+    final api = CustomerApi(
+      baseUrl: 'https://shop.example',
+      timeout: const Duration(milliseconds: 1),
+      httpClient: MockClient((request) async {
+        requestCount++;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        return _jsonResponse({'data': _bookingJson()}, statusCode: 201);
+      }),
+    );
+    addTearDown(api.close);
+
+    await expectLater(
+      api.createParcelBooking(_validRequest),
+      throwsA(
+        isA<CustomerApiException>().having(
+          (error) => error.code,
+          'code',
+          'REQUEST_TIMEOUT',
+        ),
+      ),
+    );
+    expect(api.parcelOutcomeUnknown, isTrue);
+    await expectLater(
+      api.createParcelBooking(_validRequest),
+      throwsA(
+        isA<CustomerApiException>().having(
+          (error) => error.code,
+          'code',
+          'PARCEL_OUTCOME_UNKNOWN',
+        ),
+      ),
+    );
+    expect(requestCount, 1);
+  });
+
   testWidgets('booking form validates locations and the 20 kg limit', (
     tester,
   ) async {
@@ -189,6 +227,67 @@ void main() {
     expect(requests.last.url.path, '/api/v1/me/parcels/$_bookingId');
   });
 
+  testWidgets('saved pickup and drop addresses feed postal coverage checks', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    CustomerApi.instance = _api((request) async {
+      requests.add(request);
+      if (request.url.path == '/api/v1/me/addresses') {
+        return _jsonResponse({
+          'data': [
+            {
+              'id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+              'label': 'Home',
+              'address_snapshot': {
+                'formattedAddress': '10 Main Road, Sample City',
+                'latitude': 16.87,
+                'longitude': 81.93,
+                'pincode': '533308',
+              },
+            },
+          ],
+        });
+      }
+      if (request.url.path == '/api/v1/delivery/serviceability') {
+        return _jsonResponse({
+          'data': {
+            'isDeliverable': true,
+            'message': 'Delivery is available at this location.',
+          },
+        });
+      }
+      return _jsonResponse({'data': _bookingJson()});
+    });
+
+    await _pumpParcelPage(tester);
+    await _chooseSavedAddress(tester, 'parcel-pickup-saved-address');
+    await _chooseSavedAddress(tester, 'parcel-drop-saved-address');
+    await _enterParcelText(tester, 'Enter parcel weight', '1');
+    await _tapContinue(tester);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(
+      find.text('Both postal areas are listed for delivery.'),
+      findsOneWidget,
+    );
+    final checks = requests
+        .where(
+          (request) => request.url.path == '/api/v1/delivery/serviceability',
+        )
+        .toList();
+    expect(checks, hasLength(2));
+    expect(jsonDecode(checks.first.body), {
+      'latitude': 16.87,
+      'longitude': 81.93,
+      'pincode': '533308',
+    });
+    expect(
+      find.textContaining('does not confirm parcel route serviceability'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('history shows loading then an honest empty state', (
     tester,
   ) async {
@@ -207,6 +306,44 @@ void main() {
 
     expect(find.text('No parcel requests yet'), findsOneWidget);
   });
+
+  testWidgets(
+    'history loads later pages using the server pagination contract',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 1100));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final requests = <http.Request>[];
+      CustomerApi.instance = _api((request) async {
+        requests.add(request);
+        final offset = request.url.queryParameters['offset'];
+        return _jsonResponse({
+          'data': offset == '0'
+              ? List.generate(20, (_) => _bookingJson())
+              : [_bookingJson()],
+          'pagination': {'limit': 20, 'offset': int.parse(offset ?? '0')},
+        });
+      });
+
+      await tester.pumpWidget(const MaterialApp(home: ParcelHistoryPage()));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(requests.first.url.queryParameters['offset'], '0');
+      await tester.scrollUntilVisible(
+        find.text('Load more parcel requests'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Load more parcel requests'));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(requests, hasLength(2));
+      expect(requests.last.url.queryParameters, {
+        'limit': '20',
+        'offset': '20',
+      });
+      expect(find.text('Load more parcel requests'), findsNothing);
+      expect(find.textContaining('Request record: requested'), findsWidgets);
+    },
+  );
 
   testWidgets('history reports API errors, retries, and handles 401 honestly', (
     tester,
@@ -278,7 +415,7 @@ void main() {
     tester,
   ) async {
     await _pumpParcelPage(tester);
-    expect(find.textContaining('Demo mode'), findsOneWidget);
+    expect(find.textContaining('Backend not configured'), findsOneWidget);
 
     await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
     await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
@@ -295,10 +432,33 @@ void main() {
   });
 }
 
+Future<void> _chooseSavedAddress(WidgetTester tester, String key) async {
+  final button = find.byKey(ValueKey(key));
+  await tester.scrollUntilVisible(
+    button,
+    100,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.tap(button);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+  await tester.tap(find.text('Home').last);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+}
+
 Future<void> _pumpParcelPage(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(390, 844));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(const MaterialApp(home: ParcelPage()));
+  await tester.pumpWidget(
+    MaterialApp(
+      home: ParcelPage(
+        locationService: ParcelLocationService(
+          isLocationServiceEnabled: () async => false,
+        ),
+      ),
+    ),
+  );
   await tester.pump(const Duration(milliseconds: 500));
 }
 

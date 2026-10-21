@@ -13,9 +13,14 @@ class ParcelHistoryPage extends StatefulWidget {
 }
 
 class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
+  static const _pageSize = 20;
+
   List<ApiParcelBooking> _bookings = const [];
   bool _loading = false;
+  bool _loadingMore = false;
+  bool _hasMore = true;
   String? _error;
+  String? _paginationError;
 
   bool get _backendMode => CustomerApi.instance.isConfigured;
 
@@ -25,23 +30,46 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
     if (_backendMode) unawaited(_loadBookings());
   }
 
-  Future<void> _loadBookings() async {
+  Future<void> _loadBookings({bool loadMore = false}) async {
+    if (_loading || _loadingMore || (loadMore && !_hasMore)) return;
     setState(() {
-      _loading = true;
-      _error = null;
+      if (loadMore) {
+        _loadingMore = true;
+        _paginationError = null;
+      } else {
+        _loading = true;
+        _error = null;
+      }
     });
     try {
-      final bookings = await CustomerApi.instance.getParcelBookings();
-      if (mounted) setState(() => _bookings = bookings);
+      final bookings = await CustomerApi.instance.getParcelBookings(
+        limit: _pageSize,
+        offset: loadMore ? _bookings.length : 0,
+      );
+      if (mounted) {
+        setState(() {
+          _bookings = loadMore ? [..._bookings, ...bookings] : bookings;
+          _hasMore = bookings.length == _pageSize;
+        });
+      }
     } on CustomerApiException catch (error) {
       if (mounted) {
         setState(() {
-          _bookings = const [];
-          _error = error.message;
+          if (loadMore) {
+            _paginationError = error.message;
+          } else {
+            _bookings = const [];
+            _error = error.message;
+          }
         });
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+        });
+      }
     }
   }
 
@@ -75,7 +103,9 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
         ),
       );
     }
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading && _bookings.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
     if (_error != null) {
       return Center(
         child: Padding(
@@ -126,9 +156,39 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
     }
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: _bookings.length,
+      itemCount:
+          _bookings.length +
+          (_hasMore || _loadingMore || _paginationError != null ? 1 : 0),
       separatorBuilder: (context, index) => const SizedBox(height: 12),
-      itemBuilder: (context, index) => _buildBookingCard(_bookings[index]),
+      itemBuilder: (context, index) {
+        if (index < _bookings.length) {
+          return _buildBookingCard(_bookings[index]);
+        }
+        if (_loadingMore) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (_paginationError != null) {
+          return Column(
+            children: [
+              Text(
+                _paginationError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppTheme.secondaryText),
+              ),
+              TextButton(
+                onPressed: () => _loadBookings(loadMore: true),
+                child: const Text('Retry loading parcels'),
+              ),
+            ],
+          );
+        }
+        return Center(
+          child: TextButton(
+            onPressed: () => _loadBookings(loadMore: true),
+            child: const Text('Load more parcel requests'),
+          ),
+        );
+      },
     );
   }
 
@@ -204,8 +264,7 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
   Future<void> _openDetails(String bookingId) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
-        builder: (context) =>
-            ParcelBookingDetailsPage(bookingId: bookingId),
+        builder: (context) => ParcelBookingDetailsPage(bookingId: bookingId),
       ),
     );
   }

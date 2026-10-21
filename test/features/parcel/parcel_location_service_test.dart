@@ -19,7 +19,7 @@ void main() {
     CustomerApi.instance = CustomerApi(baseUrl: '');
   });
 
-  testWidgets('requests foreground permission and fills the detected address', (
+  testWidgets('requests permission only after tapping and fills the address', (
     tester,
   ) async {
     var requestedPermission = false;
@@ -45,15 +45,25 @@ void main() {
       },
     );
 
-    await tester.pumpWidget(
-      MaterialApp(home: ParcelPage(locationService: locationService)),
-    );
-    await tester.pump(const Duration(milliseconds: 500));
+    await _pumpParcelPage(tester, locationService);
     await tester.scrollUntilVisible(
       find.text('Enter pickup location'),
       100,
       scrollable: find.byType(Scrollable).first,
     );
+
+    expect(requestedPermission, isFalse);
+    expect(geocodedCoordinates, isEmpty);
+    final useLocation = find.byKey(
+      const ValueKey('parcel-use-current-location'),
+    );
+    await tester.scrollUntilVisible(
+      useLocation,
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(useLocation);
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(requestedPermission, isTrue);
     expect(geocodedCoordinates, [_position.latitude, _position.longitude]);
@@ -93,10 +103,7 @@ void main() {
       ],
     );
 
-    await tester.pumpWidget(
-      MaterialApp(home: ParcelPage(locationService: locationService)),
-    );
-    await tester.pump(const Duration(milliseconds: 500));
+    await _pumpParcelPage(tester, locationService);
     await tester.scrollUntilVisible(
       find.text('Enter pickup location'),
       100,
@@ -125,11 +132,25 @@ void main() {
     final retryButton = find.byKey(
       const ValueKey('parcel-use-current-location'),
     );
-    await tester.ensureVisible(retryButton);
-    await tester.pump();
+    await tester.scrollUntilVisible(
+      retryButton,
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(retryButton);
     await tester.pump(const Duration(milliseconds: 500));
-    expect(requestedPosition, isTrue);
+    expect(requestedPosition, isFalse);
+    expect(permissionRequests, 1);
+    expect(
+      tester
+          .widget<TextFormField>(find.byType(TextFormField).first)
+          .controller
+          ?.text,
+      isEmpty,
+    );
+
+    await tester.tap(retryButton);
+    await tester.pump(const Duration(milliseconds: 500));
     expect(permissionRequests, 2);
     expect(
       tester
@@ -152,10 +173,7 @@ void main() {
       reverseGeocode: (_, _) => address.future,
     );
 
-    await tester.pumpWidget(
-      MaterialApp(home: ParcelPage(locationService: locationService)),
-    );
-    await tester.pump();
+    await _pumpParcelPage(tester, locationService);
     await tester.scrollUntilVisible(
       find.text('Enter pickup location'),
       100,
@@ -172,11 +190,143 @@ void main() {
     );
     expect(
       find.text(
-        'Location detected. Your manually entered pickup address was kept.',
+        'Location detected. Your manually selected pickup address was kept.',
       ),
       findsOneWidget,
     );
   });
+
+  testWidgets('geocoding failure keeps a friendly manual-entry fallback', (
+    tester,
+  ) async {
+    var permissionRequests = 0;
+    final locationService = ParcelLocationService(
+      isLocationServiceEnabled: () async => true,
+      checkPermission: () async => LocationPermission.whileInUse,
+      requestPermission: () async {
+        permissionRequests++;
+        return LocationPermission.whileInUse;
+      },
+      getCurrentPosition: () async => _position,
+      reverseGeocode: (_, _) async => const [],
+    );
+
+    await _pumpParcelPage(tester, locationService);
+
+    expect(permissionRequests, 0);
+    expect(
+      find.text(
+        'Your location was found, but no readable address was returned. Enter the pickup address manually.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextFormField>(find.byType(TextFormField).first)
+          .controller
+          ?.text,
+      isEmpty,
+    );
+    expect(find.textContaining('16.87'), findsNothing);
+    expect(find.textContaining('81.95'), findsNothing);
+  });
+
+  testWidgets('opens location settings and refreshes after returning', (
+    tester,
+  ) async {
+    var locationEnabled = false;
+    var openedSettings = false;
+    var requestedPosition = false;
+    final locationService = ParcelLocationService(
+      isLocationServiceEnabled: () async => locationEnabled,
+      checkPermission: () async => LocationPermission.whileInUse,
+      requestPermission: () async => LocationPermission.whileInUse,
+      getCurrentPosition: () async {
+        requestedPosition = true;
+        return _position;
+      },
+      reverseGeocode: (_, _) async => const [
+        Placemark(locality: 'Sample City'),
+      ],
+      openLocationSettings: () async {
+        openedSettings = true;
+        return true;
+      },
+    );
+
+    await _pumpParcelPage(tester, locationService);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('parcel-location-settings')),
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(requestedPosition, isFalse);
+    expect(find.text('Enable location services'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('parcel-location-settings')));
+    expect(openedSettings, isTrue);
+
+    locationEnabled = true;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(requestedPosition, isTrue);
+    expect(find.text('Sample City'), findsOneWidget);
+  });
+
+  testWidgets(
+    'permanently denied permission opens app settings and refreshes',
+    (tester) async {
+      var permission = LocationPermission.deniedForever;
+      var permissionRequests = 0;
+      var openedSettings = false;
+      final locationService = ParcelLocationService(
+        isLocationServiceEnabled: () async => true,
+        checkPermission: () async => permission,
+        requestPermission: () async {
+          permissionRequests++;
+          return LocationPermission.whileInUse;
+        },
+        getCurrentPosition: () async => _position,
+        reverseGeocode: (_, _) async => const [
+          Placemark(locality: 'Sample City'),
+        ],
+        openAppSettings: () async {
+          openedSettings = true;
+          return true;
+        },
+      );
+
+      await _pumpParcelPage(tester, locationService);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('parcel-location-settings')),
+        100,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.text('Open app settings'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('parcel-location-settings')));
+      expect(openedSettings, isTrue);
+
+      permission = LocationPermission.whileInUse;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(permissionRequests, 0);
+      expect(find.text('Sample City'), findsOneWidget);
+    },
+  );
+}
+
+Future<void> _pumpParcelPage(
+  WidgetTester tester,
+  ParcelLocationService locationService,
+) async {
+  await tester.binding.setSurfaceSize(const Size(390, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    MaterialApp(home: ParcelPage(locationService: locationService)),
+  );
+  await tester.pump(const Duration(milliseconds: 500));
 }
 
 final _position = Position(

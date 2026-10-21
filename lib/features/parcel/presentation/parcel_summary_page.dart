@@ -11,6 +11,12 @@ class ParcelSummaryPage extends StatefulWidget {
     required this.parcelType,
     required this.weight,
     required this.instructions,
+    this.pickupLatitude,
+    this.pickupLongitude,
+    this.pickupPincode,
+    this.dropLatitude,
+    this.dropLongitude,
+    this.dropPincode,
     super.key,
   });
 
@@ -19,6 +25,12 @@ class ParcelSummaryPage extends StatefulWidget {
   final String parcelType;
   final String weight;
   final String instructions;
+  final double? pickupLatitude;
+  final double? pickupLongitude;
+  final String? pickupPincode;
+  final double? dropLatitude;
+  final double? dropLongitude;
+  final String? dropPincode;
 
   @override
   State<ParcelSummaryPage> createState() => _ParcelSummaryPageState();
@@ -30,7 +42,27 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
   static const _page = AppTheme.lightBackground;
 
   bool _submitting = false;
+  bool _outcomeUnknown = false;
+  bool _checkingServiceability = false;
   String? _error;
+  String? _postalCoverageMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _outcomeUnknown = CustomerApi.instance.parcelOutcomeUnknown;
+    if (_hasLocationData && CustomerApi.instance.isConfigured) {
+      _checkPostalCoverage();
+    }
+  }
+
+  bool get _hasLocationData =>
+      widget.pickupLatitude != null &&
+      widget.pickupLongitude != null &&
+      widget.pickupPincode != null &&
+      widget.dropLatitude != null &&
+      widget.dropLongitude != null &&
+      widget.dropPincode != null;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +87,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
                   const SizedBox(height: 14),
                   _buildDeliveryDetails(),
                   const SizedBox(height: 14),
-                  _buildEstimate(),
+                  _buildFareAndServiceability(),
                   if (!CustomerApi.instance.isConfigured) ...[
                     const SizedBox(height: 12),
                     _buildDemoNotice(),
@@ -158,40 +190,14 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
       title: 'Delivery details',
       child: const Column(
         children: [
-          _SummaryRow(label: 'Vehicle', value: 'Bike'),
+          _SummaryRow(label: 'Requested vehicle', value: 'Bike'),
           SizedBox(height: 11),
-          _SummaryRow(label: 'Maximum service radius', value: '50 km'),
+          _SummaryRow(
+            label: 'Maximum route distance',
+            value: '50 km (not verified by this API)',
+          ),
           SizedBox(height: 11),
           _SummaryRow(label: 'Maximum weight', value: '20 kg'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEstimate() {
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEAF3EA),
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: const Color(0xFFD9E9DA)),
-      ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.info_outline_rounded, color: _green, size: 19),
-          SizedBox(width: 9),
-          Expanded(
-            child: Text(
-              'Delivery charge will be calculated after location verification.',
-              style: TextStyle(
-                color: _ink,
-                fontSize: 12,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -208,7 +214,11 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
         width: double.infinity,
         height: 50,
         child: FilledButton(
-          onPressed: _submitting ? null : _submitParcelRequest,
+          onPressed: _submitting
+              ? null
+              : _outcomeUnknown
+              ? _openParcelHistory
+              : _submitParcelRequest,
           style: FilledButton.styleFrom(
             backgroundColor: _green,
             foregroundColor: Colors.white,
@@ -229,7 +239,11 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
                     color: Colors.white,
                   ),
                 )
-              : const Text('Submit Parcel Request'),
+              : Text(
+                  _outcomeUnknown
+                      ? 'Check parcel history'
+                      : 'Submit Parcel Request',
+                ),
         ),
       ),
     );
@@ -244,7 +258,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
         border: Border.all(color: const Color(0xFFEED9A8)),
       ),
       child: const Text(
-        'Demo mode · this request will not be submitted until MYSHOPZY_API_BASE_URL is set to a reachable backend origin.',
+        'Backend not configured · this parcel request cannot be submitted. Set MYSHOPZY_API_BASE_URL to a reachable backend origin and restart the app.',
         style: TextStyle(color: _ink, fontSize: 12, height: 1.4),
       ),
     );
@@ -263,6 +277,124 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
         message,
         style: const TextStyle(color: Color(0xFF914747), fontSize: 12),
       ),
+    );
+  }
+
+  Widget _buildFareAndServiceability() {
+    final coverageText = !_hasLocationData
+        ? 'Postal-area coverage could not be checked. Add locations with saved coordinates and postal codes to check the existing delivery coverage list.'
+        : _checkingServiceability
+        ? 'Checking whether both postal areas are listed for delivery...'
+        : _postalCoverageMessage ??
+              'Postal-area coverage has not been checked.';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF3EA),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(color: const Color(0xFFD9E9DA)),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline_rounded, color: _green, size: 19),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  'No parcel fare rules are configured, so no price or estimate is available. Submitting creates a request record only.',
+                  style: TextStyle(
+                    color: _ink,
+                    fontSize: 12,
+                    height: 1.4,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          key: const ValueKey('parcel-postal-coverage'),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE8EBE6)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                coverageText,
+                style: const TextStyle(color: _ink, fontSize: 12, height: 1.4),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'This checks postal-area coverage only. It does not confirm parcel route serviceability or the 50 km limit.',
+                style: TextStyle(
+                  color: Color(0xFF727A74),
+                  fontSize: 11,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (_outcomeUnknown) ...[
+          const SizedBox(height: 10),
+          _buildErrorNotice(
+            'The request may have been received, but the response was not confirmed. Check parcel history before trying again.',
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _checkPostalCoverage() async {
+    if (!_hasLocationData || !CustomerApi.instance.isConfigured) return;
+    setState(() {
+      _checkingServiceability = true;
+      _postalCoverageMessage = null;
+    });
+    try {
+      final results = await Future.wait([
+        CustomerApi.instance.checkLocationServiceability(
+          widget.pickupLatitude!,
+          widget.pickupLongitude!,
+          widget.pickupPincode!,
+        ),
+        CustomerApi.instance.checkLocationServiceability(
+          widget.dropLatitude!,
+          widget.dropLongitude!,
+          widget.dropPincode!,
+        ),
+      ]);
+      if (!mounted) return;
+      final bothListed = results.every((result) => result.isDeliverable);
+      setState(() {
+        _postalCoverageMessage = bothListed
+            ? 'Both postal areas are listed for delivery.'
+            : 'One or both postal areas are not listed for delivery.';
+      });
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        setState(
+          () => _postalCoverageMessage =
+              'Postal-area check unavailable: ${error.message}',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingServiceability = false);
+    }
+  }
+
+  Future<void> _openParcelHistory() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(builder: (context) => const ParcelHistoryPage()),
     );
   }
 
@@ -296,7 +428,12 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
         ),
       );
     } on CustomerApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted) {
+        setState(() {
+          _error = error.message;
+          _outcomeUnknown = api.parcelOutcomeUnknown;
+        });
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
@@ -16,7 +19,7 @@ class ParcelPage extends StatefulWidget {
   State<ParcelPage> createState() => _ParcelPageState();
 }
 
-class _ParcelPageState extends State<ParcelPage> {
+class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
   static const _green = AppTheme.primaryGreen;
@@ -31,23 +34,42 @@ class _ParcelPageState extends State<ParcelPage> {
   String _selectedParcelType = _parcelTypes.first;
   late final ParcelLocationService _locationService;
   bool _detectingPickupLocation = false;
+  bool _loadingSavedAddresses = false;
+  bool _awaitingLocationSettings = false;
   bool _pickupAddressEdited = false;
+  double? _pickupLatitude;
+  double? _pickupLongitude;
+  String? _pickupPincode;
+  double? _dropLatitude;
+  double? _dropLongitude;
+  String? _dropPincode;
+  ParcelLocationAction? _locationAction;
   String? _pickupLocationMessage;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _locationService = widget.locationService ?? ParcelLocationService();
-    _useCurrentLocation();
+    unawaited(_useCurrentLocation());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pickupController.dispose();
     _dropController.dispose();
     _weightController.dispose();
     _instructionsController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _awaitingLocationSettings) {
+      _awaitingLocationSettings = false;
+      unawaited(_useCurrentLocation());
+    }
   }
 
   @override
@@ -127,7 +149,7 @@ class _ParcelPageState extends State<ParcelPage> {
                 ),
                 SizedBox(height: 3),
                 Text(
-                  'Bike delivery • Up to 50 km',
+                  'Bike request • 50 km limit not verified',
                   style: TextStyle(
                     color: _muted,
                     fontSize: 11,
@@ -166,8 +188,10 @@ class _ParcelPageState extends State<ParcelPage> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFEED9A8)),
       ),
-      child: const Text(
-        'Demo mode · parcel requests are not submitted. Set MYSHOPZY_API_BASE_URL to a reachable backend origin when starting the app.',
+      child: Text(
+        CustomerApi.instance.isConfigured
+            ? 'Parcel requests require an authenticated customer session. The backend will be checked when you submit.'
+            : 'Backend not configured · parcel requests cannot be submitted. Set MYSHOPZY_API_BASE_URL to a reachable backend origin when starting the app.',
         style: TextStyle(color: _ink, fontSize: 12, height: 1.35),
       ),
     );
@@ -186,7 +210,7 @@ class _ParcelPageState extends State<ParcelPage> {
           iconColor: _green,
           controller: _pickupController,
           validator: (value) => _validateLocation(value, 'pickup'),
-          onChanged: (_) => _pickupAddressEdited = true,
+          onChanged: _onPickupAddressChanged,
         ),
         Padding(
           padding: const EdgeInsets.only(left: 28, top: 4),
@@ -197,7 +221,7 @@ class _ParcelPageState extends State<ParcelPage> {
                 key: const ValueKey('parcel-use-current-location'),
                 onPressed: _detectingPickupLocation
                     ? null
-                    : () => _useCurrentLocation(overwriteManualAddress: true),
+                    : () => _useCurrentLocation(requestPermission: true),
                 icon: _detectingPickupLocation
                     ? const SizedBox(
                         width: 16,
@@ -222,18 +246,58 @@ class _ParcelPageState extends State<ParcelPage> {
                   ),
                 ),
               ),
+              TextButton.icon(
+                key: const ValueKey('parcel-pickup-saved-address'),
+                onPressed: _loadingSavedAddresses
+                    ? null
+                    : () => _chooseSavedAddress(pickup: true),
+                icon: const Icon(Icons.bookmark_outline_rounded, size: 17),
+                label: const Text('Choose saved pickup address'),
+                style: TextButton.styleFrom(
+                  foregroundColor: _green,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
               if (_pickupLocationMessage != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 8, bottom: 4),
-                  child: Text(
-                    _pickupLocationMessage!,
-                    key: const ValueKey('parcel-location-message'),
-                    style: const TextStyle(
-                      color: _muted,
-                      fontSize: 11,
-                      height: 1.35,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _pickupLocationMessage!,
+                        key: const ValueKey('parcel-location-message'),
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 11,
+                          height: 1.35,
+                        ),
+                      ),
+                      if (_locationAction != null)
+                        TextButton(
+                          key: const ValueKey('parcel-location-settings'),
+                          onPressed: _openLocationSettings,
+                          child: Text(
+                            _locationAction ==
+                                    ParcelLocationAction.openAppSettings
+                                ? 'Open app settings'
+                                : 'Enable location services',
+                          ),
+                        ),
+                    ],
                   ),
+                ),
+              if (_loadingSavedAddresses)
+                const Padding(
+                  padding: EdgeInsets.only(left: 8, bottom: 4),
+                  child: LinearProgressIndicator(),
                 ),
             ],
           ),
@@ -253,6 +317,30 @@ class _ParcelPageState extends State<ParcelPage> {
           iconColor: const Color(0xFFD16A53),
           controller: _dropController,
           validator: (value) => _validateLocation(value, 'drop'),
+          onChanged: (_) {
+            _dropLatitude = null;
+            _dropLongitude = null;
+            _dropPincode = null;
+          },
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 28, top: 4),
+          child: TextButton.icon(
+            key: const ValueKey('parcel-drop-saved-address'),
+            onPressed: _loadingSavedAddresses
+                ? null
+                : () => _chooseSavedAddress(pickup: false),
+            icon: const Icon(Icons.bookmark_outline_rounded, size: 17),
+            label: const Text('Choose saved drop address'),
+            style: TextButton.styleFrom(
+              foregroundColor: _green,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -412,7 +500,7 @@ class _ParcelPageState extends State<ParcelPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Maximum delivery distance: 50 km',
+                  'Maximum route distance: 50 km (not checked)',
                   style: TextStyle(
                     color: _ink,
                     fontSize: 12,
@@ -421,7 +509,7 @@ class _ParcelPageState extends State<ParcelPage> {
                 ),
                 SizedBox(height: 3),
                 Text(
-                  'Vehicle: Bike',
+                  'Bike requested; no rider is assigned yet.',
                   style: TextStyle(color: _muted, fontSize: 11),
                 ),
               ],
@@ -453,6 +541,12 @@ class _ParcelPageState extends State<ParcelPage> {
                   parcelType: _selectedParcelType,
                   weight: _weightController.text.trim(),
                   instructions: _instructionsController.text.trim(),
+                  pickupLatitude: _pickupLatitude,
+                  pickupLongitude: _pickupLongitude,
+                  pickupPincode: _pickupPincode,
+                  dropLatitude: _dropLatitude,
+                  dropLongitude: _dropLongitude,
+                  dropPincode: _dropPincode,
                 ),
               ),
             );
@@ -483,33 +577,159 @@ class _ParcelPageState extends State<ParcelPage> {
     return null;
   }
 
-  Future<void> _useCurrentLocation({
-    bool overwriteManualAddress = false,
-  }) async {
+  void _onPickupAddressChanged(String _) {
+    _pickupAddressEdited = true;
+    _pickupLatitude = null;
+    _pickupLongitude = null;
+    _pickupPincode = null;
+  }
+
+  Future<void> _useCurrentLocation({bool requestPermission = false}) async {
+    if (_detectingPickupLocation) return;
     setState(() {
       _detectingPickupLocation = true;
       _pickupLocationMessage = null;
+      _locationAction = null;
     });
     try {
-      final address = await _locationService.detectPickupAddress();
+      final location = await _locationService.detectCurrentLocation(
+        requestPermission: requestPermission,
+      );
       if (!mounted) return;
-      if (overwriteManualAddress || !_pickupAddressEdited) {
+      if (!_pickupAddressEdited) {
+        _pickupLatitude = location.latitude;
+        _pickupLongitude = location.longitude;
+        _pickupPincode = location.pincode;
+        if (location.pickupAddress.trim().isEmpty) {
+          throw const ParcelLocationException(
+            'Your location was found, but no readable address was returned. Enter the pickup address manually.',
+          );
+        }
         _pickupController.value = TextEditingValue(
-          text: address,
-          selection: TextSelection.collapsed(offset: address.length),
+          text: location.pickupAddress,
+          selection: TextSelection.collapsed(
+            offset: location.pickupAddress.length,
+          ),
         );
-        _pickupAddressEdited = false;
         _pickupLocationMessage = 'Pickup address detected. You can edit it.';
       } else {
-        _pickupLocationMessage =
-            'Location detected. Your manually entered pickup address was kept.';
+        _pickupLocationMessage = 'Location detected. Your manually selected pickup address was kept.';
       }
     } on ParcelLocationException catch (error) {
-      if (mounted) _pickupLocationMessage = error.message;
+      if (mounted) {
+        _pickupLocationMessage = error.message;
+        _locationAction = error.action;
+      }
     } finally {
       if (mounted) {
         setState(() => _detectingPickupLocation = false);
       }
+    }
+  }
+
+  Future<void> _openLocationSettings() async {
+    final action = _locationAction;
+    if (action == null) return;
+    _awaitingLocationSettings = true;
+    try {
+      final opened = action == ParcelLocationAction.openAppSettings
+          ? await _locationService.openAppSettings()
+          : await _locationService.openLocationSettings();
+      if (!opened && mounted) {
+        _awaitingLocationSettings = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open device settings.')),
+        );
+      }
+    } on PlatformException {
+      _awaitingLocationSettings = false;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open device settings.')),
+        );
+      }
+    } on MissingPluginException {
+      _awaitingLocationSettings = false;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Device settings are unavailable.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _chooseSavedAddress({required bool pickup}) async {
+    if (_loadingSavedAddresses) return;
+    setState(() => _loadingSavedAddresses = true);
+    try {
+      final addresses = await CustomerApi.instance.getSavedAddresses();
+      if (!mounted) return;
+      final usableAddresses = addresses
+          .where((address) => address.formattedAddress.trim().isNotEmpty)
+          .toList(growable: false);
+      if (usableAddresses.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No complete saved addresses are available.'),
+          ),
+        );
+        return;
+      }
+      if (mounted) setState(() => _loadingSavedAddresses = false);
+      final selectedAddress = await showModalBottomSheet<ApiSavedAddress>(
+        context: context,
+        showDragHandle: true,
+        backgroundColor: Colors.white,
+        builder: (context) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child: Text(
+                  'Choose a saved address',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ),
+              for (final address in usableAddresses)
+                ListTile(
+                  leading: const Icon(Icons.location_on_outlined),
+                  title: Text(address.label),
+                  subtitle: Text(address.formattedAddress),
+                  onTap: () => Navigator.of(context).pop(address),
+                ),
+            ],
+          ),
+        ),
+      );
+      if (!mounted || selectedAddress == null) return;
+      final address = selectedAddress.formattedAddress.trim();
+      if (pickup) {
+        _pickupController.value = TextEditingValue(
+          text: address,
+          selection: TextSelection.collapsed(offset: address.length),
+        );
+        _pickupAddressEdited = true;
+        _pickupLatitude = selectedAddress.latitude;
+        _pickupLongitude = selectedAddress.longitude;
+        _pickupPincode = selectedAddress.pincode;
+      } else {
+        _dropController.value = TextEditingValue(
+          text: address,
+          selection: TextSelection.collapsed(offset: address.length),
+        );
+        _dropLatitude = selectedAddress.latitude;
+        _dropLongitude = selectedAddress.longitude;
+        _dropPincode = selectedAddress.pincode;
+      }
+      setState(() {});
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _loadingSavedAddresses = false);
     }
   }
 

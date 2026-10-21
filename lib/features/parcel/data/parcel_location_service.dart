@@ -6,10 +6,13 @@ import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 
 class ParcelLocationException implements Exception {
-  const ParcelLocationException(this.message);
+  const ParcelLocationException(this.message, {this.action});
 
   final String message;
+  final ParcelLocationAction? action;
 }
+
+enum ParcelLocationAction { openAppSettings, openLocationSettings }
 
 class DetectedLocation {
   const DetectedLocation({
@@ -17,12 +20,14 @@ class DetectedLocation {
     required this.longitude,
     required this.address,
     required this.pickupAddress,
+    this.pincode,
   });
 
   final double latitude;
   final double longitude;
   final String address;
   final String pickupAddress;
+  final String? pincode;
 }
 
 class ParcelLocationService {
@@ -85,6 +90,7 @@ class ParcelLocationService {
       if (!await _isLocationServiceEnabled()) {
         throw const ParcelLocationException(
           'Location services are off. Turn on GPS or enter the pickup address manually.',
+          action: ParcelLocationAction.openLocationSettings,
         );
       }
 
@@ -95,6 +101,7 @@ class ParcelLocationService {
       if (permission == LocationPermission.deniedForever) {
         throw const ParcelLocationException(
           'Location permission is permanently denied. Enable it in app settings or choose your location manually.',
+          action: ParcelLocationAction.openAppSettings,
         );
       }
       if (permission != LocationPermission.whileInUse &&
@@ -107,6 +114,7 @@ class ParcelLocationService {
       final position = await _getCurrentPosition();
       var address = 'Choose your location';
       var pickupAddress = '';
+      String? pincode;
       // The geocoding plugin has no web implementation.
       if (!kIsWeb) {
         try {
@@ -119,6 +127,11 @@ class ParcelLocationService {
             final readableAddress = _formatAddress(placemark);
             if (readableAddress.isNotEmpty) address = readableAddress;
             pickupAddress = _formatPickupAddress(placemark);
+            if (pickupAddress.isEmpty) pickupAddress = readableAddress;
+            final postalCode = placemark.postalCode?.trim();
+            if (postalCode != null && postalCode.isNotEmpty) {
+              pincode = postalCode;
+            }
           }
         } on NoResultFoundException {
           // Keep the friendly fallback when the platform has no geocoding result.
@@ -137,6 +150,7 @@ class ParcelLocationService {
         longitude: position.longitude,
         address: address,
         pickupAddress: pickupAddress,
+        pincode: pincode,
       );
     } on NoResultFoundException {
       throw const ParcelLocationException(
