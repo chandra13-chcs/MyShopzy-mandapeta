@@ -115,12 +115,30 @@ void main() {
       return _jsonResponse({'data': _bookingJson()}, statusCode: 201);
     });
 
-    await tester.pumpWidget(const MaterialApp(home: ParcelPage()));
-    await tester.enterText(find.byType(TextFormField).at(0), 'Pickup Road');
-    await tester.enterText(find.byType(TextFormField).at(1), 'Drop Street');
-    await tester.enterText(find.byType(TextFormField).at(2), '20.001');
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await _pumpParcelPage(tester);
+    expect(
+      find.byKey(const ValueKey('parcel-page-promotion-banner')),
+      findsOneWidget,
+    );
+    final parcelBanner = tester.widget<Image>(
+      find.byKey(const ValueKey('parcel-page-promotion-banner')),
+    );
+    expect(
+      parcelBanner.image,
+      isA<ResizeImage>().having(
+        (image) => image.imageProvider,
+        'imageProvider',
+        isA<AssetImage>().having(
+          (image) => image.assetName,
+          'assetName',
+          'assets/myshopzy_banners/parellu.jpeg',
+        ),
+      ),
+    );
+    await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
+    await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
+    await _enterParcelText(tester, 'Enter parcel weight', '20.001');
+    await _tapContinue(tester);
 
     expect(
       find.text('Weight must be greater than 0 kg and no more than 20 kg.'),
@@ -141,13 +159,19 @@ void main() {
       return _jsonResponse({'data': _bookingJson(appendUpdatedAt: true)});
     });
 
-    await tester.pumpWidget(const MaterialApp(home: ParcelPage()));
-    await tester.enterText(find.byType(TextFormField).at(0), 'Pickup Road');
-    await tester.enterText(find.byType(TextFormField).at(1), 'Drop Street');
-    await tester.enterText(find.byType(TextFormField).at(2), '1.25');
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await _pumpParcelPage(tester);
+    await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
+    await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
+    await _enterParcelText(tester, 'Enter parcel weight', '1.25');
+    await _tapContinue(tester);
 
+    expect(find.text('Enter a pickup location.'), findsNothing);
+    expect(find.text('Enter a drop location.'), findsNothing);
+    expect(
+      find.text('Weight must be greater than 0 kg and no more than 20 kg.'),
+      findsNothing,
+    );
+    expect(find.text('Parcel Summary'), findsOneWidget);
     await tester.tap(find.text('Submit Parcel Request'));
     await tester.pump();
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -155,7 +179,9 @@ void main() {
     postResponse.complete(
       _jsonResponse({'data': _bookingJson()}, statusCode: 201),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
 
     expect(find.text('Parcel Request Details'), findsOneWidget);
     expect(find.text(_bookingId), findsOneWidget);
@@ -177,7 +203,7 @@ void main() {
         'pagination': {'limit': 20, 'offset': 0},
       }),
     );
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('No parcel requests yet'), findsOneWidget);
   });
@@ -205,13 +231,13 @@ void main() {
     });
 
     await tester.pumpWidget(const MaterialApp(home: ParcelHistoryPage()));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(
       find.text('Parcel history is temporarily unavailable.'),
       findsOneWidget,
     );
     await tester.tap(find.text('Retry parcel history'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(
       find.text('Customer authentication is required for parcel history.'),
@@ -233,14 +259,13 @@ void main() {
       }, statusCode: 401),
     );
 
-    await tester.pumpWidget(const MaterialApp(home: ParcelPage()));
-    await tester.enterText(find.byType(TextFormField).at(0), 'Pickup Road');
-    await tester.enterText(find.byType(TextFormField).at(1), 'Drop Street');
-    await tester.enterText(find.byType(TextFormField).at(2), '1');
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await _pumpParcelPage(tester);
+    await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
+    await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
+    await _enterParcelText(tester, 'Enter parcel weight', '1');
+    await _tapContinue(tester);
     await tester.tap(find.text('Submit Parcel Request'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(
       find.text('Customer authentication is required to submit a parcel.'),
@@ -252,16 +277,15 @@ void main() {
   testWidgets('unconfigured parcel mode is labeled and does not fake success', (
     tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: ParcelPage()));
+    await _pumpParcelPage(tester);
     expect(find.textContaining('Demo mode'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextFormField).at(0), 'Pickup Road');
-    await tester.enterText(find.byType(TextFormField).at(1), 'Drop Street');
-    await tester.enterText(find.byType(TextFormField).at(2), '1');
-    await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
+    await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
+    await _enterParcelText(tester, 'Enter parcel weight', '1');
+    await _tapContinue(tester);
     await tester.tap(find.text('Submit Parcel Request'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(
       find.textContaining('parcel request was not submitted'),
@@ -269,6 +293,41 @@ void main() {
     );
     expect(find.text('Parcel Request Details'), findsNothing);
   });
+}
+
+Future<void> _pumpParcelPage(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(390, 844));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(const MaterialApp(home: ParcelPage()));
+  await tester.pump(const Duration(milliseconds: 500));
+}
+
+Future<void> _enterParcelText(
+  WidgetTester tester,
+  String hint,
+  String value,
+) async {
+  await tester.scrollUntilVisible(
+    find.text(hint),
+    120,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pump(const Duration(milliseconds: 500));
+  final field = find.ancestor(
+    of: find.text(hint),
+    matching: find.byType(TextFormField),
+  );
+  await tester.enterText(field.first, value);
+  expect(tester.widget<TextFormField>(field.first).controller?.text, value);
+}
+
+Future<void> _tapContinue(WidgetTester tester) async {
+  tester.binding.focusManager.primaryFocus?.unfocus();
+  await tester.pump();
+  await tester.ensureVisible(find.text('Continue'));
+  await tester.tap(find.text('Continue'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
 }
 
 const _validRequest = ApiParcelBookingRequest(

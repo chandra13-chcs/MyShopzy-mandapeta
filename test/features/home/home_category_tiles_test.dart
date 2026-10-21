@@ -1,4 +1,4 @@
-import 'dart:convert';
+ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,6 +85,44 @@ void main() {
       ),
       findsOneWidget,
     );
+
+    const categoryAssets = {
+      'Meat Only Chicken': 'assets/category_tiles/meat tiles.jpeg',
+      'Bakery': 'assets/category_tiles/bakery tile.jpeg',
+      'Parcel': 'assets/category_tiles/parcel tiles.jpeg',
+      'Local Stores': 'assets/category_tiles/local stores tiles.jpeg',
+      'Fruits & Vegetables':
+          'assets/category_tiles/fruits nd vegetables tile.jpeg',
+      'Restaurants': 'assets/category_tiles/restarant tile.jpeg',
+    };
+    for (final entry in categoryAssets.entries) {
+      final imageFinder = find.byWidgetPredicate(
+        (widget) => widget is Image && widget.semanticLabel == entry.key,
+      );
+      final image = tester.widget<Image>(imageFinder);
+      expect(image.fit, BoxFit.contain);
+      expect(
+        image.image,
+        isA<ResizeImage>().having(
+          (resizeImage) => resizeImage.imageProvider,
+          'imageProvider',
+          isA<AssetImage>().having(
+            (assetImage) => assetImage.assetName,
+            'assetName',
+            entry.value,
+          ),
+        ),
+      );
+
+      final titleFinder = find.text(entry.key);
+      final title = tester.widget<Text>(titleFinder);
+      expect(title.maxLines, isNull);
+      expect(title.overflow, isNull);
+      expect(
+        tester.getTopLeft(titleFinder).dy,
+        greaterThan(tester.getBottomLeft(imageFinder).dy - 2),
+      );
+    }
 
     final meatTile = find.byKey(
       const ValueKey('home-category-meat_only_chicken'),

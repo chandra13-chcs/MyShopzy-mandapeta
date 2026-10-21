@@ -9,6 +9,7 @@ import '../../../shared/presentation/dietary_badge.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
+import '../../../shared/presentation/promotional_banner.dart';
 import '../../bakery/presentation/bakery_page.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../checkout/presentation/checkout_page.dart';
@@ -18,7 +19,6 @@ import 'delivery_location_bottom_sheet.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../local_stores/data/local_store_session.dart';
-import '../../local_stores/models/local_store.dart';
 import '../../meat/presentation/meat_page.dart';
 import '../../parcel/presentation/parcel_page.dart';
 import '../../restaurants/presentation/restaurants_page.dart';
@@ -44,6 +44,7 @@ class HomePage extends StatelessWidget {
   static const _page = AppTheme.lightBackground;
   static const _recentlyViewedViewAllThreshold = 4;
   static const _homeIntroChildCount = 8;
+  static const _promotionsChildIndex = 6;
 
   static final _discoverySearchResults = _buildSearchDiscoveryResults();
   static final _homeSliverChildCount =
@@ -80,7 +81,7 @@ class HomePage extends StatelessWidget {
         3 => const SizedBox(height: 22),
         4 => _buildServiceGrid(),
         5 => const SizedBox(height: 22),
-        6 => _buildPromotions(),
+        _promotionsChildIndex => _buildPromotions(),
         7 => AnimatedBuilder(
           animation: RecentlyViewedStore.instance,
           builder: (context, child) {
@@ -328,42 +329,40 @@ class HomePage extends StatelessWidget {
   Widget _buildPromotions() {
     const banners = [
       (
-        key: 'biryani',
-        assetPath: 'assets/category_tiles/biryanii poster .jpeg',
+        key: 'restaurants',
+        assetPath: 'assets/myshopzy_banners/myshopzy restarants.jpeg',
       ),
-      (key: 'cake', assetPath: 'assets/category_tiles/cake poster.jpeg'),
-      (key: 'vegetables', assetPath: 'assets/category_tiles/veg poster.jpeg'),
+      (
+        key: 'groceries',
+        assetPath: 'assets/myshopzy_banners/myshopzy groceries.jpeg',
+      ),
+      (
+        key: 'bakery',
+        assetPath: 'assets/myshopzy_banners/myshopzy bakery.jpeg',
+      ),
     ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cardWidth = constraints.maxWidth - 38;
-        final cardHeight = cardWidth / 2.25;
-        final promotionCards = SizedBox(
-          height: cardHeight,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: banners.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 11),
-            itemBuilder: (context, index) {
-              final banner = banners[index];
-              final card = _buildPromotionCard(
-                context,
-                banner.assetPath,
-                key: banner.key,
-                width: cardWidth,
-                height: cardHeight,
-              );
-              return fadeSlideItem(
-                itemKey: 'home-promotion-${banner.key}',
-                index: index,
-                child: card,
-              );
-            },
+    return _buildPromotionCarousel(banners: banners);
+  }
+
+  Widget _buildPromotionCarousel({
+    required List<({String key, String assetPath})> banners,
+    void Function(BuildContext context, String key)? onBannerTap,
+  }) {
+    final promotionCards = SizedBox(
+          width: double.infinity,
+          child: PromotionalBannerCarousel(
+            banners: banners,
+            carouselKey: ValueKey(
+              onBannerTap == null
+                  ? 'home-promotions-carousel'
+                  : 'home-parcel-fruits-carousel',
+            ),
+            onBannerTap: onBannerTap,
           ),
         );
-        if (!CustomerApi.instance.isConfigured) return promotionCards;
-        return Column(
+    if (!CustomerApi.instance.isConfigured) return promotionCards;
+    return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Padding(
@@ -375,29 +374,6 @@ class HomePage extends StatelessWidget {
             ),
             promotionCards,
           ],
-        );
-      },
-    );
-  }
-
-  Widget _buildPromotionCard(
-    BuildContext context,
-    String assetPath, {
-    required String key,
-    required double width,
-    required double height,
-  }) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(14),
-      child: Image.asset(
-        assetPath,
-        key: ValueKey('home-promotion-banner-$key'),
-        width: width,
-        height: height,
-        fit: BoxFit.contain,
-        cacheWidth: (width * MediaQuery.devicePixelRatioOf(context)).round(),
-        semanticLabel: '$key promotion banner',
-      ),
     );
   }
 
@@ -643,82 +619,27 @@ class HomePage extends StatelessWidget {
   }
 
   Widget _buildParcelAdvertisement(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(17),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(17),
-        onTap: () => Navigator.of(context).push(
-          AppPageRoute<void>.builder(builder: (context) => const ParcelPage()),
-        ),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(17),
-            border: Border.all(color: const Color(0xFFE5E9E3)),
-            gradient: const LinearGradient(
-              colors: [Color(0xFFEAF3F8), Color(0xFFF5F8F7)],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: const Color(0xFFDCE7E9)),
-                ),
-                child: const Icon(
-                  Icons.local_shipping_outlined,
-                  color: Color(0xFF486B78),
-                  size: 29,
-                ),
-              ),
-              const SizedBox(width: 13),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'PARCEL · PROMO SLOT',
-                      style: TextStyle(
-                        color: Color(0xFF64808A),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.7,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Send a Parcel',
-                      style: TextStyle(
-                        color: _ink,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Temporary banner placeholder',
-                      style: TextStyle(color: _muted, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.arrow_forward_rounded,
-                color: Color(0xFF486B78),
-                size: 21,
-              ),
-            ],
-          ),
-        ),
+    const banners = [
+      (
+        key: 'parcel',
+        assetPath: 'assets/myshopzy_banners/parellu.jpeg',
       ),
+      (
+        key: 'fruits',
+        assetPath: 'assets/myshopzy_banners/myshopzy fresh fruits .jpeg',
+      ),
+    ];
+
+    return _buildPromotionCarousel(
+      banners: banners,
+      onBannerTap: (context, key) {
+        final destination = key == 'parcel'
+            ? const ParcelPage()
+            : const VegetablesFruitsPage();
+        Navigator.of(
+          context,
+        ).push(AppPageRoute<void>.builder(builder: (context) => destination));
+      },
     );
   }
 
@@ -977,13 +898,18 @@ class _HomeCatalogRefreshViewState extends State<_HomeCatalogRefreshView> {
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) => fadeSlideItem(
                 itemKey: 'home-feed-section-$index',
                 index: index,
-                child: widget.itemBuilder(context, index, _catalogKey),
+                child: Padding(
+                  padding: index == HomePage._promotionsChildIndex
+                      ? EdgeInsets.zero
+                      : const EdgeInsets.symmetric(horizontal: 2),
+                  child: widget.itemBuilder(context, index, _catalogKey),
+                ),
               ),
               childCount: widget.childCount,
             ),
@@ -2513,26 +2439,24 @@ class _Service {
     this.key,
     this.assetPath, {
     this.partnerType,
-    this.isDynamic = false,
   });
 
   factory _Service.forPartnerCategory(ApiPartnerCategory category) {
     final partnerType = category.partnerType;
     final assetPath = switch (partnerType) {
-      'restaurant' => 'assets/category_tiles/restaurants.jpg',
-      'grocery' => 'assets/category_tiles/auth_groceries.png',
-      'meat_shop' => 'assets/category_tiles/meat_only_chicken.jpg',
-      'other' => 'assets/category_tiles/local_stores.jpg',
-      'bakery' => 'assets/category_tiles/bakery.jpg',
-      'vegetables_fruits' => 'assets/category_tiles/fruits_vegetables.jpg',
-      _ => 'assets/category_tiles/local_stores.jpg',
+      'restaurant' => 'assets/category_tiles/restarant tile.jpeg',
+      'grocery' => 'assets/category_tiles/local stores tiles.jpeg',
+      'meat_shop' => 'assets/category_tiles/meat tiles.jpeg',
+      'other' => 'assets/category_tiles/local stores tiles.jpeg',
+      'bakery' => 'assets/category_tiles/bakery tile.jpeg',
+      'vegetables_fruits' => 'assets/category_tiles/fruits nd vegetables tile.jpeg',
+      _ => 'assets/category_tiles/local stores tiles.jpeg',
     };
     return _Service(
       category.displayName,
       'partner-${category.partnerType}',
       assetPath,
       partnerType: category.partnerType,
-      isDynamic: true,
     );
   }
 
@@ -2540,49 +2464,30 @@ class _Service {
   final String key;
   final String assetPath;
   final String? partnerType;
-  final bool isDynamic;
-
-  String get subtitle => switch (partnerType ?? key) {
-    'restaurant' || 'partner-restaurant' || 'restaurants' => 'Biryani · Meals',
-    'bakery' || 'partner-bakery' => 'Breads · Cakes',
-    'meat_shop' ||
-    'partner-meat_shop' ||
-    'meat_only_chicken' => 'Chicken · Mutton',
-    'vegetables_fruits' ||
-    'partner-vegetables_fruits' ||
-    'fruits_vegetables' => 'Fresh · Seasonal',
-    'grocery' ||
-    'partner-grocery' ||
-    'other' ||
-    'partner-other' ||
-    'local_stores' => 'Kirana · Essentials',
-    'parcel' => 'Same-day · Secure',
-    _ => '',
-  };
 }
 
 const _demoHomeServices = [
   _Service(
     'Meat Only Chicken',
     'meat_only_chicken',
-    'assets/category_tiles/meat_only_chicken.jpg',
+    'assets/category_tiles/meat tiles.jpeg',
   ),
-  _Service('Bakery', 'bakery', 'assets/category_tiles/bakery.jpg'),
-  _Service('Parcel', 'parcel', 'assets/category_tiles/parcel.jpg'),
+  _Service('Bakery', 'bakery', 'assets/category_tiles/bakery tile.jpeg'),
+  _Service('Parcel', 'parcel', 'assets/category_tiles/parcel tiles.jpeg'),
   _Service(
     'Local Stores',
     'local_stores',
-    'assets/category_tiles/local_stores.jpg',
+    'assets/category_tiles/local stores tiles.jpeg',
   ),
   _Service(
     'Fruits & Vegetables',
     'fruits_vegetables',
-    'assets/category_tiles/fruits_vegetables.jpg',
+    'assets/category_tiles/fruits nd vegetables tile.jpeg',
   ),
   _Service(
     'Restaurants',
     'restaurants',
-    'assets/category_tiles/restaurants.jpg',
+    'assets/category_tiles/restarant tile.jpeg',
   ),
 ];
 
@@ -2633,6 +2538,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                 crossAxisCount: 3,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
+                childAspectRatio: 0.72,
               ),
               itemBuilder: (context, index) =>
                   const SkeletonBox(height: 110, radius: 12),
@@ -2700,7 +2606,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                 crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
-                childAspectRatio: 1,
+                childAspectRatio: 0.72,
               ),
               itemBuilder: (context, index) {
                 final service = services[index];
@@ -2715,92 +2621,58 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                       child: InkWell(
                         key: ValueKey('home-category-${service.key}'),
                         onTap: () => widget.onServiceTap(context, service),
-                        child: Stack(
-                          fit: StackFit.expand,
+                        child: Column(
                           children: [
-                            Image.asset(
-                              service.assetPath,
-                              fit: BoxFit.cover,
-                              cacheWidth:
-                                  (tileWidth *
-                                          MediaQuery.devicePixelRatioOf(
-                                            context,
-                                          ))
-                                      .round(),
-                              semanticLabel: service.name,
-                            ),
-                            Positioned(
-                              left: 8,
-                              right: 38,
-                              bottom: 8,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Colors.black.withValues(alpha: 0),
-                                      Colors.black.withValues(alpha: 0.7),
-                                    ],
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
+                            Expanded(
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.asset(
+                                    service.assetPath,
+                                    fit: BoxFit.contain,
+                                    cacheWidth:
+                                        (tileWidth *
+                                                MediaQuery.devicePixelRatioOf(
+                                                  context,
+                                                ))
+                                            .round(),
+                                    semanticLabel: service.name,
                                   ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    5,
-                                    12,
-                                    5,
-                                    5,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      if (service.isDynamic)
-                                        Text(
-                                          service.name,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                          ),
+                                  Positioned(
+                                    right: 6,
+                                    bottom: 6,
+                                    child: IgnorePointer(
+                                      child: Container(
+                                        key: ValueKey(
+                                          'home-category-arrow-${service.key}',
                                         ),
-                                      Text(
-                                        service.subtitle,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w600,
+                                        width: 26,
+                                        height: 26,
+                                        decoration: const BoxDecoration(
+                                          color: AppTheme.brandYellow,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_forward_rounded,
+                                          color: AppTheme.darkGreen,
+                                          size: 16,
                                         ),
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                ),
+                                ],
                               ),
                             ),
-                            Positioned(
-                              right: 6,
-                              bottom: 6,
-                              child: IgnorePointer(
-                                child: Container(
-                                  key: ValueKey(
-                                    'home-category-arrow-${service.key}',
-                                  ),
-                                  width: 26,
-                                  height: 26,
-                                  decoration: const BoxDecoration(
-                                    color: AppTheme.brandYellow,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.arrow_forward_rounded,
-                                    color: AppTheme.darkGreen,
-                                    size: 16,
-                                  ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(5, 2, 5, 6),
+                              child: Text(
+                                service.name,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: HomePage._ink,
+                                  fontSize: 12,
+                                  height: 1.15,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ),

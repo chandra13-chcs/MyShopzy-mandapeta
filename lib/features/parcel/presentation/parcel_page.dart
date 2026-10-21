@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/promotional_banner.dart';
 import 'parcel_history_page.dart';
 import 'parcel_summary_page.dart';
 
@@ -49,6 +50,12 @@ class _ParcelPageState extends State<ParcelPage> {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
                   children: [
+                    const PromotionalBanner(
+                      assetPath: 'assets/myshopzy_banners/parellu.jpeg',
+                      imageKey: ValueKey('parcel-page-promotion-banner'),
+                      semanticLabel: 'Parcel delivery promotion banner',
+                    ),
+                    const SizedBox(height: 16),
                     if (!CustomerApi.instance.isConfigured) ...[
                       _buildDemoModeNotice(),
                       const SizedBox(height: 14),
