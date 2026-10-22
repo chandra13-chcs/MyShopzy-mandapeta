@@ -4,6 +4,18 @@ const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 const LIST_KEYS = new Set(['limit', 'offset', 'q', 'sort']);
 
+function databaseInteger(value, field, maximum = Number.MAX_SAFE_INTEGER) {
+  const integer = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && /^\d+$/.test(value)
+      ? Number(value)
+      : NaN;
+  if (!Number.isSafeInteger(integer) || integer < 0 || integer > maximum) {
+    throw new RangeError(`Database returned an invalid ${field}.`);
+  }
+  return integer;
+}
+
 const resources = {
   orders: {
     table: `app.orders AS o
@@ -157,6 +169,7 @@ const resources = {
       s.name AS "shopName",
       pr.category_id AS "categoryId",
       c.name AS "categoryName",
+      c.category_code AS "categoryCode",
       pr.sku AS "sku",
       pr.price_minor AS "priceMinor",
       pr.currency AS "currency",
@@ -173,6 +186,7 @@ const resources = {
       s.name AS "shopName",
       pr.category_id AS "categoryId",
       c.name AS "categoryName",
+      c.category_code AS "categoryCode",
       pr.sku AS "sku",
       pr.price_minor AS "priceMinor",
       pr.currency AS "currency",
@@ -470,8 +484,8 @@ async function getResource(databasePool, resourceName, id) {
         unitPriceMinor: item.unitPriceMinor,
         quantity: item.quantity,
         lineTotalMinor: item.lineTotalMinor,
-        commissionBps: item.commissionBps,
-        commissionMinor: item.commissionMinor,
+        commissionBps: databaseInteger(item.commissionBps, 'commission basis points', 10000),
+        commissionMinor: databaseInteger(item.commissionMinor, 'commission minor units'),
         currency: item.currency,
       })),
     };
@@ -491,11 +505,42 @@ async function getResource(databasePool, resourceName, id) {
   return row;
 }
 
+async function getCategoryCommissionTotals(databasePool) {
+  if (!databasePool || typeof databasePool.query !== 'function') {
+    const error = new Error('Database is unavailable.');
+    error.status = 503;
+    error.code = 'DATABASE_UNAVAILABLE';
+    throw error;
+  }
+  const result = await databasePool.query(
+    `SELECT
+       category.category_code AS "categoryCode",
+       oi.currency AS "currency",
+       COALESCE(sum(oi.line_total_minor), 0)::text AS "itemSalesMinor",
+       COALESCE(sum(oi.commission_minor), 0)::text AS "commissionMinor"
+     FROM app.order_items AS oi
+     JOIN app.orders AS o ON o.id = oi.order_id
+     JOIN app.products AS product
+       ON product.id = oi.product_id
+      AND product.shop_id = oi.shop_id
+      AND product.partner_id = oi.partner_id
+     LEFT JOIN app.categories AS category
+       ON category.id = product.category_id
+      AND category.shop_id = product.shop_id
+      AND category.partner_id = product.partner_id
+     WHERE o.status NOT IN ('cancelled', 'rejected')
+     GROUP BY category.category_code, oi.currency
+     ORDER BY category.category_code NULLS FIRST, oi.currency`,
+  );
+  return result.rows;
+}
+
 module.exports = {
   DEFAULT_LIMIT,
   MAX_LIMIT,
   QueryValidationError,
   getResource,
+  getCategoryCommissionTotals,
   listResource,
   parseListQuery,
 };

@@ -19,6 +19,7 @@ function createApp({
   authenticatePartner = null,
   superAdminOrigin = null,
   partnerPortalOrigins = ['http://localhost:5173'],
+  now = () => new Date(),
   customerOtpAuthRouter = null,
   developmentCustomerAuthRouter = null,
   nodeEnv = 'development',
@@ -58,7 +59,7 @@ function createApp({
         (nodeEnv === 'production' ? null : mockRiderAuth),
     }),
   );
-  app.use('/api/v1', createCatalogRouter({ databasePool }));
+  app.use('/api/v1', createCatalogRouter({ databasePool, now }));
   app.use(
     '/api/v1',
     createCartCheckoutRouter({

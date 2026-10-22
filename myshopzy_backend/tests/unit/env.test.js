@@ -214,7 +214,7 @@ test('parses partner portal origins and rejects wildcard CORS origins', () => {
   ]);
   assert.throws(
     () => loadConfig({ PARTNER_PORTAL_ORIGINS: '*' }),
-    /PARTNER_PORTAL_ORIGINS must contain HTTPS origins or localhost origins/,
+    /PARTNER_PORTAL_ORIGINS must contain HTTPS origins or HTTP localhost origins/,
   );
 });
 

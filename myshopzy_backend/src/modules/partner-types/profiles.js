@@ -126,6 +126,7 @@ const partnerTypeProfiles = Object.freeze({
       { name: 'Snacks', slug: 'snacks' },
       { name: 'Household', slug: 'household' },
       { name: 'Personal Care', slug: 'personal-care' },
+      { name: 'Frozen Foods', slug: 'frozen-foods', categoryCode: 'frozen_foods' },
     ],
     orderStatusLabels: {
       accepted: 'Order accepted',

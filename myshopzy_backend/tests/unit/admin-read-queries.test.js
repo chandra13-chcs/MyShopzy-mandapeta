@@ -5,6 +5,7 @@ const { createApp } = require('../../src/app');
 
 const {
   QueryValidationError,
+  getCategoryCommissionTotals,
   getResource,
   listResource,
   parseListQuery,
@@ -255,7 +256,7 @@ test('returns approved order-item fields and linked partner shops for detail pre
           quantity: 1,
           lineTotalMinor: '1000',
           commissionBps: 1000,
-          commissionMinor: '100',
+          commissionMinor: 100,
           currency: 'USD',
           variantSnapshot: { customer: { email: 'private@example.test' } },
           unexpected: { nested: true },
@@ -334,6 +335,32 @@ test('prepares customer and product detail from persisted account and catalogue 
   assert.match(productPool.calls[0].sql, /pr\.is_available AS "isAvailable"/);
   assert.doesNotMatch(productPool.calls[0].sql, /pr\.description|pr\.attributes/);
   assert.match(productPool.calls[0].sql, /c\.shop_id = pr\.shop_id AND c\.partner_id = pr\.partner_id/);
+  assert.match(productPool.calls[0].sql, /c\.category_code AS "categoryCode"/);
+});
+
+test('totals non-cancelled item sales and commission by category code', async () => {
+  const pool = createPool({
+    rows: [{
+      categoryCode: 'frozen_foods',
+      currency: 'INR',
+      itemSalesMinor: '50000',
+      commissionMinor: '5000',
+    }],
+  });
+  assert.deepEqual(await getCategoryCommissionTotals(pool), [{
+    categoryCode: 'frozen_foods',
+    currency: 'INR',
+    itemSalesMinor: '50000',
+    commissionMinor: '5000',
+  }]);
+  assert.match(pool.calls[0].sql, /GROUP BY category\.category_code, oi\.currency/);
+  assert.match(pool.calls[0].sql, /o\.status NOT IN \('cancelled', 'rejected'\)/);
+  assert.match(pool.calls[0].sql, /sum\(oi\.line_total_minor\)/);
+  assert.match(pool.calls[0].sql, /sum\(oi\.commission_minor\)/);
+  await assert.rejects(
+    getCategoryCommissionTotals(null),
+    (error) => error.status === 503 && error.code === 'DATABASE_UNAVAILABLE',
+  );
 });
 
 test('requires a database pool for every resource and supports exactly the four batch resources', async () => {

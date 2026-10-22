@@ -125,10 +125,18 @@ async function createPartnerWithDefaults({
       const categoryId = randomUUID();
       await client.query(
         `INSERT INTO app.categories (
-           id, partner_id, shop_id, name, slug, sort_order
+           id, partner_id, shop_id, name, slug, category_code, sort_order
          )
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6)`,
-        [categoryId, partnerId, shopId, category.name, category.slug, index],
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)`,
+        [
+          categoryId,
+          partnerId,
+          shopId,
+          category.name,
+          category.slug,
+          category.categoryCode ?? null,
+          index,
+        ],
       );
       categories.push({ id: categoryId, name: category.name, slug: category.slug });
     }

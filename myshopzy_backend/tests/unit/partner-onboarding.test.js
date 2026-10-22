@@ -85,3 +85,24 @@ test('rolls back all onboarding writes when a default category insert fails', as
   assert.equal(pool.calls.some(({ sql }) => sql === 'COMMIT'), false);
   assert.equal(pool.released, true);
 });
+
+test('creates Frozen Foods with its server-managed category code for local stores', async () => {
+  const pool = createPool();
+  await createPartnerWithDefaults({
+    databasePool: pool,
+    name: 'Example Local Store',
+    type: 'local_store',
+    ownerEmail: 'owner@example.test',
+    ownerPhone: '+919876543210',
+    shop: { name: 'Main Shop' },
+  });
+
+  const frozenCategoryInsert = pool.calls.find(({ params }) => params.includes('frozen_foods'));
+  assert.ok(frozenCategoryInsert);
+  assert.match(frozenCategoryInsert.sql, /category_code/);
+  assert.deepEqual(frozenCategoryInsert.params.slice(3, 6), [
+    'Frozen Foods',
+    'frozen-foods',
+    'frozen_foods',
+  ]);
+});

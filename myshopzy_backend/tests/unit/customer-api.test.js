@@ -4,8 +4,8 @@ const test = require('node:test');
 
 const { createApp } = require('../../src/app');
 
-async function startTestServer(t, databasePool) {
-  const server = http.createServer(createApp({ databasePool }));
+async function startTestServer(t, databasePool, options = {}) {
+  const server = http.createServer(createApp({ databasePool, ...options }));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
   return `http://127.0.0.1:${server.address().port}`;
@@ -27,7 +27,9 @@ test('lists only public shops and passes filters and pagination as SQL parameter
       };
     },
   };
-  const baseUrl = await startTestServer(t, databasePool);
+  const baseUrl = await startTestServer(t, databasePool, {
+    now: () => new Date('2026-10-23T10:00:00.000Z'),
+  });
   const response = await fetch(
     `${baseUrl}/api/v1/shops?partnerType=restaurant&q=kitchen&limit=5&offset=10`,
   );
@@ -39,6 +41,7 @@ test('lists only public shops and passes filters and pagination as SQL parameter
         id: '57a85a0c-7081-4eb7-9c13-4b9842216b54',
         name: 'Mandapeta Kitchen',
         partner_type: 'restaurant',
+        storeOpen: true,
       },
     ],
     pagination: { limit: 5, offset: 10 },

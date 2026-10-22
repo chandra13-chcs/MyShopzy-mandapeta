@@ -116,7 +116,9 @@ function loadConfig(env = process.env) {
     try {
       origin = new URL(configuredOrigin);
     } catch {
-      throw new Error('PARTNER_PORTAL_ORIGINS must contain valid origins.');
+      throw new Error(
+        'PARTNER_PORTAL_ORIGINS must contain HTTPS origins or HTTP localhost origins.',
+      );
     }
     if (
       configuredOrigin === '*' ||
@@ -125,7 +127,9 @@ function loadConfig(env = process.env) {
         !(origin.protocol === 'http:' &&
           ['localhost', '127.0.0.1'].includes(origin.hostname)))
     ) {
-      throw new Error('PARTNER_PORTAL_ORIGINS must contain HTTPS origins or localhost origins.');
+      throw new Error(
+        'PARTNER_PORTAL_ORIGINS must contain HTTPS origins or HTTP localhost origins.',
+      );
     }
   }
   const normalizedPartnerPortalOrigins = [

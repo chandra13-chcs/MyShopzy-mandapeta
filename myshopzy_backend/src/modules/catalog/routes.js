@@ -85,7 +85,7 @@ function partnerTypeDisplayName(partnerType) {
     .join(' ');
 }
 
-function createCatalogRouter({ databasePool }) {
+function createCatalogRouter({ databasePool, now = () => new Date() }) {
   const router = express.Router();
 
   router.get('/partner-categories', async (req, res, next) => {
@@ -160,7 +160,7 @@ function createCatalogRouter({ databasePool }) {
       return res.status(200).json({
         data: result.rows.map((shop) => ({
           ...shop,
-          storeOpen: isOpenNow(shop).open,
+          storeOpen: isOpenNow(shop, now()).open,
         })),
         pagination: page.value,
       });

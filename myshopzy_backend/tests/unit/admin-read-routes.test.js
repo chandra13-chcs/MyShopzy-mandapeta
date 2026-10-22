@@ -62,6 +62,30 @@ test('keeps admin resources inaccessible without trusted admin authentication', 
   assert.equal(pool.calls.length, 0);
 });
 
+test('exposes category sales and commission totals only to authenticated admins', async (t) => {
+  const path = '/api/v1/admin/catalog/category-commission-totals';
+  const expected = [{
+    categoryCode: 'frozen_foods',
+    currency: 'INR',
+    itemSalesMinor: '50000',
+    commissionMinor: '5000',
+  }];
+  const pool = createPool(() => ({ rows: expected }));
+  const baseUrl = await startServer(t, pool, { authenticateAdmin: testAuthenticator });
+
+  const unauthorized = await request(baseUrl, path);
+  assert.equal(unauthorized.status, 401);
+  assert.equal(pool.calls.length, 0);
+
+  const response = await request(baseUrl, path, {
+    headers: { authorization: '******' },
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data, expected);
+  assert.equal(pool.calls.length, 1);
+  assert.match(pool.calls[0].sql, /GROUP BY category\.category_code/);
+});
+
 test('lists all four resources through the existing queries and response adapter', async (t) => {
   const pool = createPool((_sql, _params, call) => call % 2
     ? { rows: [{ total: '1' }] }

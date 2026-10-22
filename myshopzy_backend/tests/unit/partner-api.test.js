@@ -183,6 +183,36 @@ test('returns the authenticated partner profile and shop basics without trusting
   );
 });
 
+test('does not expose a partner endpoint for setting category codes or commission rates', async (t) => {
+  const fixture = await createFixture(t, {
+    memberships: [{
+      partner_id: partnerId,
+      role: 'owner',
+      partner_type: 'meat',
+      shop_ids: [shopId],
+    }],
+  });
+  const response = await fetch(`${fixture.baseUrl}/api/v1/partner/categories`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${await fixture.token()}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: 'Frozen Foods',
+      category_code: 'frozen_foods',
+      commission_bps_override: 0,
+    }),
+  });
+
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, 'NOT_FOUND');
+  assert.equal(
+    fixture.calls.some(({ sql }) => /INSERT INTO app\.categories|UPDATE app\.categories/.test(sql)),
+    false,
+  );
+});
+
 test('rejects a validly signed Auth0 token without a verified email claim', async (t) => {
   const fixture = await createFixture(t);
   const response = await fetch(`${fixture.baseUrl}/api/v1/partner/me/config`, {

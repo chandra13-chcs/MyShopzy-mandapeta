@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const express = require('express');
 const {
+  getCategoryCommissionTotals,
   getResource,
   listResource,
 } = require('./queries');
@@ -70,6 +71,19 @@ function createAdminReadRouter({ databasePool, authenticateAdmin = null }) {
   const router = express.Router();
   router.use(requestIdMiddleware);
   router.use(requireAdminAuthentication(authenticateAdmin));
+
+  router.get('/admin/catalog/category-commission-totals', async (req, res, next) => {
+    try {
+      const data = await getCategoryCommissionTotals(databasePool);
+      return res.status(200).json({ data, meta: { requestId: req.requestId } });
+    } catch (error) {
+      try {
+        return sendAdapterResponse(res, toErrorHttpResponse(error, req.requestId));
+      } catch (adapterError) {
+        return next(adapterError);
+      }
+    }
+  });
 
   for (const [path, resource] of resourceRoutes) {
     router.get(path, async (req, res, next) => {

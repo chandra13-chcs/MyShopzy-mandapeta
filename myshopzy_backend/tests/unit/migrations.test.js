@@ -49,6 +49,10 @@ const commissionSnapshotsSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/010_order_commission_snapshots.sql',
 );
+const categoryCodesSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/011_category_codes.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -120,6 +124,9 @@ test('rejects unexpected SQL filenames rather than silently skipping them', asyn
 test('applies an unapplied migration transactionally and records its checksum', async () => {
   const pool = createMockPool();
   const appliedCount = await runMigrations(pool);
+  const migrationFiles = await readMigrations(
+    path.resolve(__dirname, '../../database/migrations'),
+  );
   const schema = await readFile(schemaPath, 'utf8');
   const cartsSchema = await readFile(cartsSchemaPath, 'utf8');
   const customerAccountSchema = await readFile(customerAccountSchemaPath, 'utf8');
@@ -130,9 +137,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const productVariantsSchema = await readFile(productVariantsSchemaPath, 'utf8');
   const partnerTypeCodesSchema = await readFile(partnerTypeCodesSchemaPath, 'utf8');
   const commissionSnapshotsSchema = await readFile(commissionSnapshotsSchemaPath, 'utf8');
+  const categoryCodesSchema = await readFile(categoryCodesSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
-  assert.equal(appliedCount, 10);
+  assert.equal(appliedCount, migrationFiles.length);
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
   assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
   assert.equal(
@@ -164,6 +172,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('010').name,
     '010_order_commission_snapshots.sql',
   );
+  assert.equal(
+    pool.applied.get('011').name,
+    '011_category_codes.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -175,10 +187,18 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(productVariantsSchema.trim()));
   assert.ok(calls.includes(partnerTypeCodesSchema.trim()));
   assert.ok(calls.includes(commissionSnapshotsSchema.trim()));
+  assert.ok(calls.includes(categoryCodesSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
   assert.equal(pool.released, true);
+});
+
+test('category-code migration validates codes and backfills frozen categories transactionally', async () => {
+  const migration = await readFile(categoryCodesSchemaPath, 'utf8');
+  assert.match(migration, /category_code text[\s\S]*category_code ~ '\^\[a-z_\]\{1,40\}\$'/);
+  assert.match(migration, /lower\(name\) LIKE '%frozen%'[\s\S]*lower\(slug\) LIKE '%frozen%'/);
+  assert.doesNotMatch(migration, /\bBEGIN;|\bCOMMIT;/);
 });
 
 test('commission migration adds bounded overrides and zero-default order snapshots', async () => {

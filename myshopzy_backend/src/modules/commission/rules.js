@@ -6,6 +6,10 @@ const DEFAULT_BPS = Object.freeze({
   local_store: 500,
 });
 
+const CATEGORY_CODE_BPS = Object.freeze({
+  frozen_foods: 1000,
+});
+
 const COMMISSION_BASE = 'item_total_before_discount'; // Delivery fee and taxes are excluded.
 
 function validateBps(value) {
@@ -15,12 +19,20 @@ function validateBps(value) {
   return value;
 }
 
-function resolveCommissionBps({ categoryOverride, partnerOverride, partnerType }) {
+function resolveCommissionBps({
+  categoryOverride,
+  partnerOverride,
+  categoryCode,
+  partnerType,
+}) {
   if (categoryOverride !== null && categoryOverride !== undefined) {
     return validateBps(categoryOverride);
   }
   if (partnerOverride !== null && partnerOverride !== undefined) {
     return validateBps(partnerOverride);
+  }
+  if (Object.hasOwn(CATEGORY_CODE_BPS, categoryCode)) {
+    return CATEGORY_CODE_BPS[categoryCode];
   }
   if (!Object.hasOwn(DEFAULT_BPS, partnerType)) {
     throw new RangeError(`Unknown partner type: ${partnerType}`);
@@ -59,6 +71,7 @@ function sumDeliveredCommissionMinor(orders) {
 
 module.exports = {
   COMMISSION_BASE,
+  CATEGORY_CODE_BPS,
   DEFAULT_BPS,
   computeCommissionMinor,
   resolveCommissionBps,

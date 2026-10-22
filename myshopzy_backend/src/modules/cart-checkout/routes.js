@@ -238,6 +238,7 @@ async function readCartItems(client, cartId, { lock = false } = {}) {
       partner.status AS partner_status,
       partner.partner_type,
       partner.commission_bps_override AS partner_commission_bps_override,
+      category.category_code,
       category.commission_bps_override AS category_commission_bps_override
      FROM app.customer_cart_items AS ci
      JOIN app.products AS p
@@ -783,6 +784,7 @@ function createCartCheckoutRouter({
             item.commission_bps = resolveCommissionBps({
               categoryOverride: item.category_commission_bps_override,
               partnerOverride: item.partner_commission_bps_override,
+              categoryCode: item.category_code,
               partnerType: item.partner_type,
             });
             item.commission_minor = computeCommissionMinor(

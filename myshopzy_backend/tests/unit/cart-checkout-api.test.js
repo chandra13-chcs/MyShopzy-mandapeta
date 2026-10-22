@@ -42,6 +42,7 @@ function createDatabase({ failOn } = {}) {
         shop_status: 'active',
         partner_status: 'approved',
         partner_type: 'local_store',
+        category_code: 'staples',
         partner_commission_bps_override: null,
         category_commission_bps_override: null,
       },
@@ -61,6 +62,7 @@ function createDatabase({ failOn } = {}) {
         shop_status: 'active',
         partner_status: 'approved',
         partner_type: 'local_store',
+        category_code: null,
         partner_commission_bps_override: null,
         category_commission_bps_override: null,
       },
@@ -80,6 +82,7 @@ function createDatabase({ failOn } = {}) {
         shop_status: 'active',
         partner_status: 'approved',
         partner_type: 'local_store',
+        category_code: null,
         partner_commission_bps_override: null,
         category_commission_bps_override: null,
       },
@@ -650,10 +653,11 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   assert.equal(Object.keys(database.state.items).length, 0);
 });
 
-test('snapshots a category override beside the local-store default in one order', async (t) => {
+test('applies category-code commission rates and snapshots item commissions in one order', async (t) => {
   const database = createDatabase();
-  database.state.products[otherProductId].name = 'Frozen berries';
-  database.state.products[otherProductId].category_commission_bps_override = 1000;
+  database.state.products[otherProductId].category_code = 'frozen_foods';
+  database.state.variants[teaVariantId].price_minor = '50000';
+  database.state.variants[coffeeVariantId].price_minor = '50000';
   const baseUrl = await startServer(t, database.pool, { authenticated: true });
   const token = await createCart(baseUrl);
   await fetch(
@@ -670,13 +674,18 @@ test('snapshots a category override beside the local-store default in one order'
     jsonRequest('POST', { deliveryAddress }, token),
   );
   assert.equal(response.status, 201);
-  assert.equal(database.state.orders[0].params[10], '325');
+  assert.equal(database.state.orders[0].params[5], '100000');
+  assert.equal(database.state.orders[0].params[10], '7500');
+  assert.match(
+    database.queries.find(({ sql }) => sql.startsWith('SELECT ci.product_id')).sql,
+    /category\.category_code/,
+  );
   const stapleItem = database.state.orderItems.find(({ params }) => params[4] === productId);
   const frozenItem = database.state.orderItems.find(({ params }) => params[4] === otherProductId);
   assert.equal(stapleItem.params[10], 500);
-  assert.equal(stapleItem.params[11], '75');
+  assert.equal(stapleItem.params[11], '2500');
   assert.equal(frozenItem.params[10], 1000);
-  assert.equal(frozenItem.params[11], '250');
+  assert.equal(frozenItem.params[11], '5000');
 });
 
 test('rejects order placement while closed and leaves cart mutations available', async (t) => {
