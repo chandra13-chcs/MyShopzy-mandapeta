@@ -1,6 +1,10 @@
 const { createHash, randomBytes, randomUUID } = require('node:crypto');
 const express = require('express');
 const { isOpenNow } = require('../shared/store-hours');
+const {
+  computeCommissionMinor,
+  resolveCommissionBps,
+} = require('../commission/rules');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -231,7 +235,10 @@ async function readCartItems(client, cartId, { lock = false } = {}) {
        s.status AS shop_status,
        s.operating_details,
        partner.timezone,
-       partner.status AS partner_status
+      partner.status AS partner_status,
+      partner.partner_type,
+      partner.commission_bps_override AS partner_commission_bps_override,
+      category.commission_bps_override AS category_commission_bps_override
      FROM app.customer_cart_items AS ci
      JOIN app.products AS p
        ON p.id = ci.product_id
@@ -245,6 +252,10 @@ async function readCartItems(client, cartId, { lock = false } = {}) {
      JOIN app.shops AS s
        ON s.id = p.shop_id AND s.partner_id = p.partner_id
      JOIN app.partners AS partner ON partner.id = p.partner_id
+     LEFT JOIN app.categories AS category
+       ON category.id = p.category_id
+      AND category.shop_id = p.shop_id
+      AND category.partner_id = p.partner_id
      WHERE ci.cart_id = $1
      ORDER BY p.name, p.id, v.sort_order, v.id${lock ? ' FOR UPDATE OF p, s, partner, v' : ''}`,
     [cartId],
@@ -767,14 +778,27 @@ function createCartCheckoutRouter({
           const deliveryFee = 0n;
           const discount = 0n;
           const total = checkout.subtotal + deliveryFee - discount;
+          let commissionTotalMinor = 0n;
+          for (const item of checkout.items) {
+            item.commission_bps = resolveCommissionBps({
+              categoryOverride: item.category_commission_bps_override,
+              partnerOverride: item.partner_commission_bps_override,
+              partnerType: item.partner_type,
+            });
+            item.commission_minor = computeCommissionMinor(
+              item.line_total_minor,
+              item.commission_bps,
+            );
+            commissionTotalMinor += item.commission_minor;
+          }
 
           await client.query(
             `INSERT INTO app.orders (
                id, customer_user_id, partner_id, shop_id, status, currency,
                items_subtotal_minor, delivery_fee_minor, discount_minor,
-               total_minor, delivery_address_snapshot
+               total_minor, delivery_address_snapshot, commission_minor
              )
-             VALUES ($1, $2, $3, $4, 'placed', $5, $6, $7, $8, $9, $10::jsonb)`,
+             VALUES ($1, $2, $3, $4, 'placed', $5, $6, $7, $8, $9, $10::jsonb, $11)`,
             [
               orderId,
               customerUserId,
@@ -786,6 +810,7 @@ function createCartCheckoutRouter({
               discount.toString(),
               total.toString(),
               address.value,
+              commissionTotalMinor.toString(),
             ],
           );
 
@@ -813,9 +838,10 @@ function createCartCheckoutRouter({
               `INSERT INTO app.order_items (
                  id, order_id, partner_id, shop_id, product_id,
                  product_name_snapshot, sku_snapshot, unit_price_minor,
-                 quantity, line_total_minor, currency, variant_snapshot
+                 quantity, line_total_minor, commission_bps, commission_minor,
+                 currency, variant_snapshot
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)`,
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb)`,
               [
                 randomUUID(),
                 orderId,
@@ -827,6 +853,8 @@ function createCartCheckoutRouter({
                 item.price_minor,
                 Number(item.quantity),
                 item.line_total_minor,
+                item.commission_bps,
+                item.commission_minor.toString(),
                 checkout.currency,
                 JSON.stringify({
                   variantId: item.variant_id,

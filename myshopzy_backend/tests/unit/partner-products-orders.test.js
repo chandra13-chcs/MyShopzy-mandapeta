@@ -4,7 +4,6 @@ const test = require('node:test');
 const { createApp } = require('../../src/app');
 const {
   ORDER_TRANSITIONS,
-  createPartnerProductOrderRouter,
   validateAttributes,
   validateProductInput,
   validateVariants,
@@ -16,6 +15,7 @@ const partnerB = '22222222-2222-4222-8222-222222222222';
 const shopA = '33333333-3333-4333-8333-333333333333';
 const categoryA = '44444444-4444-4444-8444-444444444444';
 const productA = '55555555-5555-4555-8555-555555555555';
+const productB = '55555555-5555-4555-8555-555555555556';
 const orderA = '66666666-6666-4666-8666-666666666666';
 
 function validVariant(overrides = {}) {
@@ -43,9 +43,7 @@ async function startServer(t, pool) {
     };
     next();
   };
-  const router = createPartnerProductOrderRouter({ databasePool: pool });
   const app = createApp({ databasePool: pool, authenticatePartner });
-  app.use('/api/v1', router);
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve, reject) => {
@@ -111,10 +109,10 @@ test('profiles validate required extra fields and reject unsupported or malforme
   );
 });
 
-test('partner A cannot read partner B products or orders', async (t) => {
+test('partner A cannot read another partner products or orders', async (t) => {
   const pool = createReadPool();
   const baseUrl = await startServer(t, pool);
-  const productResponse = await fetch(`${baseUrl}/api/v1/partner/products/${productA}`);
+  const productResponse = await fetch(`${baseUrl}/api/v1/partner/products/${productB}`);
   const orderResponse = await fetch(`${baseUrl}/api/v1/partner/orders/${orderA}`);
 
   assert.equal(productResponse.status, 404);
@@ -123,12 +121,33 @@ test('partner A cannot read partner B products or orders', async (t) => {
   assert.equal((await orderResponse.json()).error.code, 'ORDER_NOT_FOUND');
   assert.deepEqual(
     pool.calls.find(({ sql }) => /FROM app\.products/.test(sql)).params,
-    [productA, partnerA],
+    [productB, partnerA],
   );
   assert.deepEqual(
     pool.calls.find(({ sql }) => /FROM app\.orders/.test(sql)).params,
     [orderA, partnerA],
   );
+});
+
+test('partner order reads derive earnings from persisted order items', async (t) => {
+  const calls = [];
+  const pool = {
+    async query(sql, params = []) {
+      calls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
+      if (/SELECT count\(\*\)::integer AS total/i.test(sql)) {
+        return { rows: [{ total: 0 }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const baseUrl = await startServer(t, pool);
+  const response = await fetch(`${baseUrl}/api/v1/partner/orders`);
+
+  assert.equal(response.status, 200);
+  const orderQuery = calls.find(({ sql }) => /FROM app\.orders AS o/.test(sql));
+  assert.match(orderQuery.sql, /sum\(oi\.line_total_minor - oi\.commission_minor\)/);
+  assert.match(orderQuery.sql, /AS "partnerEarningMinor"/);
+  assert.match(orderQuery.sql, /oi\.partner_id = o\.partner_id/);
 });
 
 test('partner A cannot edit partner B product records', async (t) => {
@@ -249,4 +268,39 @@ test('returns 409 and leaves an order unchanged on an invalid transition', async
   assert.deepEqual(calls[1].params, [orderA, partnerA]);
   assert.equal(calls.some(({ sql }) => /^UPDATE app\.orders/.test(sql)), false);
   assert.equal(calls.at(-1).sql, 'ROLLBACK');
+});
+
+test('includes item-derived partner earnings after a successful status transition', async (t) => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      const normalized = sql.replace(/\s+/g, ' ').trim();
+      calls.push({ sql: normalized, params });
+      if (/SELECT id, status\s+FROM app\.orders/.test(sql)) {
+        return { rows: [{ id: orderA, status: 'placed' }] };
+      }
+      if (/UPDATE app\.orders/.test(sql)) {
+        return {
+          rows: [{ id: orderA, partner_id: partnerA, status: 'confirmed' }],
+        };
+      }
+      if (/SELECT CASE WHEN o\.status/.test(sql)) {
+        return { rows: [{ partnerEarningMinor: '900' }] };
+      }
+      return { rows: [] };
+    },
+    release() {},
+  };
+  const pool = { connect: async () => client };
+  const baseUrl = await startServer(t, pool);
+  const response = await fetch(`${baseUrl}/api/v1/partner/orders/${orderA}/status`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status: 'accepted' }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.partnerEarningMinor, '900');
+  assert.match(calls.find(({ sql }) => /SELECT CASE WHEN o\.status/.test(sql)).sql,
+    /sum\(oi\.line_total_minor - oi\.commission_minor\)/);
 });

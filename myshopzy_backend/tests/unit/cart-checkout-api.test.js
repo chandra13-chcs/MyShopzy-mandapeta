@@ -41,6 +41,9 @@ function createDatabase({ failOn } = {}) {
         product_status: 'active',
         shop_status: 'active',
         partner_status: 'approved',
+        partner_type: 'local_store',
+        partner_commission_bps_override: null,
+        category_commission_bps_override: null,
       },
       [otherProductId]: {
         id: otherProductId,
@@ -57,6 +60,9 @@ function createDatabase({ failOn } = {}) {
         product_status: 'active',
         shop_status: 'active',
         partner_status: 'approved',
+        partner_type: 'local_store',
+        partner_commission_bps_override: null,
+        category_commission_bps_override: null,
       },
       [otherShopProductId]: {
         id: otherShopProductId,
@@ -73,6 +79,9 @@ function createDatabase({ failOn } = {}) {
         product_status: 'active',
         shop_status: 'active',
         partner_status: 'approved',
+        partner_type: 'local_store',
+        partner_commission_bps_override: null,
+        category_commission_bps_override: null,
       },
     },
     variants: {
@@ -609,6 +618,7 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   assert.equal(insertOrder.params[1], customerId);
   assert.equal(insertOrder.params[5], '9000');
   assert.equal(insertOrder.params[8], '9000');
+  assert.equal(insertOrder.params[10], '450');
   const teaSnapshot = database.state.orderItems.find(
     ({ params }) => params[4] === productId,
   );
@@ -616,7 +626,9 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   assert.equal(teaSnapshot.params[7], '1750');
   assert.equal(teaSnapshot.params[8], 2);
   assert.equal(teaSnapshot.params[9], '3500');
-  assert.deepEqual(JSON.parse(teaSnapshot.params[11]), {
+  assert.equal(teaSnapshot.params[10], 500);
+  assert.equal(teaSnapshot.params[11], '175');
+  assert.deepEqual(JSON.parse(teaSnapshot.params[13]), {
     variantId: teaVariantId,
     label: '500 g',
     unit: 'g',
@@ -636,6 +648,35 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   assert.equal(database.state.orders.length, 1);
   assert.equal(database.state.orderItems.length, 3);
   assert.equal(Object.keys(database.state.items).length, 0);
+});
+
+test('snapshots a category override beside the local-store default in one order', async (t) => {
+  const database = createDatabase();
+  database.state.products[otherProductId].name = 'Frozen berries';
+  database.state.products[otherProductId].category_commission_bps_override = 1000;
+  const baseUrl = await startServer(t, database.pool, { authenticated: true });
+  const token = await createCart(baseUrl);
+  await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId, quantity: 1 }, token),
+  );
+  await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId: otherProductId, variantId: coffeeVariantId, quantity: 1 }, token),
+  );
+
+  const response = await fetch(
+    `${baseUrl}/api/v1/orders`,
+    jsonRequest('POST', { deliveryAddress }, token),
+  );
+  assert.equal(response.status, 201);
+  assert.equal(database.state.orders[0].params[10], '325');
+  const stapleItem = database.state.orderItems.find(({ params }) => params[4] === productId);
+  const frozenItem = database.state.orderItems.find(({ params }) => params[4] === otherProductId);
+  assert.equal(stapleItem.params[10], 500);
+  assert.equal(stapleItem.params[11], '75');
+  assert.equal(frozenItem.params[10], 1000);
+  assert.equal(frozenItem.params[11], '250');
 });
 
 test('rejects order placement while closed and leaves cart mutations available', async (t) => {

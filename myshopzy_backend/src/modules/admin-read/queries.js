@@ -21,6 +21,11 @@ const resources = {
       o.status AS "status",
       o.currency AS "currency",
       o.items_subtotal_minor AS "itemsSubtotalMinor",
+      o.commission_minor AS "commissionMinor",
+      CASE WHEN o.status IN ('cancelled', 'rejected') THEN '0'
+        ELSE COALESCE((SELECT sum(oi.line_total_minor - oi.commission_minor)
+          FROM app.order_items AS oi WHERE oi.order_id = o.id), 0)::text
+      END AS "partnerEarningMinor",
       o.delivery_fee_minor AS "deliveryFeeMinor",
       o.discount_minor AS "discountMinor",
       o.total_minor AS "totalMinor",
@@ -64,6 +69,11 @@ const resources = {
       o.status AS "status",
       o.currency AS "currency",
       o.items_subtotal_minor AS "itemsSubtotalMinor",
+      o.commission_minor AS "commissionMinor",
+      CASE WHEN o.status IN ('cancelled', 'rejected') THEN '0'
+        ELSE COALESCE((SELECT sum(oi.line_total_minor - oi.commission_minor)
+          FROM app.order_items AS oi WHERE oi.order_id = o.id), 0)::text
+      END AS "partnerEarningMinor",
       o.delivery_fee_minor AS "deliveryFeeMinor",
       o.discount_minor AS "discountMinor",
       o.total_minor AS "totalMinor",
@@ -443,6 +453,8 @@ async function getResource(databasePool, resourceName, id) {
         unit_price_minor AS "unitPriceMinor",
         quantity AS "quantity",
         line_total_minor AS "lineTotalMinor",
+        commission_bps AS "commissionBps",
+        commission_minor AS "commissionMinor",
         currency AS "currency"
        FROM app.order_items
        WHERE order_id = $1
@@ -458,6 +470,8 @@ async function getResource(databasePool, resourceName, id) {
         unitPriceMinor: item.unitPriceMinor,
         quantity: item.quantity,
         lineTotalMinor: item.lineTotalMinor,
+        commissionBps: item.commissionBps,
+        commissionMinor: item.commissionMinor,
         currency: item.currency,
       })),
     };

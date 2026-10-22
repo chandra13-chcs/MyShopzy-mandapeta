@@ -74,7 +74,7 @@ function createApp({
     const origin = req.get('origin');
     if (origin && partnerPortalOrigins.includes(origin)) {
       res.set('Access-Control-Allow-Origin', origin);
-      res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
       res.set(
         'Access-Control-Allow-Headers',
         'Authorization, Content-Type, X-Request-ID',

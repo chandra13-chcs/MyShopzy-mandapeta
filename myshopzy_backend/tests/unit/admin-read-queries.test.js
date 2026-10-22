@@ -198,6 +198,11 @@ test('lists only source-backed fields with parameterized filters and determinist
     if (resource === 'customers') {
       assert.match(pool.calls[1].sql, /u\.system_role = 'customer'/);
     }
+    if (resource === 'orders') {
+      assert.match(pool.calls[1].sql, /o\.commission_minor AS "commissionMinor"/);
+      assert.match(pool.calls[1].sql, /sum\(oi\.line_total_minor - oi\.commission_minor\)/);
+      assert.match(pool.calls[1].sql, /AS "partnerEarningMinor"/);
+    }
   }
 });
 
@@ -231,7 +236,16 @@ test('returns approved order-item fields and linked partner shops for detail pre
     calls: [],
     async query(sql, params) {
       this.calls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
-      if (this.calls.length === 1) return { rows: [{ id: 'order-id', totalMinor: '1000' }] };
+      if (this.calls.length === 1) {
+        return {
+          rows: [{
+            id: 'order-id',
+            totalMinor: '1000',
+            commissionMinor: '100',
+            partnerEarningMinor: '900',
+          }],
+        };
+      }
       return {
         rows: [{
           productId: 'product-id',
@@ -240,6 +254,8 @@ test('returns approved order-item fields and linked partner shops for detail pre
           unitPriceMinor: '1000',
           quantity: 1,
           lineTotalMinor: '1000',
+          commissionBps: 1000,
+          commissionMinor: '100',
           currency: 'USD',
           variantSnapshot: { customer: { email: 'private@example.test' } },
           unexpected: { nested: true },
@@ -255,8 +271,14 @@ test('returns approved order-item fields and linked partner shops for detail pre
     unitPriceMinor: '1000',
     quantity: 1,
     lineTotalMinor: '1000',
+    commissionBps: 1000,
+    commissionMinor: '100',
     currency: 'USD',
   }]);
+  assert.equal(order.commissionMinor, '100');
+  assert.equal(order.partnerEarningMinor, '900');
+  assert.match(orderPool.calls[0].sql, /o\.commission_minor AS "commissionMinor"/);
+  assert.match(orderPool.calls[0].sql, /AS "partnerEarningMinor"/);
   assert.match(orderPool.calls[1].sql, /FROM app\.order_items/);
   assert.doesNotMatch(orderPool.calls[1].sql, /variant_snapshot|variantSnapshot/);
   assert.doesNotMatch(JSON.stringify(order), /private@example\.test|unexpected|variantSnapshot/);

@@ -45,6 +45,10 @@ const partnerTypeCodesSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/009_partner_type_codes.sql',
 );
+const commissionSnapshotsSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/010_order_commission_snapshots.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -125,9 +129,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const customerOtpSchema = await readFile(customerOtpSchemaPath, 'utf8');
   const productVariantsSchema = await readFile(productVariantsSchemaPath, 'utf8');
   const partnerTypeCodesSchema = await readFile(partnerTypeCodesSchemaPath, 'utf8');
+  const commissionSnapshotsSchema = await readFile(commissionSnapshotsSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
-  assert.equal(appliedCount, 9);
+  assert.equal(appliedCount, 10);
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
   assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
   assert.equal(
@@ -155,6 +160,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('009').name,
     '009_partner_type_codes.sql',
   );
+  assert.equal(
+    pool.applied.get('010').name,
+    '010_order_commission_snapshots.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -165,10 +174,21 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(customerOtpSchema.trim()));
   assert.ok(calls.includes(productVariantsSchema.trim()));
   assert.ok(calls.includes(partnerTypeCodesSchema.trim()));
+  assert.ok(calls.includes(commissionSnapshotsSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
   assert.equal(pool.released, true);
+});
+
+test('commission migration adds bounded overrides and zero-default order snapshots', async () => {
+  const schema = await readFile(commissionSnapshotsSchemaPath, 'utf8');
+
+  assert.match(schema, /app\.partners[\s\S]*commission_bps_override integer[\s\S]*BETWEEN 0 AND 10000/);
+  assert.match(schema, /app\.categories[\s\S]*commission_bps_override integer[\s\S]*BETWEEN 0 AND 10000/);
+  assert.match(schema, /app\.order_items[\s\S]*commission_bps integer NOT NULL DEFAULT 0[\s\S]*commission_bps >= 0/);
+  assert.match(schema, /commission_minor bigint NOT NULL DEFAULT 0[\s\S]*commission_minor >= 0/);
+  assert.match(schema, /app\.orders[\s\S]*commission_minor bigint NOT NULL DEFAULT 0[\s\S]*commission_minor >= 0/);
 });
 
 test('normalizes existing partner types before enforcing the supported partner codes', async () => {

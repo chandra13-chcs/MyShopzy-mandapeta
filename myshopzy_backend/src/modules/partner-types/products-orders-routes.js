@@ -348,6 +348,7 @@ const PRODUCT_SELECT = `
     pr.currency,
     pr.inventory_quantity,
     pr.is_available,
+    pr.status,
     pr.attributes,
     pr.image_url,
     pr.thumb_url,
@@ -673,6 +674,11 @@ function createPartnerProductOrderRouter({ databasePool }) {
         `SELECT
            o.id, o.partner_id, o.shop_id, s.name AS shop_name, o.status,
            o.currency, o.items_subtotal_minor::text AS items_subtotal_minor,
+           CASE WHEN o.status IN ('cancelled', 'rejected') THEN '0'
+             ELSE COALESCE((SELECT sum(oi.line_total_minor - oi.commission_minor)
+               FROM app.order_items AS oi
+               WHERE oi.order_id = o.id AND oi.partner_id = o.partner_id), 0)::text
+           END AS "partnerEarningMinor",
            o.delivery_fee_minor::text AS delivery_fee_minor,
            o.discount_minor::text AS discount_minor,
            o.total_minor::text AS total_minor,
@@ -714,6 +720,11 @@ function createPartnerProductOrderRouter({ databasePool }) {
         `SELECT
            o.id, o.partner_id, o.shop_id, s.name AS shop_name, o.status,
            o.currency, o.items_subtotal_minor::text AS items_subtotal_minor,
+           CASE WHEN o.status IN ('cancelled', 'rejected') THEN '0'
+             ELSE COALESCE((SELECT sum(oi.line_total_minor - oi.commission_minor)
+               FROM app.order_items AS oi
+               WHERE oi.order_id = o.id AND oi.partner_id = o.partner_id), 0)::text
+           END AS "partnerEarningMinor",
            o.delivery_fee_minor::text AS delivery_fee_minor,
            o.discount_minor::text AS discount_minor,
            o.total_minor::text AS total_minor,
@@ -792,7 +803,17 @@ function createPartnerProductOrderRouter({ databasePool }) {
            RETURNING id, partner_id, shop_id, status, currency, updated_at`,
           [id, req.partnerContext.partnerId, databaseNextStatus],
         );
-        return result.rows[0];
+        const earningResult = await client.query(
+          `SELECT CASE WHEN o.status IN ('cancelled', 'rejected') THEN '0'
+             ELSE COALESCE((SELECT sum(oi.line_total_minor - oi.commission_minor)
+               FROM app.order_items AS oi
+               WHERE oi.order_id = o.id AND oi.partner_id = o.partner_id), 0)::text
+           END AS "partnerEarningMinor"
+           FROM app.orders AS o
+           WHERE o.id = $1::uuid AND o.partner_id = $2::uuid`,
+          [id, req.partnerContext.partnerId],
+        );
+        return { ...result.rows[0], ...earningResult.rows[0] };
       });
       return res.status(200).json({ data: updated });
     } catch (error) {

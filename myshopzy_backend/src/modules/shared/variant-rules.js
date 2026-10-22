@@ -67,7 +67,7 @@ function validateVariantWithAllowedUnits(variant, allowedUnits) {
   if (unit === null) {
     errors.push('Variant unit is required.');
   } else if (allowedUnits && !allowedUnits.includes(unit)) {
-    errors.push(`Unit ${unit} is not allowed for category ${categoryCode}.`);
+    errors.push(`Unit ${unit} is not allowed for this product type.`);
   }
   if (
     typeof variant.quantity !== 'number' ||

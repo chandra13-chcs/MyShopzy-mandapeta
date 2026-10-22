@@ -67,8 +67,12 @@ async function createFixture(t, { memberships = [] } = {}) {
             name: 'Main Shop',
             slug: 'main-shop',
             status: 'pending',
-            address: { city: 'Mandapeta' },
-            operating_details: {},
+            address: {
+              line1: '12 Market Road',
+              city: 'Mandapeta',
+              postalCode: '533308',
+            },
+            operating_details: { open: '08:30', close: '20:00' },
           }],
         };
       }
@@ -162,8 +166,12 @@ test('returns the authenticated partner profile and shop basics without trusting
     name: 'Main Shop',
     slug: 'main-shop',
     status: 'pending',
-    address: { city: 'Mandapeta' },
-    operatingDetails: {},
+    address: {
+      line1: '12 Market Road',
+      city: 'Mandapeta',
+      postalCode: '533308',
+    },
+    operatingDetails: { open: '08:30', close: '20:00' },
   }]);
   assert.deepEqual(
     fixture.calls.find(({ sql }) => /FROM app\.partners/.test(sql)).params,
@@ -188,18 +196,24 @@ test('rejects a validly signed Auth0 token without a verified email claim', asyn
   assert.equal(fixture.calls.length, 0);
 });
 
-test('allows preflight requests only from configured partner portal origins', async (t) => {
+test('allows partner read and write preflight only from configured portal origins', async (t) => {
   const fixture = await createFixture(t);
-  const allowed = await fetch(`${fixture.baseUrl}/api/v1/partner/me/config`, {
-    method: 'OPTIONS',
-    headers: {
-      origin: 'http://localhost:5173',
-      'access-control-request-method': 'GET',
-      'access-control-request-headers': 'authorization',
-    },
-  });
-  assert.equal(allowed.status, 204);
-  assert.equal(allowed.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+  for (const method of ['GET', 'POST', 'PATCH']) {
+    const allowed = await fetch(`${fixture.baseUrl}/api/v1/partner/products`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': method,
+        'access-control-request-headers': 'authorization,content-type',
+      },
+    });
+    assert.equal(allowed.status, 204);
+    assert.equal(allowed.headers.get('access-control-allow-origin'), 'http://localhost:5173');
+    assert.equal(
+      allowed.headers.get('access-control-allow-methods'),
+      'GET, POST, PATCH, OPTIONS',
+    );
+  }
 
   const denied = await fetch(`${fixture.baseUrl}/api/v1/partner/me/config`, {
     method: 'OPTIONS',
