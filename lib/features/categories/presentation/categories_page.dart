@@ -16,7 +16,9 @@ import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 
 class CategoriesPage extends StatelessWidget {
-  const CategoriesPage({super.key});
+  const CategoriesPage({super.key, this.onMainTabSelected});
+
+  final ValueChanged<int>? onMainTabSelected;
 
   static const _ink = AppTheme.primaryText;
   static const _page = AppTheme.lightBackground;
@@ -26,13 +28,13 @@ class CategoriesPage extends StatelessWidget {
       'Fresh Vegetables',
       Icons.eco_rounded,
       Color(0xFFE1F2E4),
-      imagePath: 'assets/category_tiles/fruits_vegetables.jpg',
+      imagePath: 'assets/category_tiles/fruits nd vegetables tile.jpeg',
     ),
     _CategoryTile(
       'Fresh Fruits',
       Icons.apple_rounded,
       Color(0xFFFFE8D9),
-      imagePath: 'assets/category_tiles/fruits_vegetables.jpg',
+      imagePath: 'assets/category_tiles/fruits nd vegetables tile.jpeg',
     ),
     _CategoryTile(
       'Dairy, Bread and Eggs',
@@ -86,7 +88,7 @@ class CategoriesPage extends StatelessWidget {
       'Biscuits and Cakes',
       Icons.bakery_dining_rounded,
       Color(0xFFF2E5D5),
-      imagePath: 'assets/category_tiles/bakery.jpg',
+      imagePath: 'assets/category_tiles/bakery tile.jpeg',
     ),
     _CategoryTile(
       'Tea, Coffee and Milk Drinks',
@@ -128,33 +130,35 @@ class CategoriesPage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: ShopzyBottomNavigationBar(
-        currentIndex: 1,
-        onTap: (index) {
-          if (index == 0) Navigator.of(context).maybePop();
-          if (index == 2) {
-            Navigator.of(context).push(
-              AppPageRoute<void>.builder(
-                builder: (context) => const CartPage(),
-              ),
-            );
-          }
-          if (index == 3) {
-            Navigator.of(context).push(
-              AppPageRoute<void>.builder(
-                builder: (context) => const OrdersPage(),
-              ),
-            );
-          }
-          if (index == 4) {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const ProfilePage(),
-              ),
-            );
-          }
-        },
-      ),
+      bottomNavigationBar: onMainTabSelected == null
+          ? ShopzyBottomNavigationBar(
+              currentIndex: 1,
+              onTap: (index) {
+                if (index == 0) Navigator.of(context).maybePop();
+                if (index == 2) {
+                  Navigator.of(context).push(
+                    AppPageRoute<void>.builder(
+                      builder: (context) => const CartPage(),
+                    ),
+                  );
+                }
+                if (index == 3) {
+                  Navigator.of(context).push(
+                    AppPageRoute<void>.builder(
+                      builder: (context) => const OrdersPage(),
+                    ),
+                  );
+                }
+                if (index == 4) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (context) => const ProfilePage(),
+                    ),
+                  );
+                }
+              },
+            )
+          : null,
     );
   }
 
@@ -390,7 +394,8 @@ class _GridCategory extends StatelessWidget {
                   child: Text(
                     category.name,
                     textAlign: TextAlign.left,
-                    softWrap: true,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: CategoriesPage._ink,
                       fontSize: 9.5,

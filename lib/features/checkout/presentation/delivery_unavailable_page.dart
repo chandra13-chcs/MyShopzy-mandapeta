@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/main_navigation_shell.dart';
 import '../../../app/theme/app_theme.dart';
-import '../../home/presentation/home_page.dart';
 
 class ServiceabilityUnavailablePage extends StatelessWidget {
   const ServiceabilityUnavailablePage({required this.message, super.key});
@@ -82,7 +82,7 @@ class ServiceabilityUnavailablePage extends StatelessWidget {
               child: TextButton(
                 onPressed: () => Navigator.of(context).pushAndRemoveUntil<void>(
                   MaterialPageRoute<void>(
-                    builder: (context) => const HomePage(),
+                    builder: (context) => const MainNavigationShell(),
                   ),
                   (route) => false,
                 ),

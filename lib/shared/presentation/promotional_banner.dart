@@ -43,7 +43,7 @@ class _PromotionalBannerState extends State<PromotionalBanner>
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
-      aspectRatio: 16 / 9,
+      aspectRatio: 2,
       child: AnimatedBuilder(
         animation: _borderRotation,
         child: ClipRRect(
@@ -172,7 +172,7 @@ class _PromotionalBannerCarouselState extends State<PromotionalBannerCarousel> {
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
-      aspectRatio: 16 / 9,
+      aspectRatio: 2,
       child: Listener(
         onPointerDown: _handlePointerDown,
         onPointerUp: _handlePointerEnd,

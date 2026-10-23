@@ -15,7 +15,9 @@ void main() {
   testWidgets('shows customer home delivery and search content on Home route', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const MyShopzyApp());
+    await tester.pumpWidget(
+      MyShopzyApp(clock: () => DateTime(2026, 10, 23, 12)),
+    );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 

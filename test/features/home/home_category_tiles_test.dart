@@ -1,4 +1,4 @@
- import 'dart:convert';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,15 +27,15 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.pumpAndSettle();
+    await pumpHomeTransitions(tester);
 
     const destinations = {
-      'meat_only_chicken': MeatPage,
+      'restaurants': RestaurantsPage,
       'bakery': BakeryPage,
+      'meat_only_chicken': MeatPage,
+      'fruits_vegetables': VegetablesFruitsPage,
       'parcel': ParcelPage,
       'local_stores': LocalStoresPage,
-      'fruits_vegetables': VegetablesFruitsPage,
-      'restaurants': RestaurantsPage,
     };
 
     expect(find.byType(GridView), findsOneWidget);
@@ -44,36 +44,12 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey('home-category-arrow-meat_only_chicken')),
-      findsOneWidget,
-    );
-    expect(
       find.byWidgetPredicate(
         (widget) =>
             widget is Icon &&
             widget.icon == Icons.person_outline_rounded &&
             widget.color == AppTheme.brandYellow,
       ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('home-category-arrow-bakery')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('home-category-arrow-parcel')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('home-category-arrow-local_stores')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('home-category-arrow-fruits_vegetables')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('home-category-arrow-restaurants')),
       findsOneWidget,
     );
     expect(
@@ -87,20 +63,20 @@ void main() {
     );
 
     const categoryAssets = {
-      'Meat Only Chicken': 'assets/category_tiles/meat tiles.jpeg',
+      'Restaurants': 'assets/category_tiles/restarant tile.jpeg',
       'Bakery': 'assets/category_tiles/bakery tile.jpeg',
-      'Parcel': 'assets/category_tiles/parcel tiles.jpeg',
-      'Local Stores': 'assets/category_tiles/local stores tiles.jpeg',
+      'Meat Only Chicken': 'assets/category_tiles/meat tiles.jpeg',
       'Fruits & Vegetables':
           'assets/category_tiles/fruits nd vegetables tile.jpeg',
-      'Restaurants': 'assets/category_tiles/restarant tile.jpeg',
+      'Parcel': 'assets/category_tiles/parcel tiles.jpeg',
+      'Local Stores': 'assets/category_tiles/local stores tiles.jpeg',
     };
     for (final entry in categoryAssets.entries) {
       final imageFinder = find.byWidgetPredicate(
         (widget) => widget is Image && widget.semanticLabel == entry.key,
       );
       final image = tester.widget<Image>(imageFinder);
-      expect(image.fit, BoxFit.contain);
+      expect(image.fit, BoxFit.cover);
       expect(
         image.image,
         isA<ResizeImage>().having(
@@ -113,16 +89,63 @@ void main() {
           ),
         ),
       );
-
-      final titleFinder = find.text(entry.key);
-      final title = tester.widget<Text>(titleFinder);
-      expect(title.maxLines, isNull);
-      expect(title.overflow, isNull);
-      expect(
-        tester.getTopLeft(titleFinder).dy,
-        greaterThan(tester.getBottomLeft(imageFinder).dy - 2),
+      final tile = find.ancestor(
+        of: imageFinder,
+        matching: find.byType(InkWell),
       );
+      final imageBounds = tester.getRect(imageFinder);
+      final tileBounds = tester.getRect(tile);
+      expect(imageBounds, tileBounds);
     }
+    for (final categoryName in categoryAssets.keys) {
+      expect(find.text(categoryName), findsNothing);
+    }
+    for (final subtitle in [
+      'Hot & tasty',
+      'Order your favorite',
+      'Freshly baked',
+      'Delicious daily',
+      'Premium quality',
+      'Clean & fresh',
+      'Farm fresh',
+      '100% natural',
+      'Fast delivery',
+      'Safe & secure',
+      'Kirana & essentials',
+      'From nearby shops',
+    ]) {
+      expect(find.text(subtitle), findsNothing);
+    }
+
+    final categoryGrid = tester.widget<GridView>(find.byType(GridView));
+    expect(
+      (categoryGrid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount)
+          .crossAxisCount,
+      3,
+    );
+    final orderedCategoryRects = categoryAssets.keys
+        .map(
+          (name) => tester.getRect(
+            find.byWidgetPredicate(
+              (widget) => widget is Image && widget.semanticLabel == name,
+            ),
+          ),
+        )
+        .toList();
+    expect(orderedCategoryRects[0].top, orderedCategoryRects[1].top);
+    expect(orderedCategoryRects[1].top, orderedCategoryRects[2].top);
+    expect(
+      orderedCategoryRects[0].left,
+      lessThan(orderedCategoryRects[1].left),
+    );
+    expect(
+      orderedCategoryRects[1].left,
+      lessThan(orderedCategoryRects[2].left),
+    );
+    expect(
+      orderedCategoryRects[3].top,
+      greaterThan(orderedCategoryRects[0].top),
+    );
 
     final meatTile = find.byKey(
       const ValueKey('home-category-meat_only_chicken'),
@@ -135,15 +158,20 @@ void main() {
     await tester.pump(const Duration(milliseconds: 60));
     expect(tester.widget<AnimatedScale>(pressScale).scale, lessThan(1));
     await gesture.cancel();
-    await tester.pumpAndSettle();
+    await pumpHomeTransitions(tester);
     expect(tester.widget<AnimatedScale>(pressScale).scale, 1);
 
     for (final entry in destinations.entries) {
       final tile = find.byKey(ValueKey('home-category-${entry.key}'));
+      await tester.scrollUntilVisible(
+        tile,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.ensureVisible(tile);
       expect(tile, findsOneWidget);
       await tester.tap(tile);
-      await tester.pumpAndSettle();
+      await pumpHomeTransitions(tester);
       expect(find.byType(entry.value), findsOneWidget);
       expect(
         tester.takeException(),
@@ -151,7 +179,7 @@ void main() {
         reason: 'Opening ${entry.value} should not produce layout errors.',
       );
       await tester.pageBack();
-      await tester.pumpAndSettle();
+      await pumpHomeTransitions(tester);
     }
   });
 
@@ -214,7 +242,7 @@ void main() {
     );
 
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.pumpAndSettle();
+    await pumpHomeTransitions(tester);
     expect(
       tester.takeException(),
       isNull,
@@ -237,8 +265,28 @@ void main() {
         findsOneWidget,
       );
     }
+    final orderedPartnerTypes = [
+      'restaurant',
+      'bakery',
+      'meat_shop',
+      'vegetables_fruits',
+      'grocery',
+    ];
+    final orderedPartnerRects = orderedPartnerTypes
+        .map(
+          (partnerType) => tester.getRect(
+            find.byKey(ValueKey('home-category-partner-$partnerType')),
+          ),
+        )
+        .toList();
+    expect(orderedPartnerRects[0].top, orderedPartnerRects[1].top);
+    expect(orderedPartnerRects[1].top, orderedPartnerRects[2].top);
+    expect(orderedPartnerRects[0].left, lessThan(orderedPartnerRects[1].left));
+    expect(orderedPartnerRects[1].left, lessThan(orderedPartnerRects[2].left));
+    expect(orderedPartnerRects[3].top, greaterThan(orderedPartnerRects[0].top));
+    expect(orderedPartnerRects[4].top, orderedPartnerRects[3].top);
     expect(find.byKey(const ValueKey('home-category-parcel')), findsNothing);
-    expect(find.text('Sweet Shop'), findsOneWidget);
+    expect(find.text('Sweet Shop'), findsNothing);
     expect(
       requests.any(
         (request) => request.url.path == '/api/v1/partner-categories',
@@ -249,7 +297,7 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey('home-category-partner-bakery')),
     );
-    await tester.pumpAndSettle();
+    await pumpHomeTransitions(tester);
     expect(
       tester.takeException(),
       isNull,
@@ -260,7 +308,7 @@ void main() {
     final bakeryShop = find.text('Sweet Oven');
     await tester.ensureVisible(bakeryShop);
     await tester.tap(bakeryShop);
-    await tester.pumpAndSettle();
+    await pumpHomeTransitions(tester);
     expect(
       tester.takeException(),
       isNull,
@@ -283,6 +331,23 @@ void main() {
     );
   });
 
+  testWidgets('Home category grid keeps three columns on compact screens', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await pumpHomeTransitions(tester);
+
+    final categoryGrid = tester.widget<GridView>(find.byType(GridView));
+    expect(
+      (categoryGrid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount)
+          .crossAxisCount,
+      3,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('home discovery remains reachable through the root scroll view', (
     tester,
   ) async {
@@ -301,4 +366,9 @@ void main() {
     expect(finalDiscoverySection, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+Future<void> pumpHomeTransitions(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 600));
 }

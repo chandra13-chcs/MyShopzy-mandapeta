@@ -4,8 +4,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../app/main_navigation_shell.dart';
 import '../../../shared/data/customer_api.dart';
-import '../../home/presentation/home_page.dart';
 
 class _C {
   static const green = Color(0xFF016034);
@@ -414,7 +414,7 @@ class _OtpPageState extends State<OtpPage> with SingleTickerProviderStateMixin {
       Navigator.of(context).pushAndRemoveUntil<void>(
         authPageRoute<void>(
           context: context,
-          page: HomePage(),
+          page: const MainNavigationShell(),
           transition: AuthPageTransition.fadeScale,
         ),
         (route) => false,

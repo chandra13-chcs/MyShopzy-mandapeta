@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -39,9 +40,16 @@ import '../../search/models/search_result.dart';
 import '../../search/presentation/search_page.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key, this.locationService});
+  const HomePage({
+    super.key,
+    this.locationService,
+    this.clock,
+    this.onMainTabSelected,
+  });
 
   final ParcelLocationService? locationService;
+  final DateTime Function()? clock;
+  final ValueChanged<int>? onMainTabSelected;
 
   static const _ink = AppTheme.primaryText;
   static const _muted = AppTheme.secondaryText;
@@ -60,7 +68,7 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final home = Scaffold(
       backgroundColor: _page,
       body: SafeArea(
         bottom: false,
@@ -69,7 +77,16 @@ class HomePage extends StatelessWidget {
           itemBuilder: _buildHomeSliverChild,
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigation(context),
+      bottomNavigationBar: onMainTabSelected == null
+          ? _buildBottomNavigation(context)
+          : null,
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        home,
+        OfflineBannerDialog(clock: clock),
+      ],
     );
   }
 
@@ -355,30 +372,30 @@ class HomePage extends StatelessWidget {
     void Function(BuildContext context, String key)? onBannerTap,
   }) {
     final promotionCards = SizedBox(
-          width: double.infinity,
-          child: PromotionalBannerCarousel(
-            banners: banners,
-            carouselKey: ValueKey(
-              onBannerTap == null
-                  ? 'home-promotions-carousel'
-                  : 'home-parcel-fruits-carousel',
-            ),
-            onBannerTap: onBannerTap,
-          ),
-        );
+      width: double.infinity,
+      child: PromotionalBannerCarousel(
+        banners: banners,
+        carouselKey: ValueKey(
+          onBannerTap == null
+              ? 'home-promotions-carousel'
+              : 'home-parcel-fruits-carousel',
+        ),
+        onBannerTap: onBannerTap,
+      ),
+    );
     if (!CustomerApi.instance.isConfigured) return promotionCards;
     return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 6),
-              child: Text(
-                'Demo offers · not verified or redeemable',
-                style: TextStyle(color: _muted, fontSize: 11),
-              ),
-            ),
-            promotionCards,
-          ],
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(bottom: 6),
+          child: Text(
+            'Demo offers · not verified or redeemable',
+            style: TextStyle(color: _muted, fontSize: 11),
+          ),
+        ),
+        promotionCards,
+      ],
     );
   }
 
@@ -625,10 +642,7 @@ class HomePage extends StatelessWidget {
 
   Widget _buildParcelAdvertisement(BuildContext context) {
     const banners = [
-      (
-        key: 'parcel',
-        assetPath: 'assets/myshopzy_banners/parellu.jpeg',
-      ),
+      (key: 'parcel', assetPath: 'assets/myshopzy_banners/parellu.jpeg'),
       (
         key: 'fruits',
         assetPath: 'assets/myshopzy_banners/myshopzy fresh fruits .jpeg',
@@ -2567,12 +2581,7 @@ const _groceryDiscoverySections = [
 ];
 
 class _Service {
-  const _Service(
-    this.name,
-    this.key,
-    this.assetPath, {
-    this.partnerType,
-  });
+  const _Service(this.name, this.key, this.assetPath, {this.partnerType});
 
   factory _Service.forPartnerCategory(ApiPartnerCategory category) {
     final partnerType = category.partnerType;
@@ -2582,7 +2591,8 @@ class _Service {
       'meat_shop' => 'assets/category_tiles/meat tiles.jpeg',
       'other' => 'assets/category_tiles/local stores tiles.jpeg',
       'bakery' => 'assets/category_tiles/bakery tile.jpeg',
-      'vegetables_fruits' => 'assets/category_tiles/fruits nd vegetables tile.jpeg',
+      'vegetables_fruits' =>
+        'assets/category_tiles/fruits nd vegetables tile.jpeg',
       _ => 'assets/category_tiles/local stores tiles.jpeg',
     };
     return _Service(
@@ -2597,30 +2607,40 @@ class _Service {
   final String key;
   final String assetPath;
   final String? partnerType;
+
+  int get displayOrder => switch (partnerType ?? key) {
+    'restaurant' || 'restaurants' => 0,
+    'bakery' => 1,
+    'meat_shop' || 'meat_only_chicken' => 2,
+    'vegetables_fruits' || 'fruits_vegetables' => 3,
+    'parcel' => 4,
+    'grocery' || 'other' || 'local_stores' => 5,
+    _ => 6,
+  };
 }
 
 const _demoHomeServices = [
   _Service(
+    'Restaurants',
+    'restaurants',
+    'assets/category_tiles/restarant tile.jpeg',
+  ),
+  _Service('Bakery', 'bakery', 'assets/category_tiles/bakery tile.jpeg'),
+  _Service(
     'Meat Only Chicken',
     'meat_only_chicken',
     'assets/category_tiles/meat tiles.jpeg',
-  ),
-  _Service('Bakery', 'bakery', 'assets/category_tiles/bakery tile.jpeg'),
-  _Service('Parcel', 'parcel', 'assets/category_tiles/parcel tiles.jpeg'),
-  _Service(
-    'Local Stores',
-    'local_stores',
-    'assets/category_tiles/local stores tiles.jpeg',
   ),
   _Service(
     'Fruits & Vegetables',
     'fruits_vegetables',
     'assets/category_tiles/fruits nd vegetables tile.jpeg',
   ),
+  _Service('Parcel', 'parcel', 'assets/category_tiles/parcel tiles.jpeg'),
   _Service(
-    'Restaurants',
-    'restaurants',
-    'assets/category_tiles/restarant tile.jpeg',
+    'Local Stores',
+    'local_stores',
+    'assets/category_tiles/local stores tiles.jpeg',
   ),
 ];
 
@@ -2651,7 +2671,18 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
 
   Future<List<_Service>> _loadPartnerServices(CustomerApi api) async {
     final categories = await api.getPartnerCategories();
-    return categories.map(_Service.forPartnerCategory).toList(growable: false);
+    final services = categories.map(_Service.forPartnerCategory).toList();
+    final originalOrder = {
+      for (var index = 0; index < services.length; index++)
+        services[index].key: index,
+    };
+    services.sort((first, second) {
+      final byCategory = first.displayOrder.compareTo(second.displayOrder);
+      return byCategory != 0
+          ? byCategory
+          : originalOrder[first.key]!.compareTo(originalOrder[second.key]!);
+    });
+    return services;
   }
 
   @override
@@ -2671,7 +2702,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                 crossAxisCount: 3,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
-                childAspectRatio: 0.72,
+                childAspectRatio: 0.85,
               ),
               itemBuilder: (context, index) =>
                   const SkeletonBox(height: 110, radius: 12),
@@ -2727,7 +2758,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final crossAxisCount = constraints.maxWidth < 310 ? 2 : 3;
+            const crossAxisCount = 3;
             final tileWidth =
                 (constraints.maxWidth - 8 * (crossAxisCount - 1)) /
                 crossAxisCount;
@@ -2739,7 +2770,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                 crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
-                childAspectRatio: 0.72,
+                childAspectRatio: 0.85,
               ),
               itemBuilder: (context, index) {
                 final service = services[index];
@@ -2757,56 +2788,17 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                         child: Column(
                           children: [
                             Expanded(
-                              child: Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  Image.asset(
-                                    service.assetPath,
-                                    fit: BoxFit.contain,
-                                    cacheWidth:
-                                        (tileWidth *
-                                                MediaQuery.devicePixelRatioOf(
-                                                  context,
-                                                ))
-                                            .round(),
-                                    semanticLabel: service.name,
-                                  ),
-                                  Positioned(
-                                    right: 6,
-                                    bottom: 6,
-                                    child: IgnorePointer(
-                                      child: Container(
-                                        key: ValueKey(
-                                          'home-category-arrow-${service.key}',
-                                        ),
-                                        width: 26,
-                                        height: 26,
-                                        decoration: const BoxDecoration(
-                                          color: AppTheme.brandYellow,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.arrow_forward_rounded,
-                                          color: AppTheme.darkGreen,
-                                          size: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(5, 2, 5, 6),
-                              child: Text(
-                                service.name,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: HomePage._ink,
-                                  fontSize: 12,
-                                  height: 1.15,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                              child: Image.asset(
+                                service.assetPath,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                                cacheWidth:
+                                    (tileWidth *
+                                            MediaQuery.devicePixelRatioOf(
+                                              context,
+                                            ))
+                                        .round(),
+                                semanticLabel: service.name,
                               ),
                             ),
                           ],
@@ -2914,4 +2906,226 @@ class _GroceryDiscoveryProduct {
     locality: 'Mandapeta',
     isOpen: true,
   );
+}
+
+class OfflineBannerDialog extends StatefulWidget {
+  const OfflineBannerDialog({super.key, this.clock});
+
+  final DateTime Function()? clock;
+
+  @override
+  State<OfflineBannerDialog> createState() => _OfflineBannerDialogState();
+}
+
+class _OfflineBannerDialogState extends State<OfflineBannerDialog> {
+  bool _isVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // Alternative: fetch the live store status from the backend instead.
+      // final response = await http.get(Uri.parse('$baseUrl/store-status'));
+      // final isOpen = StoreStatus.fromJson(response.body).isOpen;
+      final now = widget.clock?.call() ?? DateTime.now();
+      final isOpen = now.hour >= 7 && now.hour < 23;
+
+      if (!isOpen) {
+        setState(() => _isVisible = true);
+      }
+    });
+  }
+
+  void _dismiss() {
+    setState(() => _isVisible = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isVisible) return const SizedBox.shrink();
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+            child: const ColoredBox(color: Color(0x990D1710)),
+          ),
+        ),
+        SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 380,
+                  maxHeight: MediaQuery.sizeOf(context).height - 48,
+                ),
+                child: SingleChildScrollView(
+                  child: Material(
+                    color: Colors.white,
+                    elevation: 24,
+                    shadowColor: const Color(0x400A2415),
+                    borderRadius: BorderRadius.circular(20),
+                    clipBehavior: Clip.antiAlias,
+                    child: Stack(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 34, 24, 24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 96,
+                                height: 96,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: const Color(0xFFF0F6EF),
+                                  border: Border.all(
+                                    color: const Color(0xFFE4EEE2),
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Container(
+                                    width: 76,
+                                    height: 76,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFF174E32)
+                                              .withValues(alpha: 0.09),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Image.asset(
+                                      'assets/category_tiles/logo.png',
+                                      fit: BoxFit.contain,
+                                      alignment: Alignment.center,
+                                      semanticLabel: 'MyShopzy logo',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 11,
+                                  vertical: 7,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFF8E6),
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.circle,
+                                      size: 8,
+                                      color: Color(0xFFE4A51A),
+                                    ),
+                                    SizedBox(width: 7),
+                                    Text(
+                                      'STORE IS CLOSED',
+                                      style: TextStyle(
+                                        color: Color(0xFF89631C),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 15),
+                              const Text(
+                                'We are currently offline',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Color(0xFF202923),
+                                  fontSize: 23,
+                                  height: 1.2,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 11),
+                              const Text(
+                                'Our store hours are 7:00 AM – 11:00 PM. '
+                                'You can still browse products, add items '
+                                'to cart, and order during operating hours!',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Color(0xFF737B75),
+                                  fontSize: 14,
+                                  height: 1.65,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                              const SizedBox(height: 23),
+                              SizedBox(
+                                width: double.infinity,
+                                height: 54,
+                                child: ElevatedButton(
+                                  key: const ValueKey('offline-dialog-explore'),
+                                  onPressed: _dismiss,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF006633),
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  child: const Text('Explore Products'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Positioned(
+                          top: 12,
+                          right: 12,
+                          child: Material(
+                            color: const Color(0xFFF1F3F1),
+                            shape: const CircleBorder(),
+                            child: IconButton(
+                              key: const ValueKey('offline-dialog-close'),
+                              onPressed: _dismiss,
+                              tooltip: 'Close',
+                              constraints: const BoxConstraints.tightFor(
+                                width: 36,
+                                height: 36,
+                              ),
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                size: 19,
+                                color: Color(0xFF66706A),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

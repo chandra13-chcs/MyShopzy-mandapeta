@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../app/main_navigation_shell.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/presentation/motion.dart';
-import '../../home/presentation/home_page.dart';
 import '../models/order_record.dart';
 import 'order_tracking_page.dart';
 
@@ -130,7 +130,7 @@ class OrderSuccessPage extends StatelessWidget {
                     onPressed: () =>
                         Navigator.of(context).pushAndRemoveUntil<void>(
                           AppPageRoute<void>.builder(
-                            builder: (context) => const HomePage(),
+                            builder: (context) => const MainNavigationShell(),
                           ),
                           (route) => false,
                         ),

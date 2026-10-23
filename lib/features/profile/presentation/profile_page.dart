@@ -20,7 +20,9 @@ import 'edit_profile_page.dart';
 import 'saved_addresses_page.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({super.key, this.onMainTabSelected});
+
+  final ValueChanged<int>? onMainTabSelected;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -140,7 +142,9 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
         ),
-        bottomNavigationBar: _buildBottomNavigation(context),
+        bottomNavigationBar: widget.onMainTabSelected == null
+            ? _buildBottomNavigation(context)
+            : null,
       ),
     );
   }

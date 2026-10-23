@@ -1,4 +1,4 @@
- import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
 
@@ -138,7 +138,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('banner slots fit narrow and standard mobile widths', (
+  testWidgets('banner slots fit narrow and standard mobile widths at 2:1', (
     tester,
   ) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -156,7 +156,7 @@ void main() {
       );
 
       final bannerSize = tester.getSize(firstBanner);
-      expect(bannerSize.width / bannerSize.height, closeTo(16 / 9, 0.01));
+      expect(bannerSize.width / bannerSize.height, closeTo(2, 0.01));
       expect(bannerSize.width, closeTo(size.width - 32, 0.01));
       expect(tester.takeException(), isNull);
     }
