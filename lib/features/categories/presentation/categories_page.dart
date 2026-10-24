@@ -387,31 +387,40 @@ class _GridCategory extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFFEBEEE9)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Center(
-                  child: _CategoryImage(category: category, size: imageSize),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 5, 6, 7),
-                  child: Text(
-                    category.name,
-                    textAlign: TextAlign.left,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: CategoriesPage._ink,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w500,
-                      height: 1.15,
-                    ),
-                  ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x120F2418),
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
                 ),
               ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: _CategoryImage(category: category, size: imageSize),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(6, 5, 6, 7),
+                    child: Text(
+                      category.name,
+                      textAlign: TextAlign.left,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: CategoriesPage._ink,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w500,
+                        height: 1.15,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -433,7 +442,15 @@ class _CategoryImage extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: category.color,
-        borderRadius: BorderRadius.circular(17),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: const Color(0xFFDDE5DC)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x140F2418),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: category.imagePath == null
@@ -442,7 +459,7 @@ class _CategoryImage extends StatelessWidget {
               color: const Color(0xFF34453A),
               size: size * 0.47,
             )
-          : Image.asset(category.imagePath!, fit: BoxFit.cover),
+          : Image.asset(category.imagePath!, fit: BoxFit.contain),
     );
   }
 }

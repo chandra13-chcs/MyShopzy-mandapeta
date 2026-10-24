@@ -144,4 +144,31 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('category image tiles use square bordered cards without crop', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
+
+    final imageFinder = find.byType(Image).first;
+    final image = tester.widget<Image>(imageFinder);
+    expect(image.fit, BoxFit.contain);
+
+    final imageContainerFinder = find.ancestor(
+      of: imageFinder,
+      matching: find.byType(Container),
+    );
+    final imageContainer = tester.widget<Container>(imageContainerFinder.first);
+    final imageSize = tester.getSize(imageContainerFinder.first);
+    expect(imageSize.width, imageSize.height);
+    final imageDecoration = imageContainer.decoration! as BoxDecoration;
+    expect(imageDecoration.border, isNotNull);
+    expect(imageDecoration.boxShadow, isNotEmpty);
+
+    final grid = tester.widget<SliverGrid>(find.byType(SliverGrid).first);
+    final delegate =
+        grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    expect(delegate.crossAxisSpacing, 8);
+    expect(delegate.mainAxisSpacing, 8);
+  });
 }

@@ -59,8 +59,8 @@ class HomePage extends StatelessWidget {
   static const _green = AppTheme.primaryGreen;
   static const _page = AppTheme.lightBackground;
   static const _recentlyViewedViewAllThreshold = 4;
-  static const _homeIntroChildCount = 8;
-  static const _promotionsChildIndex = 6;
+  static const _homeIntroChildCount = 6;
+  static const _promotionsChildIndex = 4;
 
   static final _discoverySearchResults = _buildSearchDiscoveryResults();
   static final _homeSliverChildCount =
@@ -74,6 +74,7 @@ class HomePage extends StatelessWidget {
     final home = Scaffold(
       backgroundColor: _page,
       body: SafeArea(
+        top: false,
         bottom: false,
         child: _HomeCatalogRefreshView(
           childCount: _homeSliverChildCount,
@@ -100,17 +101,12 @@ class HomePage extends StatelessWidget {
   ) {
     if (index < _homeIntroChildCount) {
       return switch (index) {
-        0 => _buildHeader(context),
-        1 => const Padding(
-          padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
-          child: _HomeDuesBanner(),
-        ),
-        2 => _buildSearchBar(context),
+        0 => _buildHeaderArea(context),
+        1 => const SizedBox(height: 12),
+        2 => _buildServiceGrid(),
         3 => const SizedBox(height: 22),
-        4 => _buildServiceGrid(),
-        5 => const SizedBox(height: 22),
         _promotionsChildIndex => _buildPromotions(),
-        7 => AnimatedBuilder(
+        5 => AnimatedBuilder(
           animation: RecentlyViewedStore.instance,
           builder: (context, child) {
             final products = RecentlyViewedStore.instance.products;
@@ -171,6 +167,34 @@ class HomePage extends StatelessWidget {
     return _HomeLocationHeader(locationService: locationService);
   }
 
+  Widget _buildHeaderArea(BuildContext context) {
+    return Container(
+      key: const ValueKey('home-black-header'),
+      color: Colors.black,
+      padding: EdgeInsets.only(
+        top: MediaQuery.viewPaddingOf(context).top + 14,
+        bottom: 10,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: _buildHeader(context),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: _HomeDuesBanner(),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: _buildSearchBar(context),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSearchBar(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -183,23 +207,24 @@ class HomePage extends StatelessWidget {
         ),
       ),
       child: Container(
+        key: const ValueKey('home-search-bar'),
         height: 52,
         padding: const EdgeInsets.symmetric(horizontal: 15),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.black,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE5E9E3)),
+          border: Border.all(color: Colors.white54),
         ),
         child: Row(
           children: [
-            const Icon(Icons.search_rounded, color: _muted, size: 23),
+            const Icon(Icons.search_rounded, color: Colors.white, size: 23),
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
                 'Search restaurants, groceries, products...',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: _muted, fontSize: 13),
+                style: TextStyle(color: Colors.white, fontSize: 13),
               ),
             ),
           ],
@@ -998,22 +1023,23 @@ class _HomeCatalogRefreshViewState extends State<_HomeCatalogRefreshView> {
     child: CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
+        SliverToBoxAdapter(child: widget.itemBuilder(context, 0, _catalogKey)),
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => fadeSlideItem(
-                itemKey: 'home-feed-section-$index',
-                index: index,
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final childIndex = index + 1;
+              return fadeSlideItem(
+                itemKey: 'home-feed-section-$childIndex',
+                index: childIndex,
                 child: Padding(
-                  padding: index == HomePage._promotionsChildIndex
+                  padding: childIndex == HomePage._promotionsChildIndex
                       ? EdgeInsets.zero
                       : const EdgeInsets.symmetric(horizontal: 2),
-                  child: widget.itemBuilder(context, index, _catalogKey),
+                  child: widget.itemBuilder(context, childIndex, _catalogKey),
                 ),
-              ),
-              childCount: widget.childCount,
-            ),
+              );
+            }, childCount: widget.childCount - 1),
           ),
         ),
       ],
@@ -1217,9 +1243,8 @@ class _HomeLocationHeader extends StatefulWidget {
 
 class _HomeLocationHeaderState extends State<_HomeLocationHeader>
     with WidgetsBindingObserver {
-  static const _ink = AppTheme.primaryText;
-  static const _muted = AppTheme.secondaryText;
-  static const _green = AppTheme.primaryGreen;
+  static const _headerText = Colors.white;
+  static const _headerMuted = Color(0xFFCCCCCC);
 
   SavedAddress? _selectedAddress;
   bool _isDetectingLocation = false;
@@ -1334,12 +1359,12 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
               Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  const Icon(Icons.bolt_rounded, color: _green, size: 20),
+                  const Icon(Icons.bolt_rounded, color: _headerText, size: 20),
                   const SizedBox(width: 5),
                   const Text(
                     '30 mins',
                     style: TextStyle(
-                      color: _ink,
+                      color: _headerText,
                       fontSize: 21,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.4,
@@ -1349,7 +1374,7 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
                   const Text(
                     'delivery',
                     style: TextStyle(
-                      color: _muted,
+                      color: _headerMuted,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
@@ -1372,7 +1397,7 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
                       children: [
                         const Icon(
                           Icons.location_on_rounded,
-                          color: _green,
+                          color: _headerText,
                           size: 17,
                         ),
                         const SizedBox(width: 4),
@@ -1382,7 +1407,7 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: _ink,
+                              color: _headerText,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1391,7 +1416,7 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
                         const SizedBox(width: 2),
                         const Icon(
                           Icons.keyboard_arrow_down_rounded,
-                          color: _muted,
+                          color: _headerMuted,
                           size: 18,
                         ),
                       ],

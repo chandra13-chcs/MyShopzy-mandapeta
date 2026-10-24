@@ -185,6 +185,60 @@ void main() {
     }
   });
 
+  testWidgets('home black header contains location and search only', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await pumpHomeTransitions(tester);
+
+    final headerFinder = find.byKey(const ValueKey('home-black-header'));
+    final header = tester.widget<Container>(headerFinder);
+    final headerDecorationColor =
+        (header.decoration as BoxDecoration?)?.color ?? header.color;
+    expect(headerDecorationColor, Colors.black);
+    expect(tester.getRect(headerFinder).left, 0);
+    expect(tester.getRect(headerFinder).right, 390);
+
+    final searchFinder = find.byKey(const ValueKey('home-search-bar'));
+    final search = tester.widget<Container>(searchFinder);
+    expect((search.decoration! as BoxDecoration).color, Colors.black);
+    expect(
+      tester.getRect(searchFinder).bottom,
+      lessThan(tester.getRect(headerFinder).bottom),
+    );
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.search_rounded)).color,
+      Colors.white,
+    );
+
+    for (final label in ['30 mins', 'delivery', 'Choose your location']) {
+      expect(
+        tester.widget<Text>(find.text(label)).style?.color,
+        label == 'delivery' ? const Color(0xFFCCCCCC) : Colors.white,
+      );
+    }
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold).first).backgroundColor,
+      AppTheme.lightBackground,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Icon &&
+            widget.icon == Icons.person_outline_rounded &&
+            widget.color == AppTheme.brandYellow,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.getRect(find.byType(GridView)).top,
+      greaterThanOrEqualTo(tester.getRect(headerFinder).bottom),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Home biryani product opens its restaurant menu category', (
     tester,
   ) async {
