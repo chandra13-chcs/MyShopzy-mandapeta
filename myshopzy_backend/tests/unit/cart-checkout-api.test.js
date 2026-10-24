@@ -4,6 +4,7 @@ const test = require('node:test');
 
 const { createApp } = require('../../src/app');
 
+const shopCoordinates = { latitude: 16.87, longitude: 81.93 };
 const productId = '57a85a0c-7081-4eb7-9c13-4b9842216b54';
 const otherProductId = '7512bb41-8bcb-4237-996e-eb54635b5b74';
 const otherShopProductId = '7b579b9a-d128-40f2-8ee3-5c7018b69a2d';
@@ -148,6 +149,10 @@ function createDatabase({ failOn } = {}) {
     orders: [],
     orderItems: [],
     outstandingMinor: '0',
+    shopAddresses: {
+      [shopId]: shopCoordinates,
+      [otherShopId]: { latitude: 16.88, longitude: 81.94 },
+    },
   };
   const queries = [];
   let transactionSnapshot;
@@ -271,6 +276,7 @@ function createDatabase({ failOn } = {}) {
         .map((item) => ({
           ...item,
           ...state.products[item.product_id],
+          shop_address: state.shopAddresses[state.products[item.product_id].shop_id],
           variant_label: state.variants[item.variant_id].label,
           variant_unit: state.variants[item.variant_id].unit,
           variant_quantity: state.variants[item.variant_id].quantity,
@@ -309,6 +315,12 @@ function createDatabase({ failOn } = {}) {
     }
     if (normalized.includes('FROM app.customer_ledger_entries')) {
       return { rows: [{ outstanding_minor: state.outstandingMinor }], rowCount: 1 };
+    }
+    if (normalized.startsWith('SELECT EXISTS (') && normalized.includes('app.serviceable_pincodes')) {
+      return {
+        rows: [{ is_deliverable: params[0] === '533308' }],
+        rowCount: 1,
+      };
     }
     if (normalized.startsWith('SELECT 1 FROM app.serviceable_pincodes')) {
       return params[0] === '533308'
@@ -350,10 +362,24 @@ function createDatabase({ failOn } = {}) {
     get state() {
       return state;
     },
+    get inTransaction() {
+      return transactionSnapshot !== undefined;
+    },
   };
 }
 
-async function startServer(t, databasePool, { authenticated = false } = {}) {
+async function startServer(
+  t,
+  databasePool,
+  {
+    authenticated = false,
+    deliveryRoutingClient = {
+      async getDrivingDistanceMeters() {
+        return 4000;
+      },
+    },
+  } = {},
+) {
   const authenticateCustomer = authenticated
     ? (req, res, next) => {
         req.auth = { customerUserId: customerId };
@@ -364,6 +390,7 @@ async function startServer(t, databasePool, { authenticated = false } = {}) {
     createApp({
       databasePool,
       authenticateCustomer,
+      deliveryRoutingClient,
     }),
   );
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -554,7 +581,7 @@ test('quotes and creates a single-shop order with server-calculated prices and s
 
   const quote = await fetch(
     `${baseUrl}/api/v1/checkout/quote`,
-    jsonRequest('POST', {}, token),
+    jsonRequest('POST', { deliveryAddress: { ...deliveryAddress, ...shopCoordinates } }, token),
   );
   assert.equal(quote.status, 200);
   assert.deepEqual(await quote.json(), {
@@ -593,9 +620,13 @@ test('quotes and creates a single-shop order with server-calculated prices and s
       opensAt: '00:00',
       closesAt: '23:59',
       itemSubtotalMinor: '9000',
-      deliveryFeeMinor: '0',
+      isDeliverable: true,
+      message: 'Delivery is available at this location.',
+      distanceMeters: 4000,
+      deliveryFeeMinor: '3000',
+      platformFeeMinor: '1000',
       discountMinor: '0',
-      totalMinor: '9000',
+      totalMinor: '13000',
     },
   });
 
@@ -664,6 +695,235 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   assert.equal(Object.keys(database.state.items).length, 0);
 });
 
+test('checkout quote applies road-distance and free-delivery boundaries', async (t) => {
+  const cases = [
+    { subtotal: '10000', distance: 4000, deliverable: true, fee: '3000' },
+    { subtotal: '10000', distance: 4001, deliverable: true, fee: '2401' },
+    { subtotal: '10000', distance: 5000, deliverable: true, fee: '3000' },
+    { subtotal: '10000', distance: 18000, deliverable: true, fee: '10800' },
+    { subtotal: '10000', distance: 18001, deliverable: false, fee: null },
+    { subtotal: '49899', distance: 4000, deliverable: true, fee: '3000' },
+    { subtotal: '49900', distance: 18000, deliverable: true, fee: '0' },
+  ];
+
+  for (const scenario of cases) {
+    const database = createDatabase();
+    database.state.variants[teaVariantId].price_minor = scenario.subtotal;
+    const routingCalls = [];
+    const baseUrl = await startServer(t, database.pool, {
+      authenticated: true,
+      deliveryRoutingClient: {
+        async getDrivingDistanceMeters(args) {
+          assert.equal(database.inTransaction, false);
+          routingCalls.push(args);
+          return scenario.distance;
+        },
+      },
+    });
+    const token = await createCart(baseUrl);
+    await fetch(
+      `${baseUrl}/api/v1/cart/items`,
+      jsonRequest('POST', { productId, variantId: teaVariantId }, token),
+    );
+
+    const response = await fetch(
+      `${baseUrl}/api/v1/checkout/quote`,
+      jsonRequest(
+        'POST',
+        {
+          deliveryAddress: {
+            ...deliveryAddress,
+            latitude: 16.88,
+            longitude: 81.94,
+          },
+        },
+        token,
+      ),
+    );
+    assert.equal(response.status, 200);
+    const { data } = await response.json();
+    assert.equal(data.isDeliverable, scenario.deliverable);
+    assert.equal(data.distanceMeters, scenario.distance);
+    assert.equal(data.itemSubtotalMinor, scenario.subtotal);
+    assert.equal(data.deliveryFeeMinor, scenario.fee);
+    assert.equal(data.platformFeeMinor, scenario.deliverable ? '1000' : null);
+    assert.equal(
+      data.totalMinor,
+      scenario.deliverable
+        ? String(
+            Number(scenario.subtotal) +
+              Number(scenario.fee) +
+              1000,
+          )
+        : null,
+    );
+    if (scenario.distance === 18001) {
+      assert.equal(data.message, "Sorry! We don't deliver here yet");
+    }
+    assert.equal(routingCalls.length, 1);
+    assert.deepEqual(routingCalls[0], {
+      origin: shopCoordinates,
+      destination: { latitude: 16.88, longitude: 81.94 },
+    });
+  }
+});
+
+test('checkout quote validates address fields before database or routing work', async (t) => {
+  const database = createDatabase();
+  let routingCalls = 0;
+  const baseUrl = await startServer(t, database.pool, {
+    authenticated: true,
+    deliveryRoutingClient: {
+      async getDrivingDistanceMeters() {
+        routingCalls += 1;
+        return 4000;
+      },
+    },
+  });
+  const token = await createCart(baseUrl);
+  await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId }, token),
+  );
+  const invalidAddresses = [
+    { ...deliveryAddress, latitude: 91, longitude: 81.94 },
+    { ...deliveryAddress, latitude: 16.88 },
+    { ...deliveryAddress, latitude: 16.88, longitude: 81.94, formattedAddress: '' },
+    { ...deliveryAddress, latitude: 16.88, longitude: 81.94, pincode: '123' },
+  ];
+
+  for (const address of invalidAddresses) {
+    const response = await fetch(
+      `${baseUrl}/api/v1/checkout/quote`,
+      jsonRequest('POST', { deliveryAddress: address }, token),
+    );
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error.code, 'INVALID_REQUEST');
+  }
+  assert.equal(routingCalls, 0);
+});
+
+test('checkout quote rejects inactive pincodes before requesting a route', async (t) => {
+  const database = createDatabase();
+  let routingCalls = 0;
+  const baseUrl = await startServer(t, database.pool, {
+    authenticated: true,
+    deliveryRoutingClient: {
+      async getDrivingDistanceMeters() {
+        routingCalls += 1;
+        return 4000;
+      },
+    },
+  });
+  const token = await createCart(baseUrl);
+  await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId }, token),
+  );
+  const response = await fetch(
+    `${baseUrl}/api/v1/checkout/quote`,
+    jsonRequest(
+      'POST',
+      {
+        deliveryAddress: {
+          ...deliveryAddress,
+          pincode: '533309',
+          latitude: 16.88,
+          longitude: 81.94,
+        },
+      },
+      token,
+    ),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data, {
+    items: [
+      {
+        productId,
+        variantId: teaVariantId,
+        variantLabel: '500 g',
+        name: 'Tea',
+        quantity: 1,
+        priceMinor: '1500',
+        lineTotalMinor: '1500',
+      },
+    ],
+    currency: 'INR',
+    storeOpen: true,
+    opensAt: '00:00',
+    closesAt: '23:59',
+    itemSubtotalMinor: '1500',
+    discountMinor: '0',
+    isDeliverable: false,
+    message: 'Sorry, we do not deliver to this location.',
+    distanceMeters: null,
+    deliveryFeeMinor: null,
+    platformFeeMinor: null,
+    totalMinor: null,
+  });
+  assert.equal(routingCalls, 0);
+});
+
+test('checkout quote fails closed when shop coordinates are missing or routing fails', async (t) => {
+  const missingLocationDb = createDatabase();
+  delete missingLocationDb.state.shopAddresses[shopId];
+  let missingLocationRoutingCalls = 0;
+  const missingLocationUrl = await startServer(t, missingLocationDb.pool, {
+    authenticated: true,
+    deliveryRoutingClient: {
+      async getDrivingDistanceMeters() {
+        missingLocationRoutingCalls += 1;
+        return 4000;
+      },
+    },
+  });
+  const missingLocationToken = await createCart(missingLocationUrl);
+  await fetch(
+    `${missingLocationUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId }, missingLocationToken),
+  );
+  const missingLocationResponse = await fetch(
+    `${missingLocationUrl}/api/v1/checkout/quote`,
+    jsonRequest(
+      'POST',
+      { deliveryAddress: { ...deliveryAddress, ...shopCoordinates } },
+      missingLocationToken,
+    ),
+  );
+  assert.equal(missingLocationResponse.status, 503);
+  assert.equal((await missingLocationResponse.json()).error.code, 'SHOP_LOCATION_UNAVAILABLE');
+  assert.equal(missingLocationRoutingCalls, 0);
+
+  const routingFailureDb = createDatabase();
+  const routingFailureUrl = await startServer(t, routingFailureDb.pool, {
+    authenticated: true,
+    deliveryRoutingClient: {
+      async getDrivingDistanceMeters() {
+        throw new Error('private provider diagnostic');
+      },
+    },
+  });
+  const routingFailureToken = await createCart(routingFailureUrl);
+  await fetch(
+    `${routingFailureUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId }, routingFailureToken),
+  );
+  const routingFailureResponse = await fetch(
+    `${routingFailureUrl}/api/v1/checkout/quote`,
+    jsonRequest(
+      'POST',
+      { deliveryAddress: { ...deliveryAddress, ...shopCoordinates } },
+      routingFailureToken,
+    ),
+  );
+  assert.equal(routingFailureResponse.status, 503);
+  assert.deepEqual((await routingFailureResponse.json()).error, {
+    code: 'ROUTING_UNAVAILABLE',
+    message: 'Delivery distance could not be verified.',
+  });
+});
+
 test('confirmed dues block quote and order placement until the balance is cleared', async (t) => {
   const database = createDatabase();
   database.state.outstandingMinor = '750';
@@ -676,7 +936,7 @@ test('confirmed dues block quote and order placement until the balance is cleare
 
   const quote = await fetch(
     `${baseUrl}/api/v1/checkout/quote`,
-    jsonRequest('POST', {}, token),
+    jsonRequest('POST', { deliveryAddress: { ...deliveryAddress, ...shopCoordinates } }, token),
   );
   assert.equal(quote.status, 409);
   assert.deepEqual((await quote.json()).error, {
@@ -752,7 +1012,7 @@ test('rejects order placement while closed and leaves cart mutations available',
 
   const quote = await fetch(
     `${baseUrl}/api/v1/checkout/quote`,
-    jsonRequest('POST', {}, token),
+    jsonRequest('POST', { deliveryAddress: { ...deliveryAddress, ...shopCoordinates } }, token),
   );
   assert.equal(quote.status, 200);
   assert.equal((await quote.json()).data.storeOpen, false);
@@ -780,7 +1040,7 @@ test('rejects order placement while closed and leaves cart mutations available',
   assert.equal(response.status, 409);
   assert.deepEqual((await response.json()).error, {
     code: 'STORE_CLOSED',
-    message: 'Orders are accepted between 7:00 AM and 11:00 PM',
+    message: 'Orders are accepted between 7:00 AM and 10:00 PM',
   });
   assert.equal(database.state.orders.length, 0);
 });
@@ -811,7 +1071,7 @@ test('rejects cross-shop checkout, unavailable checkout products, and unauthenti
   database.state.products[productId].shop_status = 'closed';
   const unavailable = await fetch(
     `${authenticatedUrl}/api/v1/checkout/quote`,
-    jsonRequest('POST', {}, token),
+    jsonRequest('POST', { deliveryAddress: { ...deliveryAddress, ...shopCoordinates } }, token),
   );
   assert.equal(unavailable.status, 409);
   assert.equal((await unavailable.json()).error.code, 'CART_ITEM_UNAVAILABLE');
@@ -845,7 +1105,7 @@ test('rejects cross-shop checkout, unavailable checkout products, and unauthenti
   };
   const corruptCheckout = await fetch(
     `${authenticatedUrl}/api/v1/checkout/quote`,
-    jsonRequest('POST', {}, separateCart),
+    jsonRequest('POST', { deliveryAddress: { ...deliveryAddress, ...shopCoordinates } }, separateCart),
   );
   assert.equal(corruptCheckout.status, 409);
   assert.equal((await corruptCheckout.json()).error.code, 'CART_SHOP_MISMATCH');

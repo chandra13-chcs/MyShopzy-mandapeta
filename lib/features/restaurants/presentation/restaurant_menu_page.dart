@@ -196,11 +196,13 @@ class RestaurantMenuPage extends StatefulWidget {
     super.key,
     this.categories = sampleRestaurantMenuCategories,
     this.menuItems = sampleRestaurantMenuItems,
+    this.initialCategoryId,
   });
 
   final Restaurant restaurant;
   final List<MenuCategory> categories;
   final List<MenuItem> menuItems;
+  final String? initialCategoryId;
 
   @override
   State<RestaurantMenuPage> createState() => _RestaurantMenuPageState();
@@ -464,7 +466,15 @@ class _RestaurantMenuPageState extends State<RestaurantMenuPage> {
         _DietaryFilter.nonVeg => item.dietaryInfoAvailable && !item.isVeg,
       };
     }).toList();
-    final menuCategories = categories
+    final orderedCategories = [
+      ...categories.where(
+        (category) => category.id == widget.initialCategoryId,
+      ),
+      ...categories.where(
+        (category) => category.id != widget.initialCategoryId,
+      ),
+    ];
+    final menuCategories = orderedCategories
         .where(
           (category) =>
               filteredItems.any((item) => item.categoryId == category.id),

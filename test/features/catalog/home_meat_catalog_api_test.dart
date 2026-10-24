@@ -6,9 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myshopzy/features/bakery/presentation/bakery_page.dart';
+import 'package:myshopzy/features/cart/presentation/cart_access_button.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
 import 'package:myshopzy/features/local_stores/presentation/local_store_catalog_page.dart';
 import 'package:myshopzy/features/meat/presentation/meat_page.dart';
+import 'package:myshopzy/features/product_details/presentation/product_details_page.dart';
+import 'package:myshopzy/features/restaurants/presentation/restaurant_menu_page.dart';
 import 'package:myshopzy/features/vegetables_fruits/presentation/produce_catalog_page.dart';
 import 'package:myshopzy/features/vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
@@ -43,30 +46,154 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('home-live-catalog')),
+      find.byKey(const ValueKey('home-live-product-$_productId')),
       350,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.text('Live shops'), findsOneWidget);
     expect(find.text('Fresh Market'), findsWidgets);
     expect(find.text('Live products'), findsOneWidget);
     expect(find.text('Backend Apples'), findsOneWidget);
-    expect(find.byType(StoreProductCard), findsOneWidget);
+    expect(find.byType(StoreProductCard), findsNothing);
+    expect(find.byType(CartProductControl), findsNothing);
     expect(find.text('4.7'), findsOneWidget);
     expect(find.text('17% OFF'), findsOneWidget);
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 700));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Demo offer · not verified by backend'), findsNothing);
     expect(
       find.text('Demo home catalog · sample shops and products'),
       findsNothing,
     );
     expect(requests.map((request) => request.url.path).toSet(), {
+      '/api/v1/me/dues',
+      '/api/v1/partner-categories',
       '/api/v1/shops',
       '/api/v1/products',
     });
+  });
+
+  testWidgets('Home backend restaurant product opens its scoped menu', (
+    tester,
+  ) async {
+    const restaurantId = 'restaurant-home-id';
+    const productId = 'biryani-home-id';
+    const categoryId = 'biryani-category-id';
+    final requests = <http.Request>[];
+    api = _api((request) async {
+      requests.add(request);
+      if (request.url.path.endsWith('/shops')) {
+        return _listResponse([
+          {
+            'id': restaurantId,
+            'name': 'Spice Kitchen',
+            'partner_type': 'restaurant',
+            'address': 'Main Road',
+          },
+        ]);
+      }
+      if (request.url.path == '/api/v1/shops/$restaurantId/categories') {
+        return _listResponse([
+          {'id': categoryId, 'shop_id': restaurantId, 'name': 'Biryani'},
+        ]);
+      }
+      return _listResponse([
+        {
+          'id': productId,
+          'shop_id': restaurantId,
+          'category_id': categoryId,
+          'name': 'Chicken Biryani',
+          'description': 'Restaurant menu item',
+          'price_minor': 24900,
+          'currency': 'INR',
+          'is_available': true,
+          'shop_name': 'Spice Kitchen',
+          'partner_type': 'restaurant',
+        },
+      ]);
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    final productTile = find.byKey(
+      const ValueKey('home-live-product-$productId'),
+    );
+    await tester.scrollUntilVisible(
+      productTile,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byType(CartProductControl), findsNothing);
+    await tester.tap(productTile);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RestaurantMenuPage), findsOneWidget);
+    expect(find.text('Spice Kitchen'), findsOneWidget);
+    expect(find.text('Chicken Biryani'), findsOneWidget);
+    expect(
+      tester
+          .widget<RestaurantMenuPage>(find.byType(RestaurantMenuPage))
+          .initialCategoryId,
+      categoryId,
+    );
+    expect(
+      requests.any(
+        (request) =>
+            request.url.path == '/api/v1/shops/$restaurantId/categories',
+      ),
+      isTrue,
+    );
+    expect(
+      requests.any(
+        (request) =>
+            request.url.path == '/api/v1/products' &&
+            request.url.queryParameters['shopId'] == restaurantId,
+      ),
+      isTrue,
+    );
+    expect(find.byType(CartProductControl), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Home does not guess when product and shop mappings conflict', (
+    tester,
+  ) async {
+    api = _api((request) async {
+      if (request.url.path.endsWith('/shops')) {
+        return _listResponse([_shopJson]);
+      }
+      return _listResponse([_productJson]);
+    });
+
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    final productTile = find.byKey(
+      const ValueKey('home-live-product-$_productId'),
+    );
+    await tester.scrollUntilVisible(
+      productTile,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(productTile);
+    await tester.drag(
+      find.byType(CustomScrollView).first,
+      const Offset(0, -160),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.tap(productTile);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(
+      find.text('This product’s shop destination is unavailable.'),
+      findsOneWidget,
+    );
+    expect(find.byType(RestaurantMenuPage), findsNothing);
+    expect(find.byType(ProductDetailsPage), findsNothing);
   });
 
   testWidgets('Home live grocery shop opens its scoped backend catalog', (
@@ -126,26 +253,31 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('home-live-catalog')),
+      find.byKey(const ValueKey('home-live-catalog-loading')),
       350,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pump();
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('home-live-catalog-loading')),
+      findsOneWidget,
+    );
 
     initialRequest = false;
     firstShopResponse.complete(
       http.Response('{"error":{"code":"UNAVAILABLE"}}', 503),
     );
     firstProductResponse.complete(_listResponse([]));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
 
     expect(find.text('Live catalog unavailable'), findsOneWidget);
     expect(find.text('Retry catalog'), findsOneWidget);
     expect(find.text('Demo Biryani Kitchen'), findsNothing);
 
     await tester.tap(find.text('Retry catalog'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
     expect(
       find.text('No live shops or products are available right now.'),
       findsOneWidget,

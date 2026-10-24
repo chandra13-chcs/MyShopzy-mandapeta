@@ -14,6 +14,7 @@ const { mockRiderAuth } = require('./middleware/mock-rider-auth');
 function createApp({
   databasePool = null,
   authenticateCustomer = null,
+  deliveryRoutingClient = null,
   authenticateRider = null,
   authenticateAdmin = null,
   authenticatePartner = null,
@@ -65,6 +66,7 @@ function createApp({
     createCartCheckoutRouter({
       databasePool,
       authenticateCustomer,
+      deliveryRoutingClient,
     }),
   );
   app.use(

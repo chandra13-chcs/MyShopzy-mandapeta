@@ -1,11 +1,17 @@
 const { createHash, randomBytes, randomUUID } = require('node:crypto');
 const express = require('express');
-const { isOpenNow } = require('../shared/store-hours');
+const { formatHoursMessage, isOpenNow } = require('../shared/store-hours');
 const {
   computeCommissionMinor,
   resolveCommissionBps,
 } = require('../commission/rules');
 const { getOutstandingMinor, lockCustomer } = require('../dues/ledger');
+const {
+  calculateDeliveryPricing,
+} = require('../delivery-serviceability/pricing');
+const {
+  validateCoordinate,
+} = require('../delivery-serviceability/google-routes');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -237,6 +243,7 @@ async function readCartItems(client, cartId, { lock = false } = {}) {
        v.stock AS variant_stock,
        v.is_available AS variant_is_available,
        s.status AS shop_status,
+       s.address AS shop_address,
        s.operating_details,
        partner.timezone,
       partner.status AS partner_status,
@@ -384,9 +391,58 @@ function validateDeliveryAddress(value) {
   return { value: serialized, pincode };
 }
 
+function validateQuoteDeliveryAddress(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { error: 'deliveryAddress must be a JSON object.' };
+  }
+  const formattedAddress =
+    typeof value.formattedAddress === 'string' ? value.formattedAddress.trim() : '';
+  if (!formattedAddress || formattedAddress.length > 300) {
+    return {
+      error: 'deliveryAddress.formattedAddress must be a non-empty string of at most 300 characters.',
+    };
+  }
+  const validatedAddress = validateDeliveryAddress(value);
+  if (validatedAddress.error) return validatedAddress;
+
+  const destination = {};
+  for (const coordinate of ['latitude', 'longitude']) {
+    const valueForCoordinate = value[coordinate];
+    const minimum = coordinate === 'latitude' ? -90 : -180;
+    const maximum = coordinate === 'latitude' ? 90 : 180;
+    if (
+      typeof valueForCoordinate !== 'number' ||
+      !Number.isFinite(valueForCoordinate) ||
+      valueForCoordinate < minimum ||
+      valueForCoordinate > maximum
+    ) {
+      return {
+        error: `deliveryAddress.${coordinate} must be a finite number between ${minimum} and ${maximum}.`,
+      };
+    }
+    destination[coordinate] = valueForCoordinate;
+  }
+
+  let serialized;
+  try {
+    serialized = JSON.stringify({
+      ...value,
+      formattedAddress,
+      pincode: validatedAddress.pincode,
+    });
+  } catch {
+    return { error: 'deliveryAddress must be valid JSON.' };
+  }
+  if (!serialized || Buffer.byteLength(serialized, 'utf8') > 4096) {
+    return { error: 'deliveryAddress must not exceed 4096 bytes.' };
+  }
+  return { value: serialized, pincode: validatedAddress.pincode, destination };
+}
+
 function createCartCheckoutRouter({
   databasePool,
   authenticateCustomer = null,
+  deliveryRoutingClient = null,
 }) {
   const router = express.Router();
 
@@ -673,8 +729,12 @@ function createCartCheckoutRouter({
       return invokeCustomerAuthentication(authenticateCustomer, req, res, next);
     },
     async (req, res, next) => {
-      const body = parseObjectBody(req.body ?? {}, new Set());
+      const body = parseObjectBody(req.body ?? {}, new Set(['deliveryAddress']));
       if (body.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
+      const address = validateQuoteDeliveryAddress(body.value.deliveryAddress);
+      if (address.error) {
+        return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', address.error));
+      }
       if (!databasePool) return sendDatabaseUnavailable(res);
       const customerUserId = req.auth?.customerUserId;
       if (typeof customerUserId !== 'string' || !UUID_PATTERN.test(customerUserId)) {
@@ -688,7 +748,7 @@ function createCartCheckoutRouter({
 
       try {
         const tokenHash = hashCartToken(getCartToken(req));
-        const quote = await withTransaction(databasePool, async (client) => {
+        const cartSnapshot = await withTransaction(databasePool, async (client) => {
           await lockCustomer(client, customerUserId);
           const outstandingMinor = await getOutstandingMinor(client, customerUserId);
           if (outstandingMinor > 0n) {
@@ -702,29 +762,146 @@ function createCartCheckoutRouter({
           const cart = await findCart(client, tokenHash, { lock: true });
           const checkout = await loadCheckoutItems(client, cart);
           return {
+            shopId: cart.shop_id,
+            partnerId: cart.partner_id,
             ...checkout,
             storeHours: isOpenNow(checkout.items[0]),
           };
         });
+        const quoteItems = cartSnapshot.items.map((item) => ({
+          productId: item.product_id,
+          variantId: item.variant_id,
+          variantLabel: item.variant_label,
+          name: item.name,
+          quantity: Number(item.quantity),
+          priceMinor: item.price_minor,
+          lineTotalMinor: item.line_total_minor,
+        }));
+        const quoteBase = {
+          items: quoteItems,
+          currency: cartSnapshot.currency,
+          storeOpen: cartSnapshot.storeHours.open,
+          opensAt: cartSnapshot.storeHours.opensAt,
+          closesAt: cartSnapshot.storeHours.closesAt,
+          itemSubtotalMinor: cartSnapshot.subtotal.toString(),
+          discountMinor: '0',
+        };
+
+        const pincodeResult = await databasePool.query(
+          `SELECT EXISTS (
+             SELECT 1
+             FROM app.serviceable_pincodes
+             WHERE pincode = $1
+               AND is_active = true
+           ) AS is_deliverable`,
+          [address.pincode],
+        );
+        if (!pincodeResult.rows[0]?.is_deliverable) {
+          return res.status(200).json({
+            data: {
+              ...quoteBase,
+              isDeliverable: false,
+              message: 'Sorry, we do not deliver to this location.',
+              distanceMeters: null,
+              deliveryFeeMinor: null,
+              platformFeeMinor: null,
+              totalMinor: null,
+            },
+          });
+        }
+
+        let origin;
+        try {
+          const shopAddress = cartSnapshot.items[0].shop_address;
+          origin = validateCoordinate(
+            shopAddress && typeof shopAddress === 'object'
+              ? {
+                  latitude: shopAddress.latitude,
+                  longitude: shopAddress.longitude,
+                }
+              : null,
+            'shop address',
+          );
+        } catch {
+          return sendApiError(
+            res,
+            new ApiError(
+              503,
+              'SHOP_LOCATION_UNAVAILABLE',
+              'The shop delivery location could not be verified.',
+            ),
+          );
+        }
+        if (!deliveryRoutingClient) {
+          return sendApiError(
+            res,
+            new ApiError(
+              503,
+              'ROUTING_UNAVAILABLE',
+              'Delivery distance could not be verified.',
+            ),
+          );
+        }
+
+        let distanceMeters;
+        try {
+          distanceMeters = await deliveryRoutingClient.getDrivingDistanceMeters({
+            origin,
+            destination: {
+              latitude: address.destination.latitude,
+              longitude: address.destination.longitude,
+            },
+          });
+        } catch {
+          return sendApiError(
+            res,
+            new ApiError(
+              503,
+              'ROUTING_UNAVAILABLE',
+              'Delivery distance could not be verified.',
+            ),
+          );
+        }
+        if (!Number.isSafeInteger(distanceMeters) || distanceMeters < 0) {
+          return sendApiError(
+            res,
+            new ApiError(
+              503,
+              'ROUTING_UNAVAILABLE',
+              'Delivery distance could not be verified.',
+            ),
+          );
+        }
+
+        if (cartSnapshot.subtotal > BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new ApiError(
+            422,
+            'ORDER_TOTAL_TOO_LARGE',
+            'Order total is too large.',
+          );
+        }
+        const pricing = calculateDeliveryPricing({
+          merchandiseSubtotalMinor: Number(cartSnapshot.subtotal),
+          distanceMeters,
+        });
         return res.status(200).json({
           data: {
-            items: quote.items.map((item) => ({
-              productId: item.product_id,
-              variantId: item.variant_id,
-              variantLabel: item.variant_label,
-              name: item.name,
-              quantity: Number(item.quantity),
-              priceMinor: item.price_minor,
-              lineTotalMinor: item.line_total_minor,
-            })),
-            currency: quote.currency,
-            storeOpen: quote.storeHours.open,
-            opensAt: quote.storeHours.opensAt,
-            closesAt: quote.storeHours.closesAt,
-            itemSubtotalMinor: quote.subtotal.toString(),
-            deliveryFeeMinor: '0',
-            discountMinor: '0',
-            totalMinor: quote.subtotal.toString(),
+            ...quoteBase,
+            isDeliverable: pricing.deliverable,
+            message: pricing.deliverable
+              ? 'Delivery is available at this location.'
+              : "Sorry! We don't deliver here yet",
+            distanceMeters: pricing.distanceMeters,
+            deliveryFeeMinor:
+              pricing.deliveryFeeMinor === null
+                ? null
+                : String(pricing.deliveryFeeMinor),
+            platformFeeMinor:
+              pricing.platformFeeMinor === null
+                ? null
+                : String(pricing.platformFeeMinor),
+            totalMinor:
+              pricing.totalMinor === null ? null : String(pricing.totalMinor),
           },
         });
       } catch (error) {
@@ -815,11 +992,12 @@ function createCartCheckoutRouter({
             throw new ApiError(422, 'EMPTY_CART', 'Add at least one item before checkout.');
           }
           const checkout = await loadCheckoutItems(client, cart, { lock: true });
-          if (!isOpenNow(checkout.items[0]).open) {
+          const operatingHours = isOpenNow(checkout.items[0]);
+          if (!operatingHours.open) {
             throw new ApiError(
               409,
               'STORE_CLOSED',
-              'Orders are accepted between 7:00 AM and 11:00 PM',
+              formatHoursMessage(operatingHours),
             );
           }
           const orderId = randomUUID();

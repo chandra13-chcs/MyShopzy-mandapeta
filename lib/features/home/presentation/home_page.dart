@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/config/business_hours.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/presentation/bottom_navigation_bar.dart';
 import '../../../shared/presentation/dietary_badge.dart';
@@ -424,7 +425,7 @@ class HomePage extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 150,
+          height: 130,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: section.products.length,
@@ -513,10 +514,12 @@ class HomePage extends StatelessWidget {
           borderRadius: BorderRadius.circular(13),
           child: InkWell(
             borderRadius: BorderRadius.circular(13),
+            key: ValueKey('home-restaurant-product-${product.productId}'),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (context) => ProductDetailsPage(
-                  product: _restaurantDiscoveryProductDetails(product),
+                builder: (context) => _restaurantDiscoveryMenu(
+                  product,
+                  initialCategoryId: product.categoryId,
                 ),
               ),
             ),
@@ -620,7 +623,10 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _restaurantDiscoveryMenu(_RestaurantDiscoveryProduct product) {
+  Widget _restaurantDiscoveryMenu(
+    _RestaurantDiscoveryProduct product, {
+    String? initialCategoryId,
+  }) {
     final restaurantMenu = _restaurantDiscoverySections
         .expand((section) => section.products)
         .where((item) => item.restaurantId == product.restaurantId)
@@ -640,8 +646,16 @@ class HomePage extends StatelessWidget {
         .toList();
     return RestaurantMenuPage(
       restaurant: product.restaurant,
-      categories: _restaurantDiscoveryCategories,
+      categories: [
+        ..._restaurantDiscoveryCategories.where(
+          (category) => category.id == initialCategoryId,
+        ),
+        ..._restaurantDiscoveryCategories.where(
+          (category) => category.id != initialCategoryId,
+        ),
+      ],
       menuItems: restaurantMenu,
+      initialCategoryId: initialCategoryId,
     );
   }
 
@@ -687,7 +701,7 @@ class HomePage extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 137,
+          height: 124,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: section.products.length,
@@ -712,11 +726,10 @@ class HomePage extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
+            key: ValueKey('home-grocery-product-${product.productId}'),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (context) => ProductDetailsPage(
-                  product: _groceryDiscoveryProductDetails(product),
-                ),
+                builder: (context) => _groceryDiscoveryCatalog(product),
               ),
             ),
             child: Container(
@@ -908,10 +921,11 @@ class _HomeDuesBannerState extends State<_HomeDuesBanner> {
   Future<void> _loadDues() async {
     try {
       final dues = await CustomerApi.instance.getDues();
-      if (mounted) setState(() {
-        _dues = dues;
-        _error = null;
-      });
+      if (mounted)
+        setState(() {
+          _dues = dues;
+          _error = null;
+        });
     } on CustomerApiException catch (error) {
       if (mounted) {
         setState(() {
@@ -930,9 +944,9 @@ class _HomeDuesBannerState extends State<_HomeDuesBanner> {
       return OutstandingDuesBanner(
         amountMinor: dues.outstandingMinor,
         orderId: orderId,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(builder: (context) => const DuesPage()),
-        ),
+        onTap: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (context) => const DuesPage())),
       );
     }
     if (_error != null) {
@@ -1011,20 +1025,186 @@ Widget _catalogSkeletonSpacing(BuildContext context, int index) =>
     const SizedBox(width: 8);
 
 Widget _catalogSkeletonCard(BuildContext context, int index) => const SizedBox(
-  width: 156,
+  width: 132,
   child: Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      SkeletonBox(height: 164, radius: 14),
-      SizedBox(height: 10),
-      SkeletonBox(width: 112, height: 14, radius: 5),
+      SkeletonBox(height: 124, radius: 12),
       SizedBox(height: 8),
-      SkeletonBox(width: 82, height: 12, radius: 5),
-      Spacer(),
-      SkeletonBox(height: 38, radius: 10),
+      SkeletonBox(width: 108, height: 13, radius: 5),
+      SizedBox(height: 6),
+      SkeletonBox(width: 72, height: 11, radius: 5),
     ],
   ),
 );
+
+class _HomeLiveProductCard extends StatelessWidget {
+  const _HomeLiveProductCard({required this.product, required this.onTap});
+
+  final ApiProduct product;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 132,
+      child: Material(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          key: ValueKey('home-live-product-${product.id}'),
+          borderRadius: BorderRadius.circular(12),
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE5E9E3)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _buildImage(),
+                        if (product.badge != null)
+                          Positioned(
+                            top: 6,
+                            left: 6,
+                            child: _badge(product.badge!),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppTheme.primaryText,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.2,
+                        ),
+                      ),
+                      if (product.shopName != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          product.shopName!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppTheme.secondaryText,
+                            fontSize: 9,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 4),
+                      Text(
+                        '₹${(product.priceMinor / 100).toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          color: AppTheme.primaryGreen,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (product.discountPercent > 0)
+                        Text(
+                          '${product.discountPercent}% OFF',
+                          style: const TextStyle(
+                            color: AppTheme.primaryGreen,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      if (product.rating != null)
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 11,
+                              color: Color(0xFF28A36A),
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              product.rating!.toStringAsFixed(1),
+                              style: const TextStyle(
+                                color: Color(0xFF328760),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImage() {
+    final imageUrl = product.thumbUrl ?? product.imageUrl;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return const ColoredBox(
+        color: Color(0xFFEAF1E8),
+        child: Center(
+          child: Icon(
+            Icons.inventory_2_rounded,
+            color: Color(0xFF55705C),
+            size: 34,
+          ),
+        ),
+      );
+    }
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => const ColoredBox(
+        color: Color(0xFFEAF1E8),
+        child: Center(
+          child: Icon(
+            Icons.inventory_2_rounded,
+            color: Color(0xFF55705C),
+            size: 34,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _badge(String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+    decoration: BoxDecoration(
+      color: AppTheme.primaryGreen,
+      borderRadius: BorderRadius.circular(5),
+    ),
+    child: Text(
+      label.toUpperCase(),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 8,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
+}
 
 class _HomeLocationHeader extends StatefulWidget {
   const _HomeLocationHeader({this.locationService});
@@ -1339,7 +1519,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
     unawaited(_load());
   }
 
-  Widget? _shopDestination(ApiShop shop) {
+  Widget? _shopDestination(ApiShop shop, {String? initialCategoryId}) {
     if (shop.partnerType == 'restaurant') {
       return RestaurantMenuPage(
         restaurant: Restaurant(
@@ -1353,6 +1533,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
           status: RestaurantStatus.unknown,
           isBackendData: true,
         ),
+        initialCategoryId: initialCategoryId,
       );
     }
     if (shop.partnerType == 'grocery') {
@@ -1369,6 +1550,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
         ),
         categories: commonLocalStoreCategories,
         products: const [],
+        initialCategoryId: initialCategoryId,
       );
     }
     return null;
@@ -1576,7 +1758,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
             _sectionTitle('Live products'),
             const SizedBox(height: 8),
             SizedBox(
-              height: 288,
+              height: 220,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: _products.length,
@@ -1586,17 +1768,61 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
                   return fadeSlideItem(
                     itemKey: 'home-live-product-${product.id}',
                     index: index,
-                    child: PressScaleFeedback(
-                      child: SizedBox(
-                        key: ValueKey('home-live-product-${product.id}'),
-                        width: 156,
-                        child: StoreProductCard(
-                          product: _mapProduct(product),
-                          placeholderIndex: index,
-                          storeName: product.shopName ?? '',
-                          relatedProducts: const [],
-                        ),
-                      ),
+                    child: _HomeLiveProductCard(
+                      product: product,
+                      onTap: () {
+                        final matches = _shops
+                            .where((shop) => shop.id == product.shopId)
+                            .toList();
+                        if (matches.length > 1 ||
+                            (matches.isNotEmpty &&
+                                product.partnerType != null &&
+                                matches.single.partnerType !=
+                                    product.partnerType)) {
+                          _showUnresolvedProductDestination(context);
+                          return;
+                        }
+
+                        final matchingShop = matches.isEmpty
+                            ? null
+                            : matches.single;
+                        final partnerType =
+                            product.partnerType ?? matchingShop?.partnerType;
+                        final shopName = product.shopName ?? matchingShop?.name;
+                        if (partnerType == null || shopName == null) {
+                          _showUnresolvedProductDestination(context);
+                          return;
+                        }
+
+                        final shop = ApiShop(
+                          id: product.shopId,
+                          name: shopName,
+                          partnerType: partnerType,
+                          address: matchingShop?.address,
+                        );
+                        final destination = switch (partnerType) {
+                          'restaurant' || 'grocery' => _shopDestination(
+                            shop,
+                            initialCategoryId: product.categoryId,
+                          ),
+                          _ => ProductDetailsPage(
+                            product: _liveProductDetails(
+                              product,
+                              shopName,
+                              partnerType,
+                            ),
+                          ),
+                        };
+                        if (destination == null) {
+                          _showUnresolvedProductDestination(context);
+                          return;
+                        }
+                        Navigator.of(context).push(
+                          AppPageRoute<void>.builder(
+                            builder: (context) => destination,
+                          ),
+                        );
+                      },
                     ),
                   );
                 },
@@ -1611,7 +1837,7 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
   Widget _catalogSkeleton() => Shimmer(
     child: SizedBox(
       key: ValueKey('home-live-catalog-loading'),
-      height: 288,
+      height: 220,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: 3,
@@ -1621,31 +1847,44 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
     ),
   );
 
-  StoreProduct _mapProduct(ApiProduct product) => StoreProduct(
+  ProductDetailsProduct _liveProductDetails(
+    ApiProduct product,
+    String shopName,
+    String partnerType,
+  ) => ProductDetailsProduct(
     id: product.id,
-    storeId: product.shopId,
-    categoryId: product.categoryId ?? 'other',
-    name: product.name,
-    brand: product.brand ?? '',
-    description: product.description,
-    packSize: product.packSize ?? '',
-    price: product.priceMinor / 100,
-    mrp: (product.mrpMinor ?? product.priceMinor) / 100,
-    discount: product.discountPercent,
-    rating: product.rating ?? -1,
-    available: product.available,
-    variants: product.variants,
-    serviceType: switch (product.partnerType) {
+    serviceType: switch (partnerType) {
       'restaurant' => 'restaurant',
+      'grocery' => 'local_store',
       'meat_shop' => 'meat',
       'bakery' => 'bakery',
+      'vegetables_fruits' => 'vegetables_fruits',
       _ => 'local_store',
     },
+    merchantId: product.shopId,
+    merchantName: shopName,
+    categoryId: product.categoryId,
+    name: product.name,
+    description: product.description,
     imageUrl: product.imageUrl,
-    badge: product.badge,
-    isBackendData: true,
-    storeOpen: product.storeOpen,
+    priceInPaise: product.priceMinor,
+    mrpInPaise: product.mrpMinor,
+    discountPercent: product.discountPercent,
+    quantityLabel: product.packSize,
+    rating: product.rating,
+    icon: Icons.inventory_2_rounded,
+    available: product.available,
+    isBackendProduct: true,
+    variants: product.variants,
   );
+
+  void _showUnresolvedProductDestination(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('This product’s shop destination is unavailable.'),
+      ),
+    );
+  }
 
   Widget _sectionTitle(String title) => Text(
     title,
@@ -2770,7 +3009,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                 crossAxisCount: 3,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
-                childAspectRatio: 0.85,
+                childAspectRatio: 1.15,
               ),
               itemBuilder: (context, index) =>
                   const SkeletonBox(height: 110, radius: 12),
@@ -2838,41 +3077,19 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                 crossAxisCount: crossAxisCount,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
-                childAspectRatio: 0.85,
+                childAspectRatio: 1.15,
               ),
               itemBuilder: (context, index) {
                 final service = services[index];
                 return fadeSlideItem(
                   itemKey: 'home-category-${service.key}',
                   index: index,
-                  child: PressScaleFeedback(
-                    child: Material(
-                      color: AppTheme.white,
-                      borderRadius: BorderRadius.circular(12),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        key: ValueKey('home-category-${service.key}'),
-                        onTap: () => widget.onServiceTap(context, service),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: Image.asset(
-                                service.assetPath,
-                                width: double.infinity,
-                                fit: BoxFit.cover,
-                                cacheWidth:
-                                    (tileWidth *
-                                            MediaQuery.devicePixelRatioOf(
-                                              context,
-                                            ))
-                                        .round(),
-                                semanticLabel: service.name,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                  child: _HomeCategoryTile(
+                    service: service,
+                    cacheWidth:
+                        (tileWidth * MediaQuery.devicePixelRatioOf(context))
+                            .round(),
+                    onTap: () => widget.onServiceTap(context, service),
                   ),
                 );
               },
@@ -2880,6 +3097,88 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
           },
         );
       },
+    );
+  }
+}
+
+class _HomeCategoryTile extends StatefulWidget {
+  const _HomeCategoryTile({
+    required this.service,
+    required this.cacheWidth,
+    required this.onTap,
+  });
+
+  final _Service service;
+  final int cacheWidth;
+  final VoidCallback onTap;
+
+  @override
+  State<_HomeCategoryTile> createState() => _HomeCategoryTileState();
+}
+
+class _HomeCategoryTileState extends State<_HomeCategoryTile> {
+  bool _pressed = false;
+
+  void _setPressed(bool pressed) {
+    if (_pressed == pressed || !mounted) return;
+    setState(() => _pressed = pressed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceAnimations = reduceMotion(context);
+    final duration = reduceAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 180);
+
+    return Listener(
+      behavior: HitTestBehavior.deferToChild,
+      onPointerDown: (_) => _setPressed(true),
+      onPointerUp: (_) => _setPressed(false),
+      onPointerCancel: (_) => _setPressed(false),
+      child: AnimatedScale(
+        scale: _pressed && !reduceAnimations ? 0.985 : 1,
+        duration: duration,
+        curve: Curves.easeOutCubic,
+        child: AnimatedContainer(
+          duration: duration,
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: AppTheme.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: _pressed ? 0.045 : 0.08),
+                blurRadius: _pressed ? 4 : 9,
+                offset: Offset(0, _pressed ? 1 : 3),
+              ),
+            ],
+          ),
+          child: Material(
+            color: AppTheme.white,
+            borderRadius: BorderRadius.circular(12),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: ValueKey('home-category-${widget.service.key}'),
+              onTap: widget.onTap,
+              onHighlightChanged: _setPressed,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Image.asset(
+                      widget.service.assetPath,
+                      width: double.infinity,
+                      fit: BoxFit.contain,
+                      cacheWidth: widget.cacheWidth,
+                      semanticLabel: widget.service.name,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2998,7 +3297,7 @@ class _OfflineBannerDialogState extends State<OfflineBannerDialog> {
       // final response = await http.get(Uri.parse('$baseUrl/store-status'));
       // final isOpen = StoreStatus.fromJson(response.body).isOpen;
       final now = widget.clock?.call() ?? DateTime.now();
-      final isOpen = now.hour >= 7 && now.hour < 23;
+      final isOpen = BusinessHours.isOpenAt(now);
 
       if (!isOpen) {
         setState(() => _isVisible = true);
@@ -3126,7 +3425,7 @@ class _OfflineBannerDialogState extends State<OfflineBannerDialog> {
                               ),
                               const SizedBox(height: 11),
                               const Text(
-                                'Our store hours are 7:00 AM – 11:00 PM. '
+                                'Our store hours are ${BusinessHours.openingLabel} – ${BusinessHours.closingLabel}. '
                                 'You can still browse products, add items '
                                 'to cart, and order during operating hours!',
                                 textAlign: TextAlign.center,

@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 
 import '../../features/product_details/models/product_variant.dart';
 
+import 'package:latlong2/latlong.dart';
+
 class CustomerApiException implements Exception {
   const CustomerApiException({
     required this.statusCode,
@@ -240,8 +242,12 @@ class ApiCartQuote {
     required this.currency,
     required this.itemSubtotalMinor,
     required this.deliveryFeeMinor,
+    required this.platformFeeMinor,
     required this.discountMinor,
     required this.totalMinor,
+    required this.isDeliverable,
+    required this.message,
+    required this.distanceMeters,
     required this.items,
     this.storeOpen = true,
     this.opensAt,
@@ -250,9 +256,13 @@ class ApiCartQuote {
 
   final String currency;
   final int itemSubtotalMinor;
-  final int deliveryFeeMinor;
+  final int? deliveryFeeMinor;
+  final int? platformFeeMinor;
   final int discountMinor;
-  final int totalMinor;
+  final int? totalMinor;
+  final bool isDeliverable;
+  final String message;
+  final int? distanceMeters;
   final List<ApiCartQuoteItem> items;
   final bool storeOpen;
   final String? opensAt;
@@ -261,12 +271,38 @@ class ApiCartQuote {
   factory ApiCartQuote.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
     if (rawItems is! List) throw const FormatException('Invalid quote items.');
+    final isDeliverable = json['isDeliverable'];
+    if (isDeliverable is! bool) {
+      throw const FormatException('Invalid quote deliverability.');
+    }
+    final deliveryFeeMinor = _nullableMinorValue(
+      json['deliveryFeeMinor'],
+      'deliveryFeeMinor',
+    );
+    final platformFeeMinor = _nullableMinorValue(
+      json['platformFeeMinor'],
+      'platformFeeMinor',
+    );
+    final totalMinor = _nullableMinorValue(json['totalMinor'], 'totalMinor');
+    if (isDeliverable &&
+        (deliveryFeeMinor == null ||
+            platformFeeMinor == null ||
+            totalMinor == null)) {
+      throw const FormatException('Deliverable quote is missing totals.');
+    }
     return ApiCartQuote(
       currency: _requiredString(json, 'currency'),
       itemSubtotalMinor: _requiredMinor(json, 'itemSubtotalMinor'),
-      deliveryFeeMinor: _requiredMinor(json, 'deliveryFeeMinor'),
+      deliveryFeeMinor: deliveryFeeMinor,
+      platformFeeMinor: platformFeeMinor,
       discountMinor: _requiredMinor(json, 'discountMinor'),
-      totalMinor: _requiredMinor(json, 'totalMinor'),
+      totalMinor: totalMinor,
+      isDeliverable: isDeliverable,
+      message: _requiredString(json, 'message'),
+      distanceMeters: _nullableMinorValue(
+        json['distanceMeters'],
+        'distanceMeters',
+      ),
       storeOpen: json['storeOpen'] is bool ? json['storeOpen'] as bool : true,
       opensAt: _optionalString(json['opensAt']),
       closesAt: _optionalString(json['closesAt']),
@@ -551,6 +587,11 @@ class ApiCustomerOrder {
     required this.totalMinor,
     required this.placedAt,
     required this.itemCount,
+    this.cancellationReason,
+    this.cancellationDeadlineAt,
+    this.serverNow,
+    this.updatedAt,
+    this.cancellationEligible = false,
   });
 
   final String id;
@@ -564,8 +605,17 @@ class ApiCustomerOrder {
   final int totalMinor;
   final String placedAt;
   final int itemCount;
+  final String? cancellationReason;
+  final String? cancellationDeadlineAt;
+  final String? serverNow;
+  final String? updatedAt;
+  final bool cancellationEligible;
 
   factory ApiCustomerOrder.fromJson(Map<String, dynamic> json) {
+    final cancellationEligible = json['cancellation_eligible'];
+    if (cancellationEligible != null && cancellationEligible is! bool) {
+      throw const FormatException('Invalid cancellation eligibility.');
+    }
     return ApiCustomerOrder(
       id: _requiredString(json, 'id'),
       shopId: _requiredString(json, 'shop_id'),
@@ -578,15 +628,37 @@ class ApiCustomerOrder {
       totalMinor: _requiredMinor(json, 'total_minor'),
       placedAt: _requiredString(json, 'placed_at'),
       itemCount: _requiredInteger(json, 'item_count', minimum: 0),
+      cancellationReason: _optionalString(json['cancellation_reason']),
+      cancellationDeadlineAt: _optionalString(json['cancellation_deadline_at']),
+      serverNow: _optionalString(json['server_now']),
+      updatedAt: _optionalString(json['updated_at']),
+      cancellationEligible: cancellationEligible == true,
+    );
+  }
+}
+
+class ApiRiderContact {
+  const ApiRiderContact({required this.name, this.phone, this.location});
+
+  final String name;
+  final String? phone;
+  final LatLng? location;
+
+  factory ApiRiderContact.fromJson(Map<String, dynamic> json) {
+    final latitude = _optionalDouble(json['latitude']);
+    final longitude = _optionalDouble(json['longitude']);
+    return ApiRiderContact(
+      name: _requiredString(json, 'name'),
+      phone: _optionalString(json['phone']),
+      location: latitude == null || longitude == null
+          ? null
+          : LatLng(latitude, longitude),
     );
   }
 }
 
 class ApiDues {
-  const ApiDues({
-    required this.outstandingMinor,
-    required this.entries,
-  });
+  const ApiDues({required this.outstandingMinor, required this.entries});
 
   final int outstandingMinor;
   final List<ApiDueEntry> entries;
@@ -689,19 +761,28 @@ class ApiCustomerOrderDetail extends ApiCustomerOrder {
     required super.discountMinor,
     required super.totalMinor,
     required super.placedAt,
+    super.cancellationReason,
+    super.cancellationDeadlineAt,
+    super.serverNow,
+    super.updatedAt,
+    super.cancellationEligible,
     required this.deliveryAddressSnapshot,
     required this.items,
+    this.rider,
   }) : super(itemCount: items.length);
 
   final Map<String, dynamic> deliveryAddressSnapshot;
   final List<ApiCustomerOrderItem> items;
+  final ApiRiderContact? rider;
 
   factory ApiCustomerOrderDetail.fromJson(Map<String, dynamic> json) {
     final rawItems = json['items'];
     final rawAddress = json['delivery_address_snapshot'];
+    final rawRider = json['rider'];
     if (rawItems is! List ||
         rawAddress is! Map<String, dynamic> ||
-        rawAddress.isEmpty) {
+        rawAddress.isEmpty ||
+        (rawRider != null && rawRider is! Map<String, dynamic>)) {
       throw const FormatException('Invalid order details.');
     }
     final order = ApiCustomerOrder.fromJson({
@@ -719,6 +800,11 @@ class ApiCustomerOrderDetail extends ApiCustomerOrder {
       discountMinor: order.discountMinor,
       totalMinor: order.totalMinor,
       placedAt: order.placedAt,
+      cancellationReason: order.cancellationReason,
+      cancellationDeadlineAt: order.cancellationDeadlineAt,
+      serverNow: order.serverNow,
+      updatedAt: order.updatedAt,
+      cancellationEligible: order.cancellationEligible,
       deliveryAddressSnapshot: Map<String, dynamic>.unmodifiable(rawAddress),
       items: rawItems
           .map((item) {
@@ -728,6 +814,33 @@ class ApiCustomerOrderDetail extends ApiCustomerOrder {
             return ApiCustomerOrderItem.fromJson(item);
           })
           .toList(growable: false),
+      rider: rawRider == null
+          ? null
+          : ApiRiderContact.fromJson(rawRider as Map<String, dynamic>),
+    );
+  }
+}
+
+class ApiOrderCancellationResult {
+  const ApiOrderCancellationResult({
+    required this.id,
+    required this.status,
+    required this.reason,
+  });
+
+  final String id;
+  final String status;
+  final String reason;
+
+  factory ApiOrderCancellationResult.fromJson(Map<String, dynamic> json) {
+    final status = _requiredString(json, 'status');
+    if (status != 'cancelled') {
+      throw const FormatException('Invalid cancellation result.');
+    }
+    return ApiOrderCancellationResult(
+      id: _requiredString(json, 'id'),
+      status: status,
+      reason: _requiredString(json, 'cancellation_reason'),
     );
   }
 }
@@ -1238,11 +1351,40 @@ class CustomerApi {
     await _request('DELETE', '/cart/items', useCartToken: true);
   }
 
-  Future<ApiCartQuote> getCheckoutQuote() async {
+  Future<ApiCartQuote> getCheckoutQuote({
+    required String formattedAddress,
+    required String pincode,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final normalizedAddress = formattedAddress.trim();
+    final normalizedPincode = pincode.trim();
+    if (normalizedAddress.isEmpty ||
+        normalizedAddress.length > 300 ||
+        !RegExp(r'^\d{6}$').hasMatch(normalizedPincode) ||
+        !latitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !longitude.isFinite ||
+        longitude < -180 ||
+        longitude > 180) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'INVALID_REQUEST',
+        message: 'Choose an address with a valid pincode and map location.',
+      );
+    }
     final payload = await _request(
       'POST',
       '/checkout/quote',
-      body: const {},
+      body: {
+        'deliveryAddress': {
+          'formattedAddress': normalizedAddress,
+          'pincode': normalizedPincode,
+          'latitude': latitude,
+          'longitude': longitude,
+        },
+      },
       useCartToken: true,
     );
     try {
@@ -1329,6 +1471,22 @@ class CustomerApi {
     final payload = await _request('GET', '/me/orders/$orderId');
     try {
       return ApiCustomerOrderDetail.fromJson(_dataObject(payload));
+    } on FormatException {
+      throw _invalidResponse();
+    }
+  }
+
+  Future<ApiOrderCancellationResult> cancelOrder(
+    String orderId,
+    String reason,
+  ) async {
+    final payload = await _request(
+      'POST',
+      '/me/orders/$orderId/cancel',
+      body: {'reason': reason.trim()},
+    );
+    try {
+      return ApiOrderCancellationResult.fromJson(_dataObject(payload));
     } on FormatException {
       throw _invalidResponse();
     }
@@ -1718,6 +1876,19 @@ int? _optionalMinorValue(Object? value) {
     _ => null,
   };
   return parsed != null && parsed >= 0 ? parsed : null;
+}
+
+int? _nullableMinorValue(Object? value, String label) {
+  if (value == null) return null;
+  final parsed = switch (value) {
+    int amount => amount,
+    String amount => int.tryParse(amount),
+    _ => null,
+  };
+  if (parsed == null || parsed < 0) {
+    throw FormatException('Invalid $label.');
+  }
+  return parsed;
 }
 
 int _requiredInteger(

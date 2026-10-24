@@ -55,6 +55,9 @@ class _LiveOrderMapState extends State<LiveOrderMap> {
       if (_mapReady && customerLocation != null) {
         _mapController.move(customerLocation, 14);
       }
+      if (oldWidget.initialRiderLocation != widget.initialRiderLocation) {
+        _riderLocation = widget.initialRiderLocation;
+      }
     }
     if (oldWidget.riderLocationStream != widget.riderLocationStream) {
       unawaited(_riderSubscription?.cancel());
@@ -127,7 +130,9 @@ class _LiveOrderMapState extends State<LiveOrderMap> {
     } on LocationServiceDisabledException {
       _setLocationMessage('Turn on location services to show your location.');
     } on PermissionDeniedException {
-      _setLocationMessage('Location permission is required to show your location.');
+      _setLocationMessage(
+        'Location permission is required to show your location.',
+      );
     } on TimeoutException {
       _setLocationMessage('Your location request timed out. Please try again.');
     } on PlatformException {
@@ -318,9 +323,7 @@ class _MapStatus extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(color: Color(0x22000000), blurRadius: 8),
-        ],
+        boxShadow: const [BoxShadow(color: Color(0x22000000), blurRadius: 8)],
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),

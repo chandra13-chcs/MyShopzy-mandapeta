@@ -24,8 +24,7 @@ class OrdersPage extends StatefulWidget {
   static void updateDemoOrderTab(String orderId, OrdersTab tab) =>
       _OrdersPageState.updateDemoOrderTab(orderId, tab);
 
-  static void refreshOrderCounts() =>
-      _OrdersPageState.refreshOrderCounts();
+  static void refreshOrderCounts() => _OrdersPageState.refreshOrderCounts();
 
   static void addDemoOrder(OrderRecord order) =>
       _OrdersPageState.addDemoOrder(order);
@@ -245,22 +244,10 @@ class _OrdersPageState extends State<OrdersPage> {
     final status = order.status.toLowerCase();
     final tab = switch (status) {
       'delivered' => OrdersTab.delivered,
-      'cancelled' || 'rejected' => OrdersTab.cancelled,
+      'cancelled' || 'rejected' || 'delivery_failed' => OrdersTab.cancelled,
       _ => OrdersTab.ongoing,
     };
-    final trackingStatus = switch (status) {
-      'placed' || 'order placed' => OrderTrackingStatus.orderPlaced,
-      'confirmed' || 'order confirmed' => OrderTrackingStatus.orderConfirmed,
-      'preparing' => OrderTrackingStatus.preparing,
-      'packed' => OrderTrackingStatus.packed,
-      'finding_delivery_partner' => OrderTrackingStatus.findingDeliveryPartner,
-      'rider_assigned' => OrderTrackingStatus.riderAssigned,
-      'picked_up' => OrderTrackingStatus.pickedUp,
-      'on_the_way' || 'out_for_delivery' => OrderTrackingStatus.onTheWay,
-      'arriving' => OrderTrackingStatus.arriving,
-      'delivered' => OrderTrackingStatus.delivered,
-      _ => null,
-    };
+    final trackingStatus = orderTrackingStatusFromApi(order.status);
     return OrderRecord(
       storeName: order.shopName,
       icon: Icons.storefront_outlined,
@@ -282,6 +269,9 @@ class _OrdersPageState extends State<OrdersPage> {
       isBackendData: true,
       itemCount: order.itemCount,
       trackingStatus: trackingStatus,
+      cancellationEligible: order.cancellationEligible,
+      cancellationDeadlineAt: order.cancellationDeadlineAt,
+      serverNow: order.serverNow,
     );
   }
 
@@ -335,8 +325,8 @@ class _OrdersPageState extends State<OrdersPage> {
       child: Scaffold(
         backgroundColor: _background,
         appBar: AppBar(
-        backgroundColor: AppTheme.primaryGreen,
-        foregroundColor: AppTheme.white,
+          backgroundColor: AppTheme.primaryGreen,
+          foregroundColor: AppTheme.white,
           surfaceTintColor: Colors.transparent,
           title: const Text(
             'My Orders',
@@ -370,10 +360,7 @@ class _OrdersPageState extends State<OrdersPage> {
                         padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
                         child: Text(
                           'Demo order history · sample data',
-                          style: TextStyle(
-                            color: _secondaryText,
-                            fontSize: 11,
-                          ),
+                          style: TextStyle(color: _secondaryText, fontSize: 11),
                         ),
                       ),
                     ),
@@ -644,11 +631,17 @@ class _OrdersPageState extends State<OrdersPage> {
     OrderRecord order,
   ) async {
     if (order.isBackendData) {
-      await Navigator.of(context).push<void>(
-        AppPageRoute<void>.builder(
+      final cancelled = await Navigator.of(context).push<bool>(
+        AppPageRoute<bool>.builder(
           builder: (context) => BackendOrderDetailsPage(order: order),
         ),
       );
+      if (cancelled == true && context.mounted) {
+        await _loadOrders();
+        if (context.mounted) {
+          DefaultTabController.of(context).animateTo(OrdersTab.cancelled.index);
+        }
+      }
       return;
     }
     final cancelled = await Navigator.of(context).push<bool>(

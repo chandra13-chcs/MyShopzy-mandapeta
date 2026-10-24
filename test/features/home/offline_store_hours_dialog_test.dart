@@ -10,14 +10,14 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      MyShopzyApp(clock: () => DateTime(2026, 10, 23, 6, 59)),
+      MyShopzyApp(clock: () => DateTime.utc(2026, 10, 23, 1, 29)),
     );
     await tester.pump();
 
     expect(find.text('We are currently offline'), findsOneWidget);
     expect(
       find.text(
-        'Our store hours are 7:00 AM – 11:00 PM. You can still browse '
+        'Our store hours are 7:00 AM – 10:00 PM. You can still browse '
         'products, add items to cart, and order during operating hours!',
       ),
       findsOneWidget,
@@ -44,7 +44,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      MyShopzyApp(clock: () => DateTime(2026, 10, 23, 23)),
+      MyShopzyApp(clock: () => DateTime.utc(2026, 10, 23, 17)),
     );
     await tester.pump();
 
@@ -60,8 +60,8 @@ void main() {
   });
 
   for (final time in [
-    DateTime(2026, 10, 23, 7),
-    DateTime(2026, 10, 23, 22, 59),
+    DateTime.utc(2026, 10, 23, 1, 30),
+    DateTime.utc(2026, 10, 23, 16, 29),
   ]) {
     testWidgets('keeps offline dialog hidden at ${time.hour}:${time.minute}', (
       tester,

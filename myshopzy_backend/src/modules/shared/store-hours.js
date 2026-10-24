@@ -1,6 +1,6 @@
 const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 const DEFAULT_OPEN = '07:00';
-const DEFAULT_CLOSE = '23:00';
+const DEFAULT_CLOSE = '22:00';
 
 function normalizeTime(value, fallback) {
   if (typeof value !== 'string' || !/^\d{2}:\d{2}$/.test(value)) {
@@ -45,4 +45,17 @@ function isOpenNow(shop, now = new Date()) {
   return { open, opensAt, closesAt };
 }
 
-module.exports = { isOpenNow };
+function formatTimeLabel(time) {
+  const [hours, minutes] = time.split(':').map(Number);
+  const period = hours < 12 ? 'AM' : 'PM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${period}`;
+}
+
+function formatHoursMessage({ opensAt, closesAt }) {
+  const open = opensAt === closesAt ? DEFAULT_OPEN : opensAt;
+  const close = opensAt === closesAt ? DEFAULT_CLOSE : closesAt;
+  return `Orders are accepted between ${formatTimeLabel(open)} and ${formatTimeLabel(close)}`;
+}
+
+module.exports = { formatHoursMessage, isOpenNow };

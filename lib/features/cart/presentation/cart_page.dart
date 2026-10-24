@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/config/business_hours.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/data/money_formatter.dart';
 import '../../../shared/presentation/motion.dart';
@@ -39,7 +40,8 @@ class _CartPageState extends State<CartPage> {
   Future<void> Function()? _offlineMutationRetry;
 
   static const _storeClosedMessage =
-      'Store is closed. Orders open at 7:00 AM';
+      'Store is closed. Orders are accepted between '
+      '${BusinessHours.openingLabel} and ${BusinessHours.closingLabel}.';
 
   @override
   void initState() {
@@ -81,11 +83,8 @@ class _CartPageState extends State<CartPage> {
     try {
       await _cartStore.refreshBackendCart();
       final items = _cartStore.items;
-      if (items.isEmpty) {
+      if (items.isEmpty || items.every((item) => item.isBackendProduct)) {
         _storeOpen = true;
-      } else if (items.every((item) => item.isBackendProduct)) {
-        final quote = await CustomerApi.instance.getCheckoutQuote();
-        if (mounted) setState(() => _storeOpen = quote.storeOpen);
       }
     } on CustomerApiException catch (error) {
       if (mounted) {
@@ -165,115 +164,114 @@ class _CartPageState extends State<CartPage> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         children: [
-        if (_cartLoadError != null) ...[
-          _cartOfflineError
-              ? OfflineErrorState(onRetry: _refreshBackendCart, compact: true)
-              : _buildCartLoadErrorBanner(),
-          const SizedBox(height: 10),
-        ],
-        if ((_dues?.outstandingMinor ?? 0) > 0) ...[
-          OutstandingDuesBanner(
-            amountMinor: _dues!.outstandingMinor,
-            orderId: _blockingDue?.orderId,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const DuesPage(),
+          if (_cartLoadError != null) ...[
+            _cartOfflineError
+                ? OfflineErrorState(onRetry: _refreshBackendCart, compact: true)
+                : _buildCartLoadErrorBanner(),
+            const SizedBox(height: 10),
+          ],
+          if ((_dues?.outstandingMinor ?? 0) > 0) ...[
+            OutstandingDuesBanner(
+              amountMinor: _dues!.outstandingMinor,
+              orderId: _blockingDue?.orderId,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (context) => const DuesPage()),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-        ] else if (_duesError != null) ...[
-          _duesOffline
-              ? OfflineErrorState(
-                  onRetry: _refreshDues,
-                  compact: true,
-                )
-              : Text(
-                  _duesError!,
-                  style: const TextStyle(
-                    color: Color(0xFFA85B5B),
-                    fontSize: 12,
+            const SizedBox(height: 10),
+          ] else if (_duesError != null) ...[
+            _duesOffline
+                ? OfflineErrorState(onRetry: _refreshDues, compact: true)
+                : Text(
+                    _duesError!,
+                    style: const TextStyle(
+                      color: Color(0xFFA85B5B),
+                      fontSize: 12,
+                    ),
                   ),
-                ),
-          const SizedBox(height: 10),
-        ],
-        if (!_storeOpen) ...[
+            const SizedBox(height: 10),
+          ],
+          if (!_storeOpen) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF4E5),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFF2D4A8)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.schedule_rounded,
+                    color: Color(0xFF9A5C00),
+                    size: 18,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _storeClosedMessage,
+                      style: TextStyle(
+                        color: Color(0xFF805000),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          if (_offlineMutationRetry != null) ...[
+            OfflineErrorState(
+              onRetry: () {
+                final retry = _offlineMutationRetry;
+                if (retry != null) _runCartMutation(retry);
+              },
+              compact: true,
+            ),
+            const SizedBox(height: 10),
+          ],
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF4E5),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFF2D4A8)),
+              color: _lightGreen,
+              borderRadius: BorderRadius.circular(13),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.schedule_rounded, color: Color(0xFF9A5C00), size: 18),
-                SizedBox(width: 8),
+                const Icon(Icons.info_outline_rounded, color: _green, size: 18),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    _storeClosedMessage,
-                    style: TextStyle(
-                      color: Color(0xFF805000),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    items.every((item) => item.isBackendProduct)
+                        ? 'Backend cart · Prices are refreshed during checkout'
+                        : 'Demo cart · Items and prices are for preview only',
+                    style: const TextStyle(color: _green, fontSize: 12),
                   ),
                 ),
+                if (_cartStore.hasBackendCart)
+                  TextButton(
+                    onPressed: () =>
+                        _runCartMutation(() => _cartStore.clearFromUi()),
+                    child: const Text('Clear cart'),
+                  ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
-        ],
-        if (_offlineMutationRetry != null) ...[
-          OfflineErrorState(
-            onRetry: () {
-              final retry = _offlineMutationRetry;
-              if (retry != null) _runCartMutation(retry);
-            },
-            compact: true,
-          ),
-          const SizedBox(height: 10),
-        ],
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: _lightGreen,
-            borderRadius: BorderRadius.circular(13),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.info_outline_rounded, color: _green, size: 18),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  items.every((item) => item.isBackendProduct)
-                      ? 'Backend cart · Prices are refreshed during checkout'
-                      : 'Demo cart · Items and prices are for preview only',
-                  style: const TextStyle(color: _green, fontSize: 12),
-                ),
-              ),
-              if (_cartStore.hasBackendCart)
-                TextButton(
-                  onPressed: () =>
-                      _runCartMutation(() => _cartStore.clearFromUi()),
-                  child: const Text('Clear cart'),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        const FreeDeliveryProgressStrip(),
-        const SizedBox(height: 14),
-        for (var index = 0; index < items.length; index++) ...[
-          fadeSlideItem(
-            itemKey: 'cart-item-${items[index].key}',
-            index: index,
-            child: PressScaleFeedback(child: _buildCartItem(items[index])),
-          ),
-          const SizedBox(height: 12),
-        ],
-        const SizedBox(height: 8),
-        _buildOrderSummary(),
+          const SizedBox(height: 14),
+          const FreeDeliveryProgressStrip(),
+          const SizedBox(height: 14),
+          for (var index = 0; index < items.length; index++) ...[
+            fadeSlideItem(
+              itemKey: 'cart-item-${items[index].key}',
+              index: index,
+              child: PressScaleFeedback(child: _buildCartItem(items[index])),
+            ),
+            const SizedBox(height: 12),
+          ],
+          const SizedBox(height: 8),
+          _buildOrderSummary(),
         ],
       ),
     );
@@ -482,9 +480,8 @@ class _CartPageState extends State<CartPage> {
           setState(() => _offlineMutationRetry = () => _increaseQuantity(item));
           return;
         }
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.message)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
       }
     }
   }
@@ -499,9 +496,8 @@ class _CartPageState extends State<CartPage> {
           setState(() => _offlineMutationRetry = mutation);
           return;
         }
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error.message)));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
       }
     }
   }
@@ -626,51 +622,52 @@ class _CartPageState extends State<CartPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-            Container(
-              width: 82,
-              height: 82,
-              decoration: const BoxDecoration(
-                color: _lightGreen,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.shopping_cart_outlined,
-                color: _green,
-                size: 38,
-              ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Your cart is empty',
-              style: TextStyle(
-                color: _mainText,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 7),
-            const Text(
-              'Add something you love and it will show up here.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _secondaryText,
-                fontSize: 14,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 18),
-            OutlinedButton(
-              onPressed: () =>
-                  Navigator.of(context).popUntil((route) => route.isFirst),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _green,
-                side: const BorderSide(color: _green),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: const Text('Continue Shopping'),
-            ),
+                  Container(
+                    width: 82,
+                    height: 82,
+                    decoration: const BoxDecoration(
+                      color: _lightGreen,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.shopping_cart_outlined,
+                      color: _green,
+                      size: 38,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Your cart is empty',
+                    style: TextStyle(
+                      color: _mainText,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  const Text(
+                    'Add something you love and it will show up here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: _secondaryText,
+                      fontSize: 14,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  OutlinedButton(
+                    onPressed: () =>
+                        Navigator.of(context)
+                            .popUntil((route) => route.isFirst),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _green,
+                      side: const BorderSide(color: _green),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text('Continue Shopping'),
+                  ),
                 ],
               ),
             ),

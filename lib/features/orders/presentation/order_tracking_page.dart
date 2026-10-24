@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
@@ -19,6 +21,30 @@ enum OrderTrackingStatus {
   onTheWay,
   arriving,
   delivered,
+  cancelled,
+  rejected,
+  deliveryFailed,
+}
+
+OrderTrackingStatus? orderTrackingStatusFromApi(String status) {
+  return switch (status.toLowerCase().replaceAll(' ', '_')) {
+    'placed' || 'order_placed' => OrderTrackingStatus.orderPlaced,
+    'confirmed' || 'order_confirmed' => OrderTrackingStatus.orderConfirmed,
+    'preparing' => OrderTrackingStatus.preparing,
+    'packed' ||
+    'getting_packed' ||
+    'ready_for_pickup' => OrderTrackingStatus.packed,
+    'finding_delivery_partner' => OrderTrackingStatus.findingDeliveryPartner,
+    'rider_assigned' => OrderTrackingStatus.riderAssigned,
+    'picked_up' => OrderTrackingStatus.pickedUp,
+    'on_the_way' || 'out_for_delivery' => OrderTrackingStatus.onTheWay,
+    'arriving' => OrderTrackingStatus.arriving,
+    'delivered' => OrderTrackingStatus.delivered,
+    'cancelled' => OrderTrackingStatus.cancelled,
+    'rejected' => OrderTrackingStatus.rejected,
+    'delivery_failed' => OrderTrackingStatus.deliveryFailed,
+    _ => null,
+  };
 }
 
 class OrderTrackingData {
@@ -32,7 +58,13 @@ class OrderTrackingData {
     this.deliveryAddress = 'Address not provided',
     this.itemNames = const [],
     this.partnerName,
+    this.partnerPhone,
+    this.partnerPhotoUrl,
+    this.partnerRating,
+    this.riderLocation,
     this.etaMinutes,
+    this.placedAt,
+    this.updatedAt,
     this.isDemo = true,
   });
 
@@ -45,7 +77,13 @@ class OrderTrackingData {
   final String deliveryAddress;
   final List<String> itemNames;
   final String? partnerName;
+  final String? partnerPhone;
+  final String? partnerPhotoUrl;
+  final double? partnerRating;
+  final LatLng? riderLocation;
   final int? etaMinutes;
+  final String? placedAt;
+  final String? updatedAt;
   final bool isDemo;
 
   OrderTrackingData copyWith({
@@ -57,6 +95,12 @@ class OrderTrackingData {
     String? deliveryAddress,
     List<String>? itemNames,
     String? partnerName,
+    String? partnerPhone,
+    String? partnerPhotoUrl,
+    double? partnerRating,
+    LatLng? riderLocation,
+    String? placedAt,
+    String? updatedAt,
   }) {
     return OrderTrackingData(
       orderId: orderId,
@@ -68,7 +112,13 @@ class OrderTrackingData {
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       itemNames: itemNames ?? this.itemNames,
       partnerName: partnerName ?? this.partnerName,
+      partnerPhone: partnerPhone ?? this.partnerPhone,
+      partnerPhotoUrl: partnerPhotoUrl ?? this.partnerPhotoUrl,
+      partnerRating: partnerRating ?? this.partnerRating,
+      riderLocation: riderLocation ?? this.riderLocation,
       etaMinutes: etaMinutes,
+      placedAt: placedAt ?? this.placedAt,
+      updatedAt: updatedAt ?? this.updatedAt,
       isDemo: isDemo,
     );
   }
@@ -99,29 +149,10 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
   static const _mainText = AppTheme.primaryText;
   static const _secondaryText = Color(0xFF59615C);
 
-  static const _timelineStatuses = [
-    OrderTrackingStatus.orderPlaced,
-    OrderTrackingStatus.orderConfirmed,
-    OrderTrackingStatus.preparing,
-    OrderTrackingStatus.packed,
-    OrderTrackingStatus.findingDeliveryPartner,
-    OrderTrackingStatus.riderAssigned,
-    OrderTrackingStatus.pickedUp,
-    OrderTrackingStatus.onTheWay,
-    OrderTrackingStatus.arriving,
-    OrderTrackingStatus.delivered,
-  ];
-
   static const _timelineLabels = [
-    'Order placed',
-    'Order confirmed',
-    'Preparing',
-    'Packed',
-    'Finding delivery partner',
-    'Rider assigned',
-    'Picked up',
-    'On the way',
-    'Arriving',
+    'Order Confirmed',
+    'Packing',
+    'Picked Up',
     'Delivered',
   ];
 
@@ -180,7 +211,12 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
           deliveryAddressLabel: label is String
               ? label
               : order.deliveryAddressLabel,
-          status: _statusFromApi(detail.status) ?? order.status,
+          status: orderTrackingStatusFromApi(detail.status) ?? order.status,
+          partnerName: detail.rider?.name,
+          partnerPhone: detail.rider?.phone,
+          riderLocation: detail.rider?.location,
+          placedAt: detail.placedAt,
+          updatedAt: detail.updatedAt,
         );
       });
     } on CustomerApiException catch (error) {
@@ -195,33 +231,20 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
     }
   }
 
-  OrderTrackingStatus? _statusFromApi(String status) {
-    return switch (status.toLowerCase().replaceAll(' ', '_')) {
-      'placed' || 'order_placed' => OrderTrackingStatus.orderPlaced,
-      'confirmed' || 'order_confirmed' => OrderTrackingStatus.orderConfirmed,
-      'preparing' => OrderTrackingStatus.preparing,
-      'packed' => OrderTrackingStatus.packed,
-      'finding_delivery_partner' => OrderTrackingStatus.findingDeliveryPartner,
-      'rider_assigned' => OrderTrackingStatus.riderAssigned,
-      'picked_up' => OrderTrackingStatus.pickedUp,
-      'on_the_way' || 'out_for_delivery' => OrderTrackingStatus.onTheWay,
-      'arriving' => OrderTrackingStatus.arriving,
-      'delivered' => OrderTrackingStatus.delivered,
-      _ => null,
-    };
-  }
-
   String get _statusTitle => switch (order.status) {
     OrderTrackingStatus.orderPlaced ||
     OrderTrackingStatus.orderConfirmed ||
     OrderTrackingStatus.preparing ||
-    OrderTrackingStatus.packed => 'Order getting packed!',
-    OrderTrackingStatus.findingDeliveryPartner => 'Finding Delivery Partner',
-    OrderTrackingStatus.riderAssigned ||
+    OrderTrackingStatus.packed ||
+    OrderTrackingStatus.findingDeliveryPartner => 'Packing your order',
+    OrderTrackingStatus.riderAssigned => 'Delivery partner assigned',
     OrderTrackingStatus.pickedUp ||
     OrderTrackingStatus.onTheWay ||
     OrderTrackingStatus.arriving => 'Out for delivery',
     OrderTrackingStatus.delivered => 'Delivered',
+    OrderTrackingStatus.cancelled => 'Order cancelled',
+    OrderTrackingStatus.rejected => 'Order rejected',
+    OrderTrackingStatus.deliveryFailed => 'Delivery failed',
   };
 
   String get _statusMessage => switch (order.status) {
@@ -230,15 +253,40 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
     OrderTrackingStatus.preparing => 'The store is preparing your order',
     OrderTrackingStatus.packed => 'Your order has been packed',
     OrderTrackingStatus.findingDeliveryPartner =>
-      'We are finding a delivery partner',
+      'Your order is being prepared for pickup',
     OrderTrackingStatus.riderAssigned => 'A delivery partner has been assigned',
     OrderTrackingStatus.pickedUp => 'Your order has been picked up',
     OrderTrackingStatus.onTheWay => 'Your delivery partner is on the way',
     OrderTrackingStatus.arriving => 'Your delivery partner is arriving',
     OrderTrackingStatus.delivered => 'Your order has been delivered',
+    OrderTrackingStatus.cancelled => 'This order was cancelled',
+    OrderTrackingStatus.rejected => 'The store could not accept this order',
+    OrderTrackingStatus.deliveryFailed => 'The delivery could not be completed',
   };
 
   bool get _isDelivered => order.status == OrderTrackingStatus.delivered;
+  bool get _isCancelled => switch (order.status) {
+    OrderTrackingStatus.cancelled || OrderTrackingStatus.rejected => true,
+    _ => false,
+  };
+  bool get _isDeliveryFailed =>
+      order.status == OrderTrackingStatus.deliveryFailed;
+
+  int? get _currentStageIndex => switch (order.status) {
+    OrderTrackingStatus.orderPlaced || OrderTrackingStatus.orderConfirmed => 0,
+    OrderTrackingStatus.preparing ||
+    OrderTrackingStatus.packed ||
+    OrderTrackingStatus.findingDeliveryPartner ||
+    OrderTrackingStatus.riderAssigned => 1,
+    OrderTrackingStatus.pickedUp ||
+    OrderTrackingStatus.onTheWay ||
+    OrderTrackingStatus.arriving => 2,
+    OrderTrackingStatus.delivered => 3,
+    OrderTrackingStatus.cancelled ||
+    OrderTrackingStatus.rejected ||
+    OrderTrackingStatus.deliveryFailed => null,
+  };
+
   bool get _isOutForDelivery => switch (order.status) {
     OrderTrackingStatus.riderAssigned ||
     OrderTrackingStatus.pickedUp ||
@@ -319,7 +367,8 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
               const SizedBox(height: 16),
               LiveOrderMap(
                 riderLocationStream: widget.riderLocationStream,
-                initialRiderLocation: widget.initialRiderLocation,
+                initialRiderLocation:
+                    order.riderLocation ?? widget.initialRiderLocation,
                 initialCustomerLocation: widget.initialCustomerLocation,
               ),
               const SizedBox(height: 16),
@@ -333,7 +382,7 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
               const SizedBox(height: 16),
               _buildItemList(),
               const SizedBox(height: 16),
-              _buildOtpCard(),
+              if (!_isCancelled && !_isDeliveryFailed) _buildOtpCard(),
             ],
           ),
         ),
@@ -361,8 +410,14 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
             child: Icon(
               _isDelivered
                   ? Icons.check_circle_outline_rounded
+                  : _isCancelled
+                  ? Icons.cancel_outlined
+                  : _isDeliveryFailed
+                  ? Icons.error_outline_rounded
                   : Icons.delivery_dining_rounded,
-              color: _green,
+              color: _isCancelled || _isDeliveryFailed
+                  ? const Color(0xFF914747)
+                  : _green,
               size: 27,
             ),
           ),
@@ -397,10 +452,20 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
       children: [
         Expanded(
           child: _InfoCard(
-            label: _isDelivered ? 'Order status' : 'Estimated delivery',
-            value: _isDelivered ? 'Completed' : '$_etaMinutes mins',
+            label: _isDelivered || _isCancelled || _isDeliveryFailed
+                ? 'Order status'
+                : 'Estimated delivery',
+            value: _isDelivered
+                ? 'Completed'
+                : _isCancelled
+                ? 'Cancelled'
+                : _isDeliveryFailed
+                ? 'Failed'
+                : '$_etaMinutes mins',
             icon: _isDelivered
                 ? Icons.task_alt_rounded
+                : _isCancelled || _isDeliveryFailed
+                ? Icons.info_outline_rounded
                 : Icons.schedule_rounded,
           ),
         ),
@@ -418,102 +483,239 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
 
   Widget _buildPartnerCard(BuildContext context) {
     if (!_isOutForDelivery) return const SizedBox.shrink();
+    final riderName = order.partnerName?.trim();
+    final riderPhone = order.partnerPhone?.trim();
+    final hasPhone = riderPhone != null && riderPhone.isNotEmpty;
     return _SectionCard(
       title: 'Delivery Partner',
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: _lightGreen,
-              borderRadius: BorderRadius.circular(17),
-            ),
-            child: const Icon(Icons.person_rounded, color: _green, size: 32),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  order.partnerName ??
-                      (order.isDemo ? 'Ravula Akash' : 'Delivery partner'),
-                  style: TextStyle(
-                    color: _mainText,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'Delivery Partner',
-                  style: TextStyle(color: _secondaryText, fontSize: 12),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  '+91 9XXXX XXXXX',
-                  style: TextStyle(color: _secondaryText, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-          Column(
+          Row(
             children: [
-              const Text(
-                '4.8 ★',
-                style: TextStyle(
-                  color: _green,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+              CircleAvatar(
+                radius: 27,
+                backgroundColor: _lightGreen,
+                backgroundImage: order.partnerPhotoUrl == null
+                    ? null
+                    : NetworkImage(order.partnerPhotoUrl!),
+                child: order.partnerPhotoUrl == null
+                    ? const Icon(Icons.person_rounded, color: _green, size: 30)
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      riderName == null || riderName.isEmpty
+                          ? 'Partner details unavailable'
+                          : riderName,
+                      style: const TextStyle(
+                        color: _mainText,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    const Text(
+                      'Delivery Partner',
+                      style: TextStyle(color: _secondaryText, fontSize: 12),
+                    ),
+                    if (hasPhone) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        _maskedPhone(riderPhone),
+                        style: const TextStyle(
+                          color: _secondaryText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              const SizedBox(height: 8),
-              if (_isDelivered)
-                const Text(
-                  'Completed',
-                  style: TextStyle(
-                    color: _secondaryText,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                  ),
-                )
-              else ...[
-                _PartnerAction(
-                  icon: Icons.call_outlined,
-                  label: 'Call',
-                  onPressed: () => _showDemoMessage(context, 'Call'),
+              if (order.partnerRating != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star_rounded, color: _green, size: 16),
+                    const SizedBox(width: 3),
+                    Text(
+                      order.partnerRating!.toStringAsFixed(1),
+                      style: const TextStyle(
+                        color: _green,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 6),
-                _PartnerAction(
-                  icon: Icons.chat_bubble_outline_rounded,
-                  label: 'Message',
-                  onPressed: () => _showDemoMessage(context, 'Message'),
-                ),
-              ],
             ],
           ),
+          if (hasPhone) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _PartnerAction(
+                    icon: Icons.call_outlined,
+                    label: 'Call',
+                    onPressed: () =>
+                        _contactPartner(context, riderPhone, 'tel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _PartnerAction(
+                    icon: Icons.chat_bubble_outline_rounded,
+                    label: 'Message',
+                    onPressed: () =>
+                        _contactPartner(context, riderPhone, 'sms'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildTimeline() {
-    final currentIndex = _timelineStatuses.indexOf(order.status);
+    final currentIndex = _currentStageIndex;
     return _SectionCard(
       title: 'Order status',
-      child: Column(
-        children: [
-          for (var index = 0; index < _timelineStatuses.length; index++)
-            _TimelineStep(
-              label: _timelineLabels[index],
-              isComplete: _isDelivered || index < currentIndex,
-              isCurrent: index == currentIndex && !_isDelivered,
-              isLast: index == _timelineStatuses.length - 1,
+      child: currentIndex == null
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  _isDeliveryFailed
+                      ? Icons.error_outline_rounded
+                      : Icons.cancel_outlined,
+                  color: const Color(0xFF914747),
+                  size: 21,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _statusTitle,
+                        style: const TextStyle(
+                          color: Color(0xFF914747),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _statusMessage,
+                        style: const TextStyle(
+                          color: _secondaryText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              children: [
+                for (var index = 0; index < _timelineLabels.length; index++)
+                  _TimelineStep(
+                    label: _timelineLabels[index],
+                    detail: _timelineDetail(index, currentIndex),
+                    isComplete: _isDelivered || index < currentIndex,
+                    isCurrent: index == currentIndex && !_isDelivered,
+                    isLast: index == _timelineLabels.length - 1,
+                  ),
+              ],
             ),
-        ],
-      ),
     );
+  }
+
+  String? _timelineDetail(int index, int currentIndex) {
+    if (index == 0 && order.placedAt != null) {
+      return 'Placed at ${_formatTimestamp(order.placedAt!)}';
+    }
+    if (index == currentIndex && index > 0 && order.updatedAt != null) {
+      return 'Updated at ${_formatTimestamp(order.updatedAt!)}';
+    }
+    return null;
+  }
+
+  String _formatTimestamp(String value) {
+    final timestamp = DateTime.tryParse(value);
+    if (timestamp == null) return value;
+    final local = timestamp.toLocal();
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour < 12 ? 'AM' : 'PM';
+    return '$hour:$minute $period';
+  }
+
+  String _maskedPhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    final visible = digits.length > 4
+        ? digits.substring(digits.length - 4)
+        : digits;
+    return '•••• $visible';
+  }
+
+  Future<void> _contactPartner(
+    BuildContext context,
+    String phone,
+    String scheme,
+  ) async {
+    final uri = Uri(scheme: scheme, path: phone);
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              scheme == 'tel'
+                  ? 'Unable to open the phone app.'
+                  : 'Unable to open the messaging app.',
+            ),
+          ),
+        );
+      }
+    } on PlatformException {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              scheme == 'tel'
+                  ? 'Unable to open the phone app.'
+                  : 'Unable to open the messaging app.',
+            ),
+          ),
+        );
+      }
+    } on MissingPluginException {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              scheme == 'tel'
+                  ? 'Unable to open the phone app.'
+                  : 'Unable to open the messaging app.',
+            ),
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildDeliveryInformation() {
@@ -639,12 +841,6 @@ class _OrderTrackingPageState extends State<OrderTrackingPage> {
       ),
     );
   }
-
-  void _showDemoMessage(BuildContext context, String action) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$action is unavailable in this demo.')),
-    );
-  }
 }
 
 class _InfoCard extends StatelessWidget {
@@ -738,12 +934,14 @@ class _SectionCard extends StatelessWidget {
 class _TimelineStep extends StatelessWidget {
   const _TimelineStep({
     required this.label,
+    required this.detail,
     required this.isComplete,
     required this.isCurrent,
     required this.isLast,
   });
 
   final String label;
+  final String? detail;
   final bool isComplete;
   final bool isCurrent;
   final bool isLast;
@@ -754,7 +952,7 @@ class _TimelineStep extends StatelessWidget {
         ? AppTheme.primaryGreen
         : const Color(0xFFB8BFBA);
     return SizedBox(
-      height: isLast ? 28 : 36,
+      height: detail == null ? (isLast ? 28 : 36) : (isLast ? 45 : 52),
       child: Row(
         children: [
           SizedBox(
@@ -774,15 +972,30 @@ class _TimelineStep extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: isComplete || isCurrent
-                    ? const Color(0xFF202321)
-                    : const Color(0xFF59615C),
-                fontSize: 13,
-                fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isComplete || isCurrent
+                        ? const Color(0xFF202321)
+                        : const Color(0xFF59615C),
+                    fontSize: 13,
+                    fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                  ),
+                ),
+                if (detail != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    detail!,
+                    style: const TextStyle(
+                      color: Color(0xFF59615C),
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           if (isCurrent)

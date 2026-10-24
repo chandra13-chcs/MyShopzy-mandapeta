@@ -244,8 +244,12 @@ void main() {
         'currency': 'INR',
         'itemSubtotalMinor': '100',
         'deliveryFeeMinor': '0',
+        'platformFeeMinor': '1000',
         'discountMinor': '0',
-        'totalMinor': '100',
+        'totalMinor': '1100',
+        'isDeliverable': true,
+        'message': 'Delivery is available at this location.',
+        'distanceMeters': 4000,
         'items': const [],
         'storeOpen': false,
         'opensAt': '07:00',
@@ -265,9 +269,13 @@ void main() {
         ApiCartQuote.fromJson({
           'currency': 'INR',
           'itemSubtotalMinor': '0',
-          'deliveryFeeMinor': '0',
+          'deliveryFeeMinor': null,
+          'platformFeeMinor': null,
           'discountMinor': '0',
-          'totalMinor': '0',
+          'totalMinor': null,
+          'isDeliverable': false,
+          'message': "Sorry! We don't deliver here yet",
+          'distanceMeters': 18001,
           'items': const [],
         }).storeOpen,
         isTrue,
@@ -514,6 +522,52 @@ void main() {
       expect(requestSent, isFalse);
     });
 
+    test(
+      'rejects checkout quote addresses without valid coordinates',
+      () async {
+        var requestSent = false;
+        final api = CustomerApi(
+          baseUrl: 'https://shop.example',
+          httpClient: MockClient((request) async {
+            requestSent = true;
+            return http.Response('{}', 200);
+          }),
+        );
+        addTearDown(api.close);
+
+        for (final coordinates in [
+          (latitude: 91.0, longitude: 81.93),
+          (latitude: 16.87, longitude: -181.0),
+        ]) {
+          await expectLater(
+            api.getCheckoutQuote(
+              formattedAddress: '12 Green Park Road',
+              pincode: '533308',
+              latitude: coordinates.latitude,
+              longitude: coordinates.longitude,
+            ),
+            throwsA(
+              isA<CustomerApiException>().having(
+                (error) => error.code,
+                'code',
+                'INVALID_REQUEST',
+              ),
+            ),
+          );
+        }
+        await expectLater(
+          api.getCheckoutQuote(
+            formattedAddress: '12 Green Park Road',
+            pincode: '5333',
+            latitude: 16.87,
+            longitude: 81.93,
+          ),
+          throwsA(isA<CustomerApiException>()),
+        );
+        expect(requestSent, isFalse);
+      },
+    );
+
     test('uses the capability token for cart operations and quotes', () async {
       final requests = <http.Request>[];
       final api = CustomerApi(
@@ -546,8 +600,12 @@ void main() {
                   'currency': 'INR',
                   'itemSubtotalMinor': '24690',
                   'deliveryFeeMinor': '0',
+                  'platformFeeMinor': '1000',
                   'discountMinor': '0',
-                  'totalMinor': '24690',
+                  'totalMinor': '25690',
+                  'isDeliverable': true,
+                  'message': 'Delivery is available at this location.',
+                  'distanceMeters': 2000,
                 },
               }),
               200,
@@ -575,7 +633,12 @@ void main() {
         ),
         2,
       );
-      final quote = await api.getCheckoutQuote();
+      final quote = await api.getCheckoutQuote(
+        formattedAddress: '  12 Green Park Road  ',
+        pincode: '533308',
+        latitude: 16.87,
+        longitude: 81.93,
+      );
 
       expect(api.hasCartToken, isTrue);
       expect(requests[1].headers['X-Cart-Token'], 'a' * 43);
@@ -586,7 +649,16 @@ void main() {
       });
       expect(jsonDecode(requests[1].body), isNot(contains('price')));
       expect(requests[2].headers['X-Cart-Token'], 'a' * 43);
-      expect(quote.totalMinor, 24690);
+      expect(jsonDecode(requests[2].body), {
+        'deliveryAddress': {
+          'formattedAddress': '12 Green Park Road',
+          'pincode': '533308',
+          'latitude': 16.87,
+          'longitude': 81.93,
+        },
+      });
+      expect(quote.totalMinor, 25690);
+      expect(quote.platformFeeMinor, 1000);
       expect(quote.items.single.priceMinor, 12345);
       expect(quote.items.single.lineTotalMinor, 24690);
       expect(quote.items.single.variantId, 'variant-id');

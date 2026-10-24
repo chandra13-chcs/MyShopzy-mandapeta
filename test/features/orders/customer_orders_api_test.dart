@@ -81,11 +81,11 @@ void main() {
     expect(find.text('Backend order'), findsOneWidget);
     expect(find.text('API Product · 500 g × 2'), findsOneWidget);
     expect(find.text('500 g'), findsOneWidget);
+    expect(find.text('Track Order'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -900));
     await tester.pumpAndSettle();
     expect(find.text('Home · 42 Backend Road'), findsOneWidget);
     expect(find.text('Payment status'), findsNothing);
-    expect(find.text('Track Order'), findsNothing);
   });
 
   testWidgets('shows honest empty backend order history in selected tabs', (
@@ -196,6 +196,84 @@ void main() {
     expect(requests.last.url.path, '/api/v1/me/orders/$_orderId');
     expect(find.text('Retry order details'), findsOneWidget);
   });
+
+  testWidgets('backend cancellation submits the selected reason once', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    CustomerApi.instance = _api((request) async {
+      requests.add(request);
+      if (request.method == 'GET') {
+        return _jsonResponse(_orderDetailJson());
+      }
+      return _jsonResponse({
+        'data': {
+          'id': _orderId,
+          'status': 'cancelled',
+          'cancellation_reason': 'Changed my mind',
+        },
+      });
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push<bool>(
+                MaterialPageRoute<bool>(
+                  builder: (_) =>
+                      BackendOrderDetailsPage(order: _backendOrderRecord()),
+                ),
+              ),
+              child: const Text('Open order'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open order'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('Cancel order · 01:30 remaining'),
+      findsOneWidget,
+    );
+    await tester.tap(find.textContaining('Cancel order ·'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Changed my mind'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Confirm cancellation'));
+    await tester.pumpAndSettle();
+
+    final cancellationRequest = requests.singleWhere(
+      (request) => request.method == 'POST',
+    );
+    expect(cancellationRequest.url.path, '/api/v1/me/orders/$_orderId/cancel');
+    expect(jsonDecode(cancellationRequest.body), {'reason': 'Changed my mind'});
+    expect(find.text('Open order'), findsOneWidget);
+  });
+
+  testWidgets('closed cancellation window never exposes the cancel action', (
+    tester,
+  ) async {
+    CustomerApi.instance = _api(
+      (request) async => _jsonResponse(
+        _orderDetailJson(
+          cancellationEligible: false,
+          serverNow: '2026-10-11T06:02:00.000Z',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: BackendOrderDetailsPage(order: _backendOrderRecord())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cancellation window closed'), findsOneWidget);
+    expect(find.textContaining('Cancel order ·'), findsNothing);
+  });
 }
 
 CustomerApi _api(Future<http.Response> Function(http.Request) handler) {
@@ -222,10 +300,17 @@ Map<String, Object?> _orderJson() => {
   'total_minor': '2800',
   'placed_at': '2026-10-11T06:00:00.000Z',
   'updated_at': '2026-10-11T06:00:00.000Z',
+  'cancellation_reason': null,
+  'cancellation_deadline_at': '2026-10-11T06:02:00.000Z',
+  'server_now': '2026-10-11T06:00:30.000Z',
+  'cancellation_eligible': true,
   'item_count': 2,
 };
 
-Map<String, Object?> _orderDetailJson() => {
+Map<String, Object?> _orderDetailJson({
+  bool cancellationEligible = true,
+  String serverNow = '2026-10-11T06:00:30.000Z',
+}) => {
   'data': {
     'id': _orderId,
     'partner_id': 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
@@ -243,6 +328,11 @@ Map<String, Object?> _orderDetailJson() => {
     },
     'placed_at': '2026-10-11T06:00:00.000Z',
     'updated_at': '2026-10-11T06:00:00.000Z',
+    'cancellation_reason': null,
+    'cancellation_deadline_at': '2026-10-11T06:02:00.000Z',
+    'server_now': serverNow,
+    'cancellation_eligible': cancellationEligible,
+    'rider': null,
     'items': [
       {
         'product_id': _productId,

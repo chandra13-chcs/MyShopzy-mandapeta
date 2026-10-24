@@ -57,6 +57,14 @@ const customerDuesSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/012_customer_dues_ledger.sql',
 );
+const cancellationSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/013_order_cancellation_reason.sql',
+);
+const platformFeeSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/014_order_platform_fee.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -143,9 +151,18 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const commissionSnapshotsSchema = await readFile(commissionSnapshotsSchemaPath, 'utf8');
   const categoryCodesSchema = await readFile(categoryCodesSchemaPath, 'utf8');
   const customerDuesSchema = await readFile(customerDuesSchemaPath, 'utf8');
+  const cancellationSchema = await readFile(cancellationSchemaPath, 'utf8');
+  const platformFeeSchema = await readFile(platformFeeSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
   assert.equal(appliedCount, migrationFiles.length);
+  assert.deepEqual(
+    migrationFiles.slice(-2).map(({ version, name }) => ({ version, name })),
+    [
+      { version: '013', name: '013_order_cancellation_reason.sql' },
+      { version: '014', name: '014_order_platform_fee.sql' },
+    ],
+  );
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
   assert.equal(pool.applied.get('002').name, '002_customer_carts.sql');
   assert.equal(
@@ -185,6 +202,14 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('012').name,
     '012_customer_dues_ledger.sql',
   );
+  assert.equal(
+    pool.applied.get('013').name,
+    '013_order_cancellation_reason.sql',
+  );
+  assert.equal(
+    pool.applied.get('014').name,
+    '014_order_platform_fee.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -198,10 +223,77 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(commissionSnapshotsSchema.trim()));
   assert.ok(calls.includes(categoryCodesSchema.trim()));
   assert.ok(calls.includes(customerDuesSchema.trim()));
+  assert.ok(calls.includes(cancellationSchema.trim()));
+  assert.ok(calls.includes(platformFeeSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
   assert.equal(pool.released, true);
+});
+
+test('platform fee migration preserves historical totals and includes the fee in new totals', async () => {
+  const migration = await readFile(platformFeeSchemaPath, 'utf8');
+
+  assert.match(
+    migration,
+    /ADD COLUMN platform_fee_minor bigint NOT NULL DEFAULT 0/,
+  );
+  assert.match(
+    migration,
+    /ADD CONSTRAINT orders_platform_fee_minor_nonnegative_check\s+CHECK \(platform_fee_minor >= 0\)/,
+  );
+  assert.match(migration, /DROP CONSTRAINT orders_check/);
+  assert.match(
+    migration,
+    /ADD CONSTRAINT orders_total_includes_platform_fee_check\s+CHECK\s*\(\s*total_minor\s*=\s*items_subtotal_minor \+ delivery_fee_minor \+ platform_fee_minor - discount_minor/s,
+  );
+  assert.doesNotMatch(migration, /\bUPDATE\s+app\.orders\b/i);
+});
+
+test('defaulting platform fees to zero preserves historical order amounts', () => {
+  const historicalOrders = [
+    {
+      kind: 'free delivery',
+      items_subtotal_minor: 49900,
+      delivery_fee_minor: 0,
+      discount_minor: 0,
+      total_minor: 49900,
+    },
+    {
+      kind: 'discounted order',
+      items_subtotal_minor: 12000,
+      delivery_fee_minor: 3000,
+      discount_minor: 1500,
+      total_minor: 13500,
+    },
+  ];
+
+  for (const historicalOrder of historicalOrders) {
+    const { kind, ...originalAmounts } = historicalOrder;
+    const migratedOrder = {
+      ...originalAmounts,
+      platform_fee_minor: 0,
+    };
+
+    assert.deepEqual(
+      {
+        items_subtotal_minor: migratedOrder.items_subtotal_minor,
+        delivery_fee_minor: migratedOrder.delivery_fee_minor,
+        discount_minor: migratedOrder.discount_minor,
+        total_minor: migratedOrder.total_minor,
+      },
+      originalAmounts,
+      `${kind} order amounts must remain unchanged`,
+    );
+    assert.equal(
+      migratedOrder.total_minor,
+      migratedOrder.items_subtotal_minor +
+        migratedOrder.delivery_fee_minor +
+        migratedOrder.platform_fee_minor -
+        migratedOrder.discount_minor,
+      `${kind} order must satisfy the updated total formula`,
+    );
+  }
 });
 
 test('customer dues migration adds payment method and append-only ledger constraints', async () => {

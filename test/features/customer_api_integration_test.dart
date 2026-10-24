@@ -111,8 +111,15 @@ void main() {
               'currency': 'INR',
               'itemSubtotalMinor': '1300',
               'deliveryFeeMinor': '0',
+              'platformFeeMinor': '1000',
               'discountMinor': '0',
-              'totalMinor': '1300',
+              'totalMinor': '2300',
+              'isDeliverable': true,
+              'message': 'Delivery is available at this location.',
+              'distanceMeters': 2000,
+              'storeOpen': true,
+              'opensAt': '07:00',
+              'closesAt': '22:00',
             },
           });
         }
@@ -338,10 +345,7 @@ void main() {
       await tester.tap(find.text('Backend Grocery'));
       await _pumpFor(tester);
 
-      expect(
-        find.text('Could not load this store catalog.'),
-        findsOneWidget,
-      );
+      expect(find.text('Could not load this store catalog.'), findsOneWidget);
       expect(find.text('Marie Gold'), findsNothing);
       await tester.tap(find.text('Retry catalog'));
       await _pumpFor(tester);
@@ -479,9 +483,7 @@ void main() {
     expect(requests.last.url.queryParameters['shopId'], shopId);
     expect(requests.last.url.queryParameters['q'], 'Biryani');
     expect(
-      requests.where(
-        (request) => request.url.path.endsWith('/categories'),
-      ),
+      requests.where((request) => request.url.path.endsWith('/categories')),
       hasLength(1),
     );
   });

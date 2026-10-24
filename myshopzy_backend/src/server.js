@@ -15,6 +15,9 @@ const {
   createPartnerAuthenticator,
 } = require('./modules/partner-types/auth0-authentication');
 const { mockRiderAuth } = require('./middleware/mock-rider-auth');
+const {
+  createGoogleRoutesClient,
+} = require('./modules/delivery-serviceability/google-routes');
 
 function shutdownServer(server, pool) {
   return new Promise((resolve, reject) => {
@@ -50,6 +53,9 @@ function startServer({
   });
   const developmentCustomerAuth = createDevelopmentCustomerAuth({
     databasePool: pool,
+    deliveryRoutingClient: createGoogleRoutesClient({
+      apiKey: config.googleMapsApiKey,
+    }),
     config,
   });
   const customerOtpAuthRouter = createCustomerOtpAuth({

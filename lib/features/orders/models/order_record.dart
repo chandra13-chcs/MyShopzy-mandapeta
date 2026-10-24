@@ -61,6 +61,9 @@ class OrderRecord {
     this.deliveryInstruction,
     this.isBackendData = false,
     this.itemCount,
+    this.cancellationEligible = false,
+    this.cancellationDeadlineAt,
+    this.serverNow,
   });
 
   final String storeName;
@@ -86,13 +89,16 @@ class OrderRecord {
   final String? deliveryInstruction;
   final bool isBackendData;
   final int? itemCount;
+  final bool cancellationEligible;
+  final String? cancellationDeadlineAt;
+  final String? serverNow;
 
   bool get canCustomerCancel =>
       orderTab == OrdersTab.ongoing &&
       switch (trackingStatus) {
         OrderTrackingStatus.orderPlaced ||
         OrderTrackingStatus.orderConfirmed ||
-        OrderTrackingStatus.preparing => true,
+        OrderTrackingStatus.preparing => !isBackendData || cancellationEligible,
         _ => false,
       };
 

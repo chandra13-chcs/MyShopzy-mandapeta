@@ -11,6 +11,7 @@ import 'package:myshopzy/features/local_stores/presentation/local_stores_page.da
 import 'package:myshopzy/features/local_stores/presentation/local_store_catalog_page.dart';
 import 'package:myshopzy/features/meat/presentation/meat_page.dart';
 import 'package:myshopzy/features/parcel/presentation/parcel_page.dart';
+import 'package:myshopzy/features/restaurants/presentation/restaurant_menu_page.dart';
 import 'package:myshopzy/features/restaurants/presentation/restaurants_page.dart';
 import 'package:myshopzy/features/vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
@@ -76,7 +77,7 @@ void main() {
         (widget) => widget is Image && widget.semanticLabel == entry.key,
       );
       final image = tester.widget<Image>(imageFinder);
-      expect(image.fit, BoxFit.cover);
+      expect(image.fit, BoxFit.contain);
       expect(
         image.image,
         isA<ResizeImage>().having(
@@ -96,6 +97,7 @@ void main() {
       final imageBounds = tester.getRect(imageFinder);
       final tileBounds = tester.getRect(tile);
       expect(imageBounds, tileBounds);
+      expect(tileBounds.width / tileBounds.height, closeTo(1.15, 0.02));
     }
     for (final categoryName in categoryAssets.keys) {
       expect(find.text(categoryName), findsNothing);
@@ -181,6 +183,67 @@ void main() {
       await tester.pageBack();
       await pumpHomeTransitions(tester);
     }
+  });
+
+  testWidgets('Home biryani product opens its restaurant menu category', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+
+    final biryaniTile = find.byKey(
+      const ValueKey('home-restaurant-product-demo-chicken-biryani'),
+    );
+    await tester.scrollUntilVisible(
+      biryaniTile,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(biryaniTile);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RestaurantMenuPage), findsOneWidget);
+    expect(find.text('Demo Biryani Kitchen'), findsOneWidget);
+    expect(find.text('Chicken Biryani'), findsOneWidget);
+    expect(
+      tester
+          .widget<RestaurantMenuPage>(find.byType(RestaurantMenuPage))
+          .initialCategoryId,
+      'biryani',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Home grocery product opens its mapped store category', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+
+    final groceryTile = find.byKey(
+      const ValueKey('home-grocery-product-home-dairy-milk'),
+    );
+    await tester.scrollUntilVisible(
+      groceryTile,
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(groceryTile);
+    await tester.drag(
+      find.byType(CustomScrollView).first,
+      const Offset(0, -180),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    await tester.tap(groceryTile);
+    await pumpHomeTransitions(tester);
+
+    expect(find.byType(LocalStoreCatalogPage), findsOneWidget);
+    expect(find.text('Sri Lakshmi General Store'), findsOneWidget);
+    expect(find.text('Toned Milk'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Home category grid reflects active backend partners', (

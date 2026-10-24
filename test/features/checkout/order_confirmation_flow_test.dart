@@ -8,7 +8,6 @@ import 'package:http/testing.dart';
 import 'package:myshopzy/features/cart/data/cart_store.dart';
 import 'package:myshopzy/features/checkout/presentation/checkout_page.dart';
 import 'package:myshopzy/features/checkout/presentation/delivery_unavailable_page.dart';
-import 'package:myshopzy/features/orders/presentation/order_details_page.dart';
 import 'package:myshopzy/features/orders/presentation/order_success_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
 
@@ -94,6 +93,8 @@ void main() {
     await tester.tap(find.text('Home').last);
     await tester.pumpAndSettle();
     final placeOrder = find.widgetWithText(FilledButton, 'Place Order');
+    expect(find.text('Platform Fee'), findsOneWidget);
+    expect(find.text('₹10'), findsOneWidget);
     await tester.ensureVisible(placeOrder);
     await tester.tap(placeOrder);
     await tester.pumpAndSettle();
@@ -112,6 +113,17 @@ void main() {
     final orderRequest = requests.singleWhere(
       (request) => request.url.path.endsWith('/orders'),
     );
+    final quoteRequest = requests.singleWhere(
+      (request) => request.url.path.endsWith('/checkout/quote'),
+    );
+    expect(jsonDecode(quoteRequest.body), {
+      'deliveryAddress': {
+        'formattedAddress': 'Home · 12 Green Park Road, Ravulapalem',
+        'pincode': '533308',
+        'latitude': 16.87,
+        'longitude': 81.93,
+      },
+    });
     expect(jsonDecode(orderRequest.body), {
       'deliveryAddress': {
         'label': 'Home',
@@ -122,13 +134,10 @@ void main() {
       },
     });
 
-    await tester.tap(find.byKey(const ValueKey('order-success-view-details')));
-    await tester.pumpAndSettle();
-    expect(find.byType(BackendOrderDetailsPage), findsOneWidget);
-    expect(find.text('Backend order'), findsOneWidget);
-    expect(find.text('Backend product · 500 g × 1'), findsOneWidget);
-    expect(find.text('Payment status'), findsNothing);
-    expect(find.text('Track Order'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('order-success-track-order')),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -139,11 +148,20 @@ void main() {
         if (request.url.path.endsWith('/orders')) {
           orderRequests++;
         }
-        if (request.url.path.endsWith('/delivery/serviceability')) {
+        if (request.url.path.endsWith('/checkout/quote')) {
           return _response({
             'data': {
+              'items': const [],
+              'currency': 'INR',
+              'itemSubtotalMinor': '25000',
+              'deliveryFeeMinor': null,
+              'platformFeeMinor': null,
+              'discountMinor': '0',
+              'totalMinor': null,
               'isDeliverable': false,
-              'message': 'Instamart is unavailable in your location.',
+              'message': "Sorry! We don't deliver here yet",
+              'distanceMeters': 18001,
+              'storeOpen': true,
             },
           });
         }
@@ -158,14 +176,64 @@ void main() {
       await tester.tap(find.text('Home').last);
       await tester.pumpAndSettle();
 
-      expect(find.byType(ServiceabilityUnavailablePage), findsOneWidget);
-      expect(find.text('Sorry! We don’t deliver here'), findsOneWidget);
+      expect(find.byType(ServiceabilityUnavailablePage), findsNothing);
+      expect(find.text("Sorry! We don't deliver here yet"), findsOneWidget);
       expect(orderRequests, 0);
       expect(cart.totalQuantity, 1);
 
-      await tester.tap(find.byKey(const ValueKey('change-delivery-location')));
+      await tester.tap(find.text('Change Location'));
       await tester.pumpAndSettle();
       expect(find.byType(CheckoutPage), findsOneWidget);
+      expect(find.text('Choose Delivery Location'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'saved addresses without coordinates cannot receive a fee or total',
+    (tester) async {
+      var quoteRequests = 0;
+      _configureBackend((request) async {
+        if (request.url.path.endsWith('/checkout/quote')) {
+          quoteRequests++;
+        }
+        if (request.url.path.endsWith('/me/addresses')) {
+          return _response({
+            'data': [
+              {
+                'id': 'address-without-coordinates',
+                'label': 'Home',
+                'address_snapshot': {
+                  'formattedAddress': '12 Green Park Road, Ravulapalem',
+                  'pincode': '533308',
+                },
+              },
+            ],
+          });
+        }
+        return _backendSetupResponse(request);
+      });
+      _addBackendCartItem();
+
+      await _openBackendCheckout(tester);
+      await tester.ensureVisible(find.text('Change'));
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Home').last);
+      await tester.pumpAndSettle();
+
+      expect(quoteRequests, 0);
+      expect(
+        find.text(
+          'This address needs a valid pincode and map coordinates to calculate delivery.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('checkout-total-value')))
+            .data,
+        'Unavailable',
+      );
     },
   );
 
@@ -357,9 +425,16 @@ http.Response _backendSetupResponse(http.Request request) {
         ],
         'currency': 'INR',
         'itemSubtotalMinor': '25000',
-        'deliveryFeeMinor': '0',
+        'deliveryFeeMinor': '3000',
+        'platformFeeMinor': '1000',
         'discountMinor': '0',
-        'totalMinor': '25000',
+        'totalMinor': '29000',
+        'isDeliverable': true,
+        'message': 'Delivery is available at this location.',
+        'distanceMeters': 4000,
+        'storeOpen': true,
+        'opensAt': '07:00',
+        'closesAt': '22:00',
       },
     });
   }

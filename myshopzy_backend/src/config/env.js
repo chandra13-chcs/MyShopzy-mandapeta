@@ -228,6 +228,7 @@ function loadConfig(env = process.env) {
     port,
     nodeEnv: env.NODE_ENV || 'development',
     database,
+    googleMapsApiKey: env.GOOGLE_MAPS_API_KEY?.trim() || null,
     developmentCustomerOtp: env.DEVELOPMENT_CUSTOMER_OTP || null,
     developmentCustomerSessionSecret:
       env.DEVELOPMENT_CUSTOMER_SESSION_SECRET || null,

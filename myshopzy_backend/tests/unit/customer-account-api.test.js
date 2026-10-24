@@ -13,7 +13,11 @@ const productId = '57a85a0c-7081-4eb7-9c13-4b9842216b54';
 const parcelId = '3acdf0f1-7877-4d28-8207-59360158c1ce';
 const address = { formattedAddress: '12 Green Park Road, Mandapeta' };
 
-function createDatabase({ failOn } = {}) {
+function createDatabase({
+  failOn,
+  serverNow = '2026-10-11T06:00:30.000Z',
+  placedAt = '2026-10-11T06:00:00.000Z',
+} = {}) {
   const profile = {
     id: customerId,
     display_name: 'Chandra Shekar',
@@ -32,6 +36,7 @@ function createDatabase({ failOn } = {}) {
         id: orderId,
         customer_user_id: customerId,
         status: 'placed',
+        placed_at: placedAt,
         total_minor: '3000',
         delivery_address_snapshot: address,
       },
@@ -57,6 +62,61 @@ function createDatabase({ failOn } = {}) {
 
     if (normalized.startsWith('SELECT u.id, u.display_name')) {
       return { rows: [profile], rowCount: 1 };
+    }
+    if (normalized.startsWith("UPDATE app.orders AS o SET status = 'cancelled'")) {
+      const [selectedOrderId, ownerId, reason] = params;
+      const order = orders.get(selectedOrderId);
+      const eligibleStatuses = ['placed', 'confirmed', 'preparing'];
+      const stillInWindow =
+        order &&
+        new Date(order.placed_at).getTime() + 120_000 >
+          new Date(serverNow).getTime();
+      if (
+        !order ||
+        order.customer_user_id !== ownerId ||
+        !eligibleStatuses.includes(order.status) ||
+        !stillInWindow
+      ) {
+        return { rows: [], rowCount: 0 };
+      }
+      order.status = 'cancelled';
+      order.cancellation_reason = reason;
+      return {
+        rows: [
+          {
+            id: order.id,
+            status: order.status,
+            cancellation_reason: reason,
+            placed_at: order.placed_at,
+            cancellation_deadline_at: new Date(
+              new Date(order.placed_at).getTime() + 120_000,
+            ).toISOString(),
+            server_now: serverNow,
+            cancellation_eligible: false,
+          },
+        ],
+        rowCount: 1,
+      };
+    }
+    if (
+      normalized.startsWith(
+        'SELECT o.status, o.placed_at, clock_timestamp() AS server_now',
+      )
+    ) {
+      const [selectedOrderId, ownerId] = params;
+      const order = orders.get(selectedOrderId);
+      return order && order.customer_user_id === ownerId
+        ? {
+            rows: [
+              {
+                status: order.status,
+                placed_at: order.placed_at,
+                server_now: serverNow,
+              },
+            ],
+            rowCount: 1,
+          }
+        : { rows: [], rowCount: 0 };
     }
     if (normalized.startsWith('UPDATE app.users AS u')) {
       const [, displayName, hasEmail, email, hasPhone, phone] = params;
@@ -218,6 +278,7 @@ function createDatabase({ failOn } = {}) {
     addresses,
     wishlist,
     parcels,
+    orders,
   };
 }
 
@@ -259,6 +320,7 @@ test('requires trusted authentication on every private customer resource', async
     ['DELETE', `/api/v1/me/wishlist/items/${productId}`],
     ['GET', '/api/v1/me/orders'],
     ['GET', `/api/v1/me/orders/${orderId}`],
+    ['POST', `/api/v1/me/orders/${orderId}/cancel`],
     ['GET', '/api/v1/me/parcels'],
     ['POST', '/api/v1/me/parcels'],
     ['GET', `/api/v1/me/parcels/${parcelId}`],
@@ -301,6 +363,7 @@ test('reads and updates the authenticated customer profile only', async (t) => {
     display_name: 'Chandra S',
     email: null,
   });
+
   const updateQuery = database.queries.find((query) =>
     query.sql.startsWith('UPDATE app.users'),
   );
@@ -328,6 +391,68 @@ test('reads and updates the authenticated customer profile only', async (t) => {
     jsonRequest('PATCH', { phone: null }),
   );
   assert.equal(invalidClear.status, 400);
+});
+
+test('cancels eligible customer orders before the strict two-minute boundary', async (t) => {
+  const database = createDatabase({
+    serverNow: '2026-10-11T06:01:59.999Z',
+  });
+  const baseUrl = await startServer(t, database.pool, { authenticated: true });
+  const response = await fetch(
+    `${baseUrl}/api/v1/me/orders/${orderId}/cancel`,
+    jsonRequest('POST', { reason: 'Changed my mind' }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.status, 'cancelled');
+  assert.equal(database.queries[0].params[2], 'Changed my mind');
+  assert.equal(database.orders.get(orderId).cancellation_reason, 'Changed my mind');
+  assert.match(database.queries[0].sql, /clock_timestamp\(\)/);
+  assert.match(database.queries[0].sql, /interval '2 minutes'/);
+
+  const duplicate = await fetch(
+    `${baseUrl}/api/v1/me/orders/${orderId}/cancel`,
+    jsonRequest('POST', { reason: 'Changed my mind' }),
+  );
+  assert.equal(duplicate.status, 409);
+  assert.equal((await duplicate.json()).error.code, 'ORDER_NOT_CANCELLABLE');
+});
+
+test('rejects cancellation at and after the two-minute boundary', async (t) => {
+  const database = createDatabase({
+    serverNow: '2026-10-11T06:02:00.001Z',
+  });
+  const baseUrl = await startServer(t, database.pool, { authenticated: true });
+  const response = await fetch(
+    `${baseUrl}/api/v1/me/orders/${orderId}/cancel`,
+    jsonRequest('POST', { reason: 'Changed my mind' }),
+  );
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error.code, 'CANCELLATION_WINDOW_CLOSED');
+  assert.equal(database.orders.get(orderId).status, 'placed');
+});
+
+test('does not cancel orders in incompatible states or accept invalid reasons', async (t) => {
+  const database = createDatabase({
+    serverNow: '2026-10-11T06:01:00.000Z',
+  });
+  database.orders.get(orderId).status = 'picked_up';
+  const baseUrl = await startServer(t, database.pool, { authenticated: true });
+
+  const invalidReason = await fetch(
+    `${baseUrl}/api/v1/me/orders/${orderId}/cancel`,
+    jsonRequest('POST', { reason: '  ' }),
+  );
+  assert.equal(invalidReason.status, 400);
+
+  const incompatible = await fetch(
+    `${baseUrl}/api/v1/me/orders/${orderId}/cancel`,
+    jsonRequest('POST', { reason: 'Changed my mind' }),
+  );
+  assert.equal(incompatible.status, 409);
+  assert.equal((await incompatible.json()).error.code, 'ORDER_NOT_CANCELLABLE');
+  assert.equal(database.orders.get(orderId).status, 'picked_up');
 });
 
 test('creates, lists, updates, and deletes customer-owned saved addresses', async (t) => {

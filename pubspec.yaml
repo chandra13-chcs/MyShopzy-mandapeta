@@ -41,6 +41,7 @@ dependencies:
   geocoding: ^3.0.0
   flutter_polyline_points: ^2.0.0
   audioplayers: ^6.8.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

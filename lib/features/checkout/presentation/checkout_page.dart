@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/config/business_hours.dart';
 import '../../../shared/data/customer_api.dart';
 import '../../../shared/data/money_formatter.dart';
 import '../../../shared/presentation/motion.dart';
@@ -17,7 +18,6 @@ import '../../orders/presentation/order_tracking_page.dart';
 import '../../profile/models/saved_address.dart';
 import '../../profile/presentation/dues_page.dart';
 import '../../profile/presentation/outstanding_dues_banner.dart';
-import 'delivery_unavailable_page.dart';
 
 class CheckoutPage extends StatefulWidget {
   const CheckoutPage({
@@ -48,13 +48,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
   ApiCartQuote? _backendQuote;
   String? _quoteError;
   bool _quoteLoading = false;
+  int _quoteRequestGeneration = 0;
   int _outstandingMinor = 0;
   String? _blockingDueOrderId;
   String? _duesError;
   bool _duesLoading = false;
   bool _storeClosedByServer = false;
   bool _placingOrder = false;
-  static const _storeClosedMessage = 'Store is closed. Orders open at 7:00 AM';
+  static const _storeClosedMessage =
+      'Store is closed. Orders are accepted between '
+      '${BusinessHours.openingLabel} and ${BusinessHours.closingLabel}.';
   final _couponCodeController = TextEditingController();
   final _receiverNameController = TextEditingController();
   final _receiverMobileController = TextEditingController();
@@ -79,10 +82,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
   ];
   bool _savedAddressesLoading = false;
   String? _savedAddressesError;
-  bool _serviceabilityChecking = false;
-  ServiceabilityResponse? _serviceabilityResponse;
-  String? _serviceabilityError;
-
   CheckoutDeliveryAddress? _confirmedDeliveryAddress;
   bool _currentLocationSuggested = false;
   bool _someoneElseSelected = false;
@@ -146,9 +145,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _savedAddresses = [];
       _savedAddressesLoading = true;
       Future<void>.delayed(Duration.zero, _loadSavedAddresses);
-    }
-    if (_isBackendCart) {
-      Future<void>.delayed(Duration.zero, _refreshBackendQuote);
     }
     if (CustomerApi.instance.isConfigured) {
       Future<void>.delayed(Duration.zero, _refreshDues);
@@ -248,8 +244,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   void _handleCartChanged() {
+    _quoteRequestGeneration++;
     if (_isBackendCart) {
-      Future<void>.delayed(Duration.zero, _refreshBackendQuote);
+      unawaited(_refreshBackendQuote());
     } else if (_cartStore.items.isEmpty) {
       _backendQuote = null;
       _quoteError = null;
@@ -268,23 +265,70 @@ class _CheckoutPageState extends State<CheckoutPage> {
     });
   }
 
-  Future<void> _refreshBackendQuote() async {
+  String _quoteAddressKey(CheckoutDeliveryAddress address) => [
+    address.id,
+    address.formattedAddress,
+    address.pincode ?? '',
+    address.latitude?.toString() ?? '',
+    address.longitude?.toString() ?? '',
+  ].join('|');
+
+  void _clearBackendQuote() {
+    _quoteRequestGeneration++;
+    _backendQuote = null;
+    _quoteError = null;
+    _quoteLoading = false;
+  }
+
+  Future<void> _refreshBackendQuote([
+    CheckoutDeliveryAddress? selectedAddress,
+  ]) async {
     if (!mounted || !_isBackendCart) return;
+    final requestGeneration = ++_quoteRequestGeneration;
+    final address = selectedAddress ?? _confirmedDeliveryAddress;
+    final key = address == null ? null : _quoteAddressKey(address);
+    if (address == null ||
+        address.latitude == null ||
+        address.longitude == null ||
+        address.pincode == null ||
+        address.pincode!.trim().isEmpty) {
+      setState(() {
+        _backendQuote = null;
+        _quoteLoading = false;
+        _quoteError = address == null ? null : 'This address needs a valid pincode and map coordinates to calculate delivery.';
+      });
+      return;
+    }
     setState(() {
       _quoteLoading = true;
       _quoteError = null;
       _backendQuote = null;
     });
     try {
-      final quote = await CustomerApi.instance.getCheckoutQuote();
-      if (!mounted) return;
+      final quote = await CustomerApi.instance.getCheckoutQuote(
+        formattedAddress: address.formattedAddress,
+        pincode: address.pincode!,
+        latitude: address.latitude!,
+        longitude: address.longitude!,
+      );
+      if (!mounted ||
+          requestGeneration != _quoteRequestGeneration ||
+          _confirmedDeliveryAddress == null ||
+          _quoteAddressKey(_confirmedDeliveryAddress!) != key) {
+        return;
+      }
       setState(() {
         _backendQuote = quote;
         _storeClosedByServer = !quote.storeOpen;
         _quoteLoading = false;
       });
     } on CustomerApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted ||
+          requestGeneration != _quoteRequestGeneration ||
+          _confirmedDeliveryAddress == null ||
+          _quoteAddressKey(_confirmedDeliveryAddress!) != key) {
+        return;
+      }
       setState(() {
         _backendQuote = null;
         _quoteError = error.message;
@@ -378,62 +422,37 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     const SizedBox(height: 16),
                   ],
                   _buildDeliverySection(),
-                  if (_serviceabilityChecking)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 10),
+                  if (_isBackendCart &&
+                      _backendQuote?.isDeliverable == false) ...[
+                    Container(
+                      key: const ValueKey('checkout-delivery-unavailable'),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF4E5),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFFFD9A8)),
+                      ),
                       child: Row(
                         children: [
-                          SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                          SizedBox(width: 9),
-                          Text(
-                            'Checking delivery availability…',
-                            style: TextStyle(
-                              color: _secondaryText,
-                              fontSize: 12,
+                          const Expanded(
+                            child: Text(
+                              "Sorry! We don't deliver here yet",
+                              style: TextStyle(
+                                color: _mainText,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
+                          ),
+                          TextButton(
+                            onPressed: _showDeliveryOptions,
+                            child: const Text('Change Location'),
                           ),
                         ],
                       ),
                     ),
-                  if (_serviceabilityError != null) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        _serviceabilityError!,
-                        key: const ValueKey('checkout-serviceability-error'),
-                        style: const TextStyle(
-                          color: Color(0xFFA85B5B),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    if (_confirmedDeliveryAddress != null)
-                      TextButton(
-                        onPressed: _serviceabilityChecking
-                            ? null
-                            : () => _checkServiceability(
-                                _confirmedDeliveryAddress!,
-                              ),
-                        child: const Text('Retry delivery check'),
-                      ),
+                    const SizedBox(height: 12),
                   ],
-                  if (_serviceabilityResponse?.isDeliverable ?? false)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        _serviceabilityResponse!.message,
-                        key: const ValueKey('checkout-serviceable-message'),
-                        style: const TextStyle(
-                          color: _green,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
                   const SizedBox(height: 16),
                   _buildDeliveryInstructionsSection(),
                   const SizedBox(height: 16),
@@ -450,7 +469,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         ? _quoteError ??
                               (_quoteLoading
                                   ? 'Refreshing server checkout quote…'
-                                  : 'Backend quote · coupons and delivery fees are not configured.')
+                                  : _backendQuote?.isDeliverable == false
+                                  ? 'Choose a different delivery location to continue.'
+                                  : _backendQuote?.message ??
+                                        'Select a delivery address to get a server quote.')
                         : 'Demo checkout · delivery and discounts are illustrative.',
                     style: TextStyle(
                       color: _quoteError == null
@@ -461,7 +483,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ),
                   if (_isBackendCart && _quoteError != null)
                     TextButton(
-                      onPressed: _quoteLoading ? null : _refreshBackendQuote,
+                      onPressed: _quoteLoading
+                          ? null
+                          : () => unawaited(_refreshBackendQuote()),
                       child: const Text('Retry quote'),
                     ),
                 ],
@@ -477,14 +501,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
           final hasConfirmedAddress = _confirmedDeliveryAddress != null;
           final orderOutcomeUnknown =
               _isBackendCart && CustomerApi.instance.orderOutcomeUnknown;
-          final serviceabilityRequired = CustomerApi.instance.isConfigured;
           final canPlaceOrder =
               hasItems &&
               hasConfirmedAddress &&
-              (!serviceabilityRequired ||
-                  _serviceabilityResponse?.isDeliverable == true) &&
-              !_serviceabilityChecking &&
-              (!_isBackendCart || _backendQuote != null) &&
+              (!_isBackendCart ||
+                  (_backendQuote != null &&
+                      _backendQuote!.isDeliverable &&
+                      _backendQuote!.totalMinor != null)) &&
               (!_isBackendCart || _backendQuote?.storeOpen != false) &&
               _outstandingMinor <= 0 &&
               !_storeClosedByServer &&
@@ -930,6 +953,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 subtitle: 'Use my current location · Demo suggestion only',
                 onTap: () {
                   setState(() {
+                    _clearBackendQuote();
                     _currentLocationSuggested = true;
                     _someoneElseSelected = false;
                     _confirmedDeliveryAddress = null;
@@ -1004,7 +1028,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       _someoneElseSelected = false;
                     });
                     Navigator.of(sheetContext).pop();
-                    unawaited(_checkServiceability(address));
+                    unawaited(_refreshBackendQuote(address));
                   },
                 ),
               _deliveryOptionTile(
@@ -1013,6 +1037,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 subtitle: 'Enter receiver and delivery details',
                 onTap: () {
                   setState(() {
+                    _clearBackendQuote();
                     _confirmedDeliveryAddress = null;
                     _currentLocationSuggested = false;
                     _someoneElseSelected = true;
@@ -1301,7 +1326,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ],
                 const Divider(height: 22, color: _border),
                 _priceRow(
-                  'Subtotal',
+                  'Merchandise Subtotal',
                   _displayPrice(
                     _isBackendCart
                         ? _backendQuote?.itemSubtotalMinor
@@ -1666,12 +1691,21 @@ class _CheckoutPageState extends State<CheckoutPage> {
       child: Column(
         children: [
           _priceRow(
-            'Subtotal',
+            'Merchandise Subtotal',
             _displayPrice(
               _isBackendCart
                   ? _backendQuote?.itemSubtotalMinor
                   : _subtotalInPaise,
             ),
+          ),
+          const SizedBox(height: 10),
+          _priceRow(
+            'Delivery Distance',
+            _isBackendCart
+                ? _backendQuote?.distanceMeters == null
+                      ? _displayPrice(null)
+                      : '${(_backendQuote!.distanceMeters! / 1000).toStringAsFixed(2)} km'
+                : '—',
           ),
           const SizedBox(height: 10),
           _priceRow(
@@ -1681,6 +1715,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ? _backendQuote?.deliveryFeeMinor
                   : _deliveryChargeInPaise,
             ),
+          ),
+          const SizedBox(height: 10),
+          _priceRow(
+            'Platform Fee',
+            _isBackendCart
+                ? _displayPrice(_backendQuote?.platformFeeMinor)
+                : '—',
+            valueKey: const ValueKey('checkout-platform-fee-value'),
           ),
           const SizedBox(height: 10),
           _priceRow(
@@ -1705,7 +1747,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             alignment: Alignment.centerLeft,
             child: Text(
               _isBackendCart
-                  ? 'The server quote uses current catalog prices. Delivery fees and coupons are not configured.'
+                  ? 'Prices and charges are calculated by the server for the selected location.'
                   : 'Delivery charge is a demo value; serviceability and final '
                         'pricing are not checked here.',
               style: const TextStyle(
@@ -1877,7 +1919,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _someoneElseSelected = false;
       _currentLocationSuggested = false;
     });
-    unawaited(_checkServiceability(_confirmedDeliveryAddress!));
+    unawaited(_refreshBackendQuote(_confirmedDeliveryAddress!));
   }
 
   void _saveNewAddress() {
@@ -1899,7 +1941,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _someoneElseSelected = false;
     });
     widget.onAddressSelected?.call(address);
-    unawaited(_checkServiceability(address));
+    unawaited(_refreshBackendQuote(address));
   }
 
   void _confirmAddress(CheckoutDeliveryAddress address) {
@@ -1909,59 +1951,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _someoneElseSelected = false;
     });
     widget.onAddressSelected?.call(address);
-    unawaited(_checkServiceability(address));
-  }
-
-  Future<ServiceabilityResponse?> _checkServiceability(
-    CheckoutDeliveryAddress address,
-  ) async {
-    if (!CustomerApi.instance.isConfigured) return null;
-    final latitude = address.latitude;
-    final longitude = address.longitude;
-    final pincode = address.pincode?.trim();
-    if (latitude == null ||
-        longitude == null ||
-        pincode == null ||
-        pincode.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _serviceabilityResponse = null;
-          _serviceabilityError =
-              'This address needs a 6-digit pincode and map coordinates '
-              'before delivery can be checked.';
-        });
-      }
-      return null;
-    }
-
-    setState(() {
-      _serviceabilityChecking = true;
-      _serviceabilityError = null;
-      _serviceabilityResponse = null;
-    });
-    try {
-      final result = await CustomerApi.instance.checkLocationServiceability(
-        latitude,
-        longitude,
-        pincode,
-      );
-      if (!mounted) return result;
-      setState(() => _serviceabilityResponse = result);
-      if (!result.isDeliverable) {
-        await Navigator.of(context).push<void>(
-          AppPageRoute<void>.builder(
-            builder: (context) =>
-                ServiceabilityUnavailablePage(message: result.message),
-          ),
-        );
-      }
-      return result;
-    } on CustomerApiException catch (error) {
-      if (mounted) setState(() => _serviceabilityError = error.message);
-      return null;
-    } finally {
-      if (mounted) setState(() => _serviceabilityChecking = false);
-    }
+    unawaited(_refreshBackendQuote(address));
   }
 
   Future<void> _placeOrder() async {
@@ -1974,13 +1964,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
       return;
     }
     final address = _confirmedDeliveryAddress!;
-    if (_isBackendCart && _backendQuote == null) return;
+    if (_isBackendCart &&
+        (_backendQuote == null || !_backendQuote!.isDeliverable)) {
+      return;
+    }
     setState(() => _placingOrder = true);
     try {
-      if (CustomerApi.instance.isConfigured) {
-        final serviceability = await _checkServiceability(address);
-        if (serviceability?.isDeliverable != true) return;
-      }
       final deliveryAddress = <String, Object?>{
         'label': address.addressType,
         'formattedAddress': address.formattedAddress,

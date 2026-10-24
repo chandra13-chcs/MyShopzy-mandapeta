@@ -8,6 +8,7 @@ test('uses development defaults and permits health-only configuration', () => {
     port: 3000,
     nodeEnv: 'development',
     database: null,
+    googleMapsApiKey: null,
     developmentCustomerOtp: null,
     developmentCustomerSessionSecret: null,
     customerOtpPepper: null,
@@ -237,4 +238,13 @@ test('rejects insecure Auth0 issuers and non-origin Super Admin URLs', () => {
     }),
     /SUPER_ADMIN_ORIGIN must be a valid HTTPS origin/,
   );
+});
+
+test('loads the Google Maps key into backend-only configuration', () => {
+  const config = loadConfig({
+    GOOGLE_MAPS_API_KEY: '  backend-test-google-maps-key  ',
+  });
+
+  assert.equal(config.googleMapsApiKey, 'backend-test-google-maps-key');
+  assert.equal(Object.isFrozen(config), true);
 });

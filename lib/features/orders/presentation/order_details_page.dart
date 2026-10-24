@@ -312,7 +312,8 @@ class OrderDetailsPage extends StatelessWidget {
           for (var index = 0; index < order.items.length; index++) ...[
             if (index > 0) const Divider(height: 20, color: _border),
             fadeSlideItem(
-              itemKey: 'order-detail-item-${order.items[index].productId ?? order.items[index].name}-$index',
+              itemKey:
+                  'order-detail-item-${order.items[index].productId ?? order.items[index].name}-$index',
               index: index,
               child: _OrderItemRow(item: order.items[index]),
             ),
@@ -569,6 +570,7 @@ class OrderDetailsPage extends StatelessWidget {
             itemNames: order.items
                 .map((item) => '${item.name} × ${item.quantity}')
                 .toList(growable: false),
+            placedAt: order.isBackendData ? order.dateTime : null,
             isDemo: !order.isBackendData,
           ),
         ),
@@ -840,10 +842,9 @@ class OrderDetailsPage extends StatelessWidget {
       );
     }
     _showReorderMessage(context, feedback.toString());
-    Navigator.of(context)
-        .push(
-          AppPageRoute<void>.builder(builder: (context) => const CartPage()),
-        );
+    Navigator.of(
+      context,
+    ).push(AppPageRoute<void>.builder(builder: (context) => const CartPage()));
   }
 
   String _normalizeIdentity(String value) {
@@ -950,6 +951,11 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
   String? _error;
   bool _offlineError = false;
   bool _loading = false;
+  bool _cancelling = false;
+  String? _cancellationError;
+  Timer? _cancellationTimer;
+  final Stopwatch _cancellationElapsed = Stopwatch();
+  Duration? _remainingAtServerSync;
 
   @override
   void initState() {
@@ -967,7 +973,13 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
       final detail = await CustomerApi.instance.getOrderDetails(
         widget.order.orderId,
       );
-      if (mounted) setState(() => _detail = detail);
+      if (mounted) {
+        setState(() {
+          _detail = detail;
+          _cancellationError = null;
+        });
+        _startCancellationCountdown(detail);
+      }
     } on CustomerApiException catch (error) {
       if (mounted) {
         setState(() {
@@ -979,6 +991,45 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _cancellationTimer?.cancel();
+    _cancellationElapsed.stop();
+    super.dispose();
+  }
+
+  void _startCancellationCountdown(ApiCustomerOrderDetail detail) {
+    _cancellationTimer?.cancel();
+    _cancellationElapsed
+      ..stop()
+      ..reset();
+    _remainingAtServerSync = null;
+    final deadline = DateTime.tryParse(detail.cancellationDeadlineAt ?? '');
+    final serverNow = DateTime.tryParse(detail.serverNow ?? '');
+    if (!detail.cancellationEligible || deadline == null || serverNow == null) {
+      return;
+    }
+    final remaining = deadline.difference(serverNow);
+    if (remaining <= Duration.zero) return;
+    _remainingAtServerSync = remaining;
+    _cancellationElapsed.start();
+    _cancellationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_cancellationRemaining == Duration.zero) {
+        _cancellationTimer?.cancel();
+        _cancellationElapsed.stop();
+      }
+      setState(() {});
+    });
+  }
+
+  Duration? get _cancellationRemaining {
+    final initial = _remainingAtServerSync;
+    if (initial == null) return null;
+    final remaining = initial - _cancellationElapsed.elapsed;
+    return remaining.isNegative ? Duration.zero : remaining;
   }
 
   @override
@@ -998,27 +1049,27 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
           ? const Center(child: SkeletonBox(height: 190, radius: 20))
           : _error != null
           ? _offlineError
-              ? Center(child: OfflineErrorState(onRetry: _load))
-              : Center(
-              child: Padding(
-                padding: const EdgeInsets.all(28),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: _muted),
+                ? Center(child: OfflineErrorState(onRetry: _load))
+                : Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: _muted),
+                          ),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: _loading ? null : _load,
+                            child: const Text('Retry order details'),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: _loading ? null : _load,
-                      child: const Text('Retry order details'),
-                    ),
-                  ],
-                ),
-              ),
-            )
+                  )
           : _buildDetails(_detail!),
     );
   }
@@ -1040,13 +1091,28 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
             child: _section(
               title: detail.shopName,
               children: [
-              _row('Order ID', detail.id),
-              _row('Status', detail.status),
-              _row('Placed at', detail.placedAt),
+                _row('Order ID', detail.id),
+                _row('Status', detail.status),
+                _row('Placed at', detail.placedAt),
+                if (detail.cancellationReason != null)
+                  _row('Cancellation reason', detail.cancellationReason!),
               ],
             ),
           ),
           const SizedBox(height: 14),
+          if (orderTrackingStatusFromApi(detail.status) != null) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _openBackendTracking(detail),
+                icon: const Icon(Icons.delivery_dining_rounded),
+                label: const Text('Track Order'),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+          _buildCancellationAction(detail),
+          if (_shouldShowCancellationAction(detail)) const SizedBox(height: 14),
           _section(
             title: 'Items',
             children: [
@@ -1114,6 +1180,226 @@ class _BackendOrderDetailsPageState extends State<BackendOrderDetailsPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _openBackendTracking(ApiCustomerOrderDetail detail) async {
+    final status = orderTrackingStatusFromApi(detail.status);
+    if (status == null) return;
+    final address = detail.deliveryAddressSnapshot;
+    final formattedAddress = address['formattedAddress'] ?? address['address'];
+    final label = address['label'];
+    await Navigator.of(context).push<void>(
+      AppPageRoute<void>.builder(
+        builder: (context) => OrderTrackingPage(
+          order: OrderTrackingData(
+            orderId: detail.id,
+            storeName: detail.shopName,
+            items:
+                '${detail.items.length} '
+                '${detail.items.length == 1 ? 'item' : 'items'}',
+            total: _formatMinor(detail.totalMinor, detail.currency),
+            status: status,
+            deliveryAddressLabel: label is String ? label : 'Delivery address',
+            deliveryAddress: formattedAddress is String
+                ? formattedAddress
+                : 'Address not provided',
+            itemNames: detail.items
+                .map((item) => '${item.name} × ${item.quantity}')
+                .toList(growable: false),
+            partnerName: detail.rider?.name,
+            partnerPhone: detail.rider?.phone,
+            riderLocation: detail.rider?.location,
+            placedAt: detail.placedAt,
+            updatedAt: detail.updatedAt,
+            isDemo: false,
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool _statusAllowsCancellation(ApiCustomerOrderDetail detail) => const {
+    'placed',
+    'confirmed',
+    'preparing',
+  }.contains(detail.status.toLowerCase());
+
+  bool _shouldShowCancellationAction(ApiCustomerOrderDetail detail) =>
+      !_cancelling &&
+      _statusAllowsCancellation(detail) &&
+      detail.cancellationEligible &&
+      _cancellationRemaining != null &&
+      _cancellationRemaining! > Duration.zero;
+
+  Widget _buildCancellationAction(ApiCustomerOrderDetail detail) {
+    if (!_statusAllowsCancellation(detail)) return const SizedBox.shrink();
+    final remaining = _cancellationRemaining;
+    final canCancel =
+        detail.cancellationEligible &&
+        remaining != null &&
+        remaining > Duration.zero;
+    final hasServerTiming =
+        DateTime.tryParse(detail.cancellationDeadlineAt ?? '') != null &&
+        DateTime.tryParse(detail.serverNow ?? '') != null;
+    final label = canCancel
+        ? 'Cancel order · ${_formatRemaining(remaining)} remaining'
+        : hasServerTiming
+        ? 'Cancellation window closed'
+        : 'Cancellation eligibility could not be verified';
+    return _section(
+      title: 'Cancellation',
+      children: [
+        if (_cancellationError != null) ...[
+          Text(
+            _cancellationError!,
+            style: const TextStyle(color: Color(0xFFA85B5B), fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _loading ? null : _load,
+            child: const Text('Refresh order status'),
+          ),
+        ],
+        if (canCancel)
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _cancelling
+                  ? null
+                  : () => _confirmBackendCancellation(detail),
+              icon: _cancelling
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.cancel_outlined),
+              label: Text(_cancelling ? 'Cancelling…' : label),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF914747),
+                side: const BorderSide(color: Color(0xFF914747)),
+              ),
+            ),
+          )
+        else
+          Text(
+            label,
+            style: const TextStyle(
+              color: _muted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _formatRemaining(Duration remaining) {
+    final seconds = (remaining.inMilliseconds / 1000).ceil();
+    final minutes = (seconds ~/ 60).toString().padLeft(2, '0');
+    final remainder = (seconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$remainder';
+  }
+
+  Future<void> _confirmBackendCancellation(
+    ApiCustomerOrderDetail detail,
+  ) async {
+    if (_cancelling || !_shouldShowCancellationAction(detail)) return;
+    final reasonController = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        String? selectedReason;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final otherReason = reasonController.text.trim();
+            final canConfirm =
+                selectedReason != null &&
+                (selectedReason != 'Other' || otherReason.isNotEmpty);
+            return AlertDialog(
+              title: const Text('Cancel order?'),
+              content: SingleChildScrollView(
+                child: RadioGroup<String>(
+                  groupValue: selectedReason,
+                  onChanged: (value) =>
+                      setDialogState(() => selectedReason = value),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final option
+                          in OrderDetailsPage._cancellationReasons)
+                        RadioListTile<String>(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(option),
+                          value: option,
+                        ),
+                      if (selectedReason == 'Other')
+                        TextField(
+                          controller: reasonController,
+                          onChanged: (_) => setDialogState(() {}),
+                          maxLength: 293,
+                          decoration: const InputDecoration(
+                            labelText: 'Please specify',
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Keep Order'),
+                ),
+                FilledButton(
+                  onPressed: canConfirm
+                      ? () => Navigator.of(dialogContext).pop(
+                          selectedReason == 'Other'
+                              ? 'Other: ${reasonController.text.trim()}'
+                              : selectedReason!,
+                        )
+                      : null,
+                  child: const Text('Confirm cancellation'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    reasonController.dispose();
+    if (reason == null || !mounted) return;
+
+    setState(() {
+      _cancelling = true;
+      _cancellationError = null;
+    });
+    try {
+      final result = await CustomerApi.instance.cancelOrder(detail.id, reason);
+      if (result.id != detail.id || result.reason != reason) {
+        throw const FormatException('Invalid cancellation response.');
+      }
+      if (mounted) Navigator.of(context).pop(true);
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _cancellationError = error.code == 'CANCELLATION_WINDOW_CLOSED'
+              ? 'Cancellation window closed. This order was not cancelled.'
+              : error.message;
+          if (error.code == 'CANCELLATION_WINDOW_CLOSED') {
+            _remainingAtServerSync = Duration.zero;
+          }
+        });
+      }
+    } on FormatException {
+      if (mounted) {
+        setState(() {
+          _cancellationError = 'The server response could not confirm cancellation. Refresh order status before retrying.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
   }
 
   Widget _section({required String title, required List<Widget> children}) {

@@ -670,6 +670,13 @@ function createCustomerAccountRouter({
            o.total_minor::text AS total_minor,
            o.placed_at,
            o.updated_at,
+           o.cancellation_reason,
+           o.placed_at + interval '2 minutes' AS cancellation_deadline_at,
+           statement_timestamp() AS server_now,
+           (
+             o.status IN ('placed', 'confirmed', 'preparing')
+             AND statement_timestamp() < o.placed_at + interval '2 minutes'
+           ) AS cancellation_eligible,
            (SELECT count(*)::integer
             FROM app.order_items AS oi
             WHERE oi.order_id = o.id) AS item_count
@@ -713,12 +720,33 @@ function createCustomerAccountRouter({
            o.total_minor::text AS total_minor,
            o.delivery_address_snapshot,
            o.placed_at,
-           o.updated_at
+           o.updated_at,
+           o.cancellation_reason,
+           o.placed_at + interval '2 minutes' AS cancellation_deadline_at,
+           statement_timestamp() AS server_now,
+           (
+             o.status IN ('placed', 'confirmed', 'preparing')
+             AND statement_timestamp() < o.placed_at + interval '2 minutes'
+           ) AS cancellation_eligible,
+           CASE WHEN rider_user.id IS NULL THEN NULL
+             ELSE jsonb_build_object(
+               'name', rider_user.display_name,
+               'phone', rider_user.phone,
+               'latitude', rider.current_latitude,
+               'longitude', rider.current_longitude
+             )
+           END AS rider
          FROM app.orders AS o
          JOIN app.customers AS c ON c.user_id = o.customer_user_id
          JOIN app.users AS u ON u.id = c.user_id
          JOIN app.shops AS s
            ON s.id = o.shop_id AND s.partner_id = o.partner_id
+         LEFT JOIN app.riders AS rider
+           ON rider.user_id = o.rider_id AND rider.status = 'active'
+         LEFT JOIN app.users AS rider_user
+           ON rider_user.id = rider.user_id
+           AND rider_user.system_role = 'rider'
+           AND rider_user.status = 'active'
          WHERE o.id = $1
            AND o.customer_user_id = $2
            AND u.system_role = 'customer'
@@ -748,6 +776,90 @@ function createCustomerAccountRouter({
       return res.status(200).json({
         data: { ...orderResult.rows[0], items: itemResult.rows },
       });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/me/orders/:orderId/cancel', async (req, res, next) => {
+    const id = parseUuid(req.params.orderId, 'orderId');
+    if (id.error) return sendError(res, new ApiError(400, 'INVALID_REQUEST', id.error));
+    const body = parseObjectBody(req.body, new Set(['reason']));
+    if (body.error) return sendError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
+    const reason = parseText(body.value.reason, 'reason', { maxLength: 300 });
+    if (reason.error) {
+      return sendError(res, new ApiError(400, 'INVALID_REQUEST', reason.error));
+    }
+    if (!databasePool) return sendDatabaseUnavailable(res);
+
+    try {
+      const cancellation = await databasePool.query(
+        `UPDATE app.orders AS o
+         SET status = 'cancelled',
+             cancellation_reason = $3,
+             updated_at = clock_timestamp()
+         WHERE o.id = $1
+           AND o.customer_user_id = $2
+           AND o.status IN ('placed', 'confirmed', 'preparing')
+           AND o.placed_at + interval '2 minutes' > clock_timestamp()
+           AND EXISTS (
+             SELECT 1
+             FROM app.customers AS c
+             JOIN app.users AS u ON u.id = c.user_id
+             WHERE c.user_id = o.customer_user_id
+               AND u.system_role = 'customer'
+               AND u.status = 'active'
+           )
+         RETURNING o.id, o.status, o.cancellation_reason, o.placed_at,
+                   o.placed_at + interval '2 minutes' AS cancellation_deadline_at,
+                   clock_timestamp() AS server_now,
+                   false AS cancellation_eligible`,
+        [id.value, req.customerUserId, reason.value],
+      );
+      if (cancellation.rows.length === 1) {
+        return res.status(200).json({ data: cancellation.rows[0] });
+      }
+
+      const current = await databasePool.query(
+        `SELECT o.status, o.placed_at, clock_timestamp() AS server_now
+         FROM app.orders AS o
+         JOIN app.customers AS c ON c.user_id = o.customer_user_id
+         JOIN app.users AS u ON u.id = c.user_id
+         WHERE o.id = $1
+           AND o.customer_user_id = $2
+           AND u.system_role = 'customer'
+           AND u.status = 'active'`,
+        [id.value, req.customerUserId],
+      );
+      if (current.rows.length === 0) {
+        return sendError(
+          res,
+          new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found.'),
+        );
+      }
+      const order = current.rows[0];
+      if (
+        ['placed', 'confirmed', 'preparing'].includes(order.status) &&
+        new Date(order.placed_at).getTime() + 120_000 <=
+          new Date(order.server_now).getTime()
+      ) {
+        return sendError(
+          res,
+          new ApiError(
+            409,
+            'CANCELLATION_WINDOW_CLOSED',
+            'The cancellation window has closed.',
+          ),
+        );
+      }
+      return sendError(
+        res,
+        new ApiError(
+          409,
+          'ORDER_NOT_CANCELLABLE',
+          'This order can no longer be cancelled.',
+        ),
+      );
     } catch (error) {
       return next(error);
     }
