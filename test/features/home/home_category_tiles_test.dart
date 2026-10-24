@@ -27,7 +27,9 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomePage(clock: _middayClock)),
+    );
     await pumpHomeTransitions(tester);
 
     const destinations = {
@@ -72,6 +74,14 @@ void main() {
       'Parcel': 'assets/category_tiles/parcel tiles.jpeg',
       'Local Stores': 'assets/category_tiles/local stores tiles.jpeg',
     };
+    const categoryKeys = {
+      'Restaurants': 'restaurants',
+      'Bakery': 'bakery',
+      'Meat Only Chicken': 'meat_only_chicken',
+      'Fruits & Vegetables': 'fruits_vegetables',
+      'Parcel': 'parcel',
+      'Local Stores': 'local_stores',
+    };
     for (final entry in categoryAssets.entries) {
       final imageFinder = find.byWidgetPredicate(
         (widget) => widget is Image && widget.semanticLabel == entry.key,
@@ -97,10 +107,19 @@ void main() {
       final imageBounds = tester.getRect(imageFinder);
       final tileBounds = tester.getRect(tile);
       expect(imageBounds, tileBounds);
+      final imageContainer = tester.widget<Image>(
+        find.byKey(ValueKey('home-category-image-${categoryKeys[entry.key]}')),
+      );
+      expect(imageContainer.fit, BoxFit.contain);
+      final tileContainer = tester.widget<AnimatedContainer>(
+        find.byKey(ValueKey('home-category-tile-${categoryKeys[entry.key]}')),
+      );
+      final tileDecoration = tileContainer.decoration! as BoxDecoration;
+      expect(tileDecoration.borderRadius, BorderRadius.circular(12));
+      expect(tileDecoration.boxShadow, isNotEmpty);
+      expect(tileDecoration.border, isNotNull);
+      expect(find.text(entry.key), findsNothing);
       expect(tileBounds.width / tileBounds.height, closeTo(1.15, 0.02));
-    }
-    for (final categoryName in categoryAssets.keys) {
-      expect(find.text(categoryName), findsNothing);
     }
     for (final subtitle in [
       'Hot & tasty',
@@ -190,7 +209,9 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomePage(clock: _middayClock)),
+    );
     await pumpHomeTransitions(tester);
 
     final headerFinder = find.byKey(const ValueKey('home-black-header'));
@@ -244,7 +265,9 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomePage(clock: _middayClock)),
+    );
 
     final biryaniTile = find.byKey(
       const ValueKey('home-restaurant-product-demo-chicken-biryani'),
@@ -254,6 +277,8 @@ void main() {
       350,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(biryaniTile);
+    await tester.pump();
     await tester.tap(biryaniTile);
     await tester.pumpAndSettle();
 
@@ -274,7 +299,9 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomePage(clock: _middayClock)),
+    );
 
     final groceryTile = find.byKey(
       const ValueKey('home-grocery-product-home-dairy-milk'),
@@ -358,7 +385,9 @@ void main() {
       }),
     );
 
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomePage(clock: _middayClock)),
+    );
     await pumpHomeTransitions(tester);
     expect(
       tester.takeException(),
@@ -453,7 +482,9 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(320, 640));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomePage(clock: _middayClock)),
+    );
     await pumpHomeTransitions(tester);
 
     final categoryGrid = tester.widget<GridView>(find.byType(GridView));
@@ -470,7 +501,9 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomePage(clock: _middayClock)),
+    );
 
     final finalDiscoverySection = find.text('Cooking Oils');
     expect(finalDiscoverySection, findsNothing);
@@ -484,6 +517,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+DateTime _middayClock() => DateTime(2026, 10, 24, 12);
 
 Future<void> pumpHomeTransitions(WidgetTester tester) async {
   await tester.pump();

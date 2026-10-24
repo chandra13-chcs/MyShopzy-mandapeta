@@ -2986,6 +2986,13 @@ class _HomeServiceGrid extends StatefulWidget {
 }
 
 class _HomeServiceGridState extends State<_HomeServiceGrid> {
+  static const _categoryRingColors = [
+    Color(0xFF2E9B62),
+    Color(0xFFED8B3A),
+    Color(0xFF8964C8),
+    Color(0xFF438BCB),
+  ];
+
   late Future<List<_Service>> _servicesFuture;
 
   @override
@@ -3111,6 +3118,8 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                   index: index,
                   child: _HomeCategoryTile(
                     service: service,
+                    ringColor:
+                        _categoryRingColors[index % _categoryRingColors.length],
                     cacheWidth:
                         (tileWidth * MediaQuery.devicePixelRatioOf(context))
                             .round(),
@@ -3129,11 +3138,13 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
 class _HomeCategoryTile extends StatefulWidget {
   const _HomeCategoryTile({
     required this.service,
+    required this.ringColor,
     required this.cacheWidth,
     required this.onTap,
   });
 
   final _Service service;
+  final Color ringColor;
   final int cacheWidth;
   final VoidCallback onTap;
 
@@ -3166,31 +3177,40 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
         duration: duration,
         curve: Curves.easeOutCubic,
         child: AnimatedContainer(
+          key: ValueKey('home-category-tile-${widget.service.key}'),
           duration: duration,
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
             color: AppTheme.white,
             borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: widget.ringColor, width: 2.5),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: _pressed ? 0.045 : 0.08),
-                blurRadius: _pressed ? 4 : 9,
+                color: widget.ringColor.withValues(alpha: 0.18),
+                blurRadius: _pressed ? 4 : 8,
                 offset: Offset(0, _pressed ? 1 : 3),
               ),
             ],
           ),
+          padding: const EdgeInsets.all(2),
           child: Material(
             color: AppTheme.white,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(9),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               key: ValueKey('home-category-${widget.service.key}'),
+              borderRadius: BorderRadius.circular(9),
+              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+              splashColor: Colors.transparent,
               onTap: widget.onTap,
               onHighlightChanged: _setPressed,
               child: Column(
                 children: [
                   Expanded(
                     child: Image.asset(
+                      key: ValueKey(
+                        'home-category-image-${widget.service.key}',
+                      ),
                       widget.service.assetPath,
                       width: double.infinity,
                       fit: BoxFit.contain,

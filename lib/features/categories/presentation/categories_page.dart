@@ -22,6 +22,12 @@ class CategoriesPage extends StatelessWidget {
 
   static const _ink = AppTheme.primaryText;
   static const _page = AppTheme.lightBackground;
+  static const _categoryRingColors = [
+    Color(0xFF2E9B62),
+    Color(0xFFED8B3A),
+    Color(0xFF8964C8),
+    Color(0xFF438BCB),
+  ];
 
   static const _freshCategories = [
     _CategoryTile(
@@ -237,6 +243,9 @@ class CategoriesPage extends StatelessWidget {
                   final tile = PressScaleFeedback(
                     child: _GridCategory(
                       category: category,
+                      ringColor:
+                          _categoryRingColors[index %
+                              _categoryRingColors.length],
                       onTap: _gridCategoryAction(context, category.name),
                     ),
                   );
@@ -369,9 +378,14 @@ class _SectionHeading extends StatelessWidget {
 }
 
 class _GridCategory extends StatelessWidget {
-  const _GridCategory({required this.category, required this.onTap});
+  const _GridCategory({
+    required this.category,
+    required this.ringColor,
+    required this.onTap,
+  });
 
   final _CategoryTile category;
+  final Color ringColor;
   final VoidCallback? onTap;
 
   @override
@@ -382,46 +396,32 @@ class _GridCategory extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final imageSize = constraints.maxWidth.clamp(48.0, 88.0).toDouble();
-          return Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFEBEEE9)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x120F2418),
-                  blurRadius: 8,
-                  offset: Offset(0, 3),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Center(
-                    child: _CategoryImage(category: category, size: imageSize),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 5, 6, 7),
-                    child: Text(
-                      category.name,
-                      textAlign: TextAlign.left,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: CategoriesPage._ink,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w500,
-                        height: 1.15,
-                      ),
+          return Column(
+            children: [
+              _CategoryImage(
+                category: category,
+                size: imageSize,
+                ringColor: ringColor,
+              ),
+              const SizedBox(height: 7),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Text(
+                    category.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: CategoriesPage._ink,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
                     ),
                   ),
-                ],
+                ),
               ),
-            ),
+            ],
           );
         },
       ),
@@ -430,36 +430,53 @@ class _GridCategory extends StatelessWidget {
 }
 
 class _CategoryImage extends StatelessWidget {
-  const _CategoryImage({required this.category, required this.size});
+  const _CategoryImage({
+    required this.category,
+    required this.size,
+    required this.ringColor,
+  });
 
   final _CategoryTile category;
   final double size;
+  final Color ringColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: ValueKey('category-image-${category.name}'),
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: category.color,
-        borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: const Color(0xFFDDE5DC)),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white,
+        border: Border.all(color: ringColor, width: 2.5),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x140F2418),
-            blurRadius: 6,
-            offset: Offset(0, 2),
+            color: ringColor.withValues(alpha: 0.18),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: category.imagePath == null
-          ? Icon(
-              category.icon,
-              color: const Color(0xFF34453A),
-              size: size * 0.47,
-            )
-          : Image.asset(category.imagePath!, fit: BoxFit.contain),
+      child: Center(
+        child: SizedBox(
+          width: size * 0.64,
+          height: size * 0.64,
+          child: category.imagePath == null
+              ? DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: category.color,
+                    borderRadius: BorderRadius.circular(size * 0.16),
+                  ),
+                  child: Icon(
+                    category.icon,
+                    color: const Color(0xFF34453A),
+                    size: size * 0.37,
+                  ),
+                )
+              : Image.asset(category.imagePath!, fit: BoxFit.contain),
+        ),
+      ),
     );
   }
 }

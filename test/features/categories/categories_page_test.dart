@@ -145,7 +145,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('category image tiles use square bordered cards without crop', (
+  testWidgets('category images use rounded square colored rings without crop', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
@@ -154,16 +154,21 @@ void main() {
     final image = tester.widget<Image>(imageFinder);
     expect(image.fit, BoxFit.contain);
 
-    final imageContainerFinder = find.ancestor(
-      of: imageFinder,
-      matching: find.byType(Container),
+    final imageContainerFinder = find.byKey(
+      const ValueKey('category-image-Fresh Vegetables'),
     );
-    final imageContainer = tester.widget<Container>(imageContainerFinder.first);
-    final imageSize = tester.getSize(imageContainerFinder.first);
+    final imageContainer = tester.widget<Container>(imageContainerFinder);
+    final imageSize = tester.getSize(imageContainerFinder);
     expect(imageSize.width, imageSize.height);
     final imageDecoration = imageContainer.decoration! as BoxDecoration;
+    expect(imageDecoration.borderRadius, BorderRadius.circular(14));
     expect(imageDecoration.border, isNotNull);
     expect(imageDecoration.boxShadow, isNotEmpty);
+
+    expect(
+      tester.widget<Text>(find.text('Fresh Vegetables')).textAlign,
+      TextAlign.center,
+    );
 
     final grid = tester.widget<SliverGrid>(find.byType(SliverGrid).first);
     final delegate =
