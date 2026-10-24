@@ -49,14 +49,27 @@ void main() {
     );
     await tester.pumpWidget(const MaterialApp(home: CartPage()));
 
-    expect(find.text('₹154'), findsNWidgets(3));
+    expect(find.text('₹154'), findsNWidgets(2));
+    expect(find.text('Merchandise subtotal'), findsOneWidget);
+    expect(find.text('Delivery fee'), findsOneWidget);
+    expect(find.text('Calculated after address selection'), findsOneWidget);
+    expect(find.text('Platform fee'), findsOneWidget);
+    expect(find.text('₹10 at checkout'), findsOneWidget);
+    expect(find.text('Total (items only)'), findsNothing);
+    expect(
+      find.text(
+        'Your final total will appear in checkout after you select a delivery '
+        'address and receive a valid server quote.',
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.byTooltip('Increase quantity'));
     await tester.pumpAndSettle();
-    expect(find.text('₹308'), findsNWidgets(3));
+    expect(find.text('₹308'), findsNWidgets(2));
 
     await tester.tap(find.byTooltip('Decrease quantity'));
     await tester.pumpAndSettle();
-    expect(find.text('₹154'), findsNWidgets(3));
+    expect(find.text('₹154'), findsNWidgets(2));
 
     await tester.tap(find.byTooltip('Remove item'));
     await tester.pumpAndSettle();

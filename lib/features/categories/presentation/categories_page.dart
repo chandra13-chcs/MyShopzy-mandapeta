@@ -285,6 +285,13 @@ class CategoriesPage extends StatelessWidget {
         context,
         'noodles',
       ),
+      'Frozen Food' => () => _pushPage(
+        context,
+        const LocalStoresPage(
+          partnerType: 'other',
+          categoryName: 'Frozen Food',
+        ),
+      ),
       _ => null,
     };
     return action ?? () => _showCategoryUnavailable(context);

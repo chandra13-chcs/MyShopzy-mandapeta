@@ -1,7 +1,7 @@
 class DeliveryOfferConfig {
   const DeliveryOfferConfig._();
 
-  static const thresholdInPaise = 19900;
+  static const thresholdInPaise = 49900;
 
   static String get thresholdLabel => '₹${thresholdInPaise ~/ 100}';
 

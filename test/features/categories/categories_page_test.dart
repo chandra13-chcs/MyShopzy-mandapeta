@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/features/bakery/presentation/bakery_page.dart';
 import 'package:myshopzy/features/categories/presentation/categories_page.dart';
+import 'package:myshopzy/features/local_stores/presentation/local_stores_page.dart';
 import 'package:myshopzy/features/search/presentation/search_page.dart';
 
 void main() {
@@ -71,6 +72,28 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(BakeryPage), findsOneWidget);
+  });
+
+  testWidgets('Frozen Food opens the existing Local Stores flow', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Frozen Food'));
+    await tester.tap(find.text('Frozen Food'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LocalStoresPage), findsOneWidget);
+    expect(
+      tester.widget<LocalStoresPage>(find.byType(LocalStoresPage)).partnerType,
+      'other',
+    );
+    expect(find.text('Frozen Food near you'), findsOneWidget);
+    expect(find.byType(BakeryPage), findsNothing);
   });
 
   testWidgets('Categories search bar opens the existing SearchPage', (

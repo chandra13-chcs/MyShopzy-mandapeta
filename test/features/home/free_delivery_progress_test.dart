@@ -13,22 +13,22 @@ void main() {
   test(
     'delivery offer uses the configured threshold and eligible subtotal',
     () {
-      expect(DeliveryOfferConfig.thresholdInPaise, 19900);
+      expect(DeliveryOfferConfig.thresholdInPaise, 49900);
       expect(
         DeliveryOfferConfig.messageForSubtotal(15400),
-        'Add ₹45 more to unlock FREE DELIVERY',
+        'Add ₹345 more to unlock FREE DELIVERY',
       );
       expect(
         DeliveryOfferConfig.messageForSubtotal(18000),
-        'Add ₹19 more to unlock FREE DELIVERY',
+        'Add ₹319 more to unlock FREE DELIVERY',
       );
       expect(
-        DeliveryOfferConfig.messageForSubtotal(19900),
+        DeliveryOfferConfig.messageForSubtotal(49900),
         'Free delivery unlocked!',
       );
       expect(
         DeliveryOfferConfig.messageForSubtotal(25000),
-        'Free delivery unlocked!',
+        'Add ₹249 more to unlock FREE DELIVERY',
       );
     },
   );
@@ -38,10 +38,7 @@ void main() {
   ) async {
     await tester.pumpWidget(const MaterialApp(home: CartPage()));
 
-    expect(
-      find.text('Add ₹199 more to unlock FREE DELIVERY'),
-      findsOneWidget,
-    );
+    expect(find.text('Add ₹499 more to unlock FREE DELIVERY'), findsOneWidget);
     cartStore.addItem(
       productId: 'eligible-item',
       serviceType: 'store',
@@ -51,10 +48,7 @@ void main() {
       icon: Icons.shopping_bag_outlined,
     );
     await tester.pump();
-    expect(
-      find.text('Add ₹129 more to unlock FREE DELIVERY'),
-      findsOneWidget,
-    );
+    expect(find.text('Add ₹429 more to unlock FREE DELIVERY'), findsOneWidget);
 
     final key = CartItem.keyFor(
       serviceType: 'store',
@@ -62,34 +56,24 @@ void main() {
     );
     cartStore.increaseQuantity(key);
     await tester.pump();
-    expect(
-      find.text('Add ₹59 more to unlock FREE DELIVERY'),
-      findsOneWidget,
-    );
+    expect(find.text('Add ₹359 more to unlock FREE DELIVERY'), findsOneWidget);
 
-    cartStore.increaseQuantity(key);
-    await tester.pump();
+    for (var quantity = 3; quantity <= 8; quantity++) {
+      cartStore.increaseQuantity(key);
+      await tester.pump();
+    }
     expect(find.text('Free delivery unlocked!'), findsOneWidget);
 
     cartStore.decreaseQuantity(key);
     await tester.pump();
-    expect(
-      find.text('Add ₹59 more to unlock FREE DELIVERY'),
-      findsOneWidget,
-    );
+    expect(find.text('Add ₹9 more to unlock FREE DELIVERY'), findsOneWidget);
 
     cartStore.decreaseQuantity(key);
     await tester.pump();
-    expect(
-      find.text('Add ₹129 more to unlock FREE DELIVERY'),
-      findsOneWidget,
-    );
+    expect(find.text('Add ₹79 more to unlock FREE DELIVERY'), findsOneWidget);
 
     cartStore.removeItem(key);
     await tester.pump();
-    expect(
-      find.text('Add ₹199 more to unlock FREE DELIVERY'),
-      findsOneWidget,
-    );
+    expect(find.text('Add ₹499 more to unlock FREE DELIVERY'), findsOneWidget);
   });
 }
