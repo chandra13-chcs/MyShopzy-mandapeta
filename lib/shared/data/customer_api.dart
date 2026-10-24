@@ -10,11 +10,13 @@ class CustomerApiException implements Exception {
     required this.statusCode,
     required this.code,
     required this.message,
+    this.outstandingMinor,
   });
 
   final int? statusCode;
   final String code;
   final String message;
+  final int? outstandingMinor;
 
   @override
   String toString() => message;
@@ -580,6 +582,60 @@ class ApiCustomerOrder {
   }
 }
 
+class ApiDues {
+  const ApiDues({
+    required this.outstandingMinor,
+    required this.entries,
+  });
+
+  final int outstandingMinor;
+  final List<ApiDueEntry> entries;
+
+  factory ApiDues.fromJson(Map<String, dynamic> json) {
+    final rawEntries = json['entries'];
+    if (rawEntries is! List) {
+      throw const FormatException('Invalid dues entries.');
+    }
+    return ApiDues(
+      outstandingMinor: _requiredMinor(json, 'outstandingMinor'),
+      entries: rawEntries
+          .map((entry) {
+            if (entry is! Map<String, dynamic>) {
+              throw const FormatException('Invalid due entry.');
+            }
+            return ApiDueEntry.fromJson(entry);
+          })
+          .toList(growable: false),
+    );
+  }
+}
+
+class ApiDueEntry {
+  const ApiDueEntry({
+    required this.entryId,
+    required this.orderId,
+    required this.reason,
+    required this.status,
+    required this.amountMinor,
+  });
+
+  final String entryId;
+  final String? orderId;
+  final String reason;
+  final String status;
+  final int amountMinor;
+
+  factory ApiDueEntry.fromJson(Map<String, dynamic> json) {
+    return ApiDueEntry(
+      entryId: _requiredString(json, 'entryId'),
+      orderId: _optionalString(json['orderId']),
+      reason: _requiredString(json, 'reason'),
+      status: _requiredString(json, 'status'),
+      amountMinor: _requiredMinor(json, 'amountMinor'),
+    );
+  }
+}
+
 class ApiCustomerOrderItem {
   const ApiCustomerOrderItem({
     required this.name,
@@ -1051,6 +1107,23 @@ class CustomerApi {
     return _parseCustomerProfile(payload);
   }
 
+  Future<ApiDues> getDues() async {
+    final payload = await _request('GET', '/me/dues');
+    try {
+      return ApiDues.fromJson(_dataObject(payload));
+    } on FormatException {
+      throw _invalidResponse();
+    }
+  }
+
+  Future<void> disputeDue(String entryId, String message) async {
+    await _request(
+      'POST',
+      '/me/dues/$entryId/dispute',
+      body: {'message': message},
+    );
+  }
+
   Future<ApiCustomerProfile> updateProfile({
     String? displayName,
     String? email,
@@ -1418,12 +1491,19 @@ class CustomerApi {
         final errorObject = error is Map<String, dynamic> ? error : const {};
         final code = errorObject['code'];
         final message = errorObject['message'];
+        final details = _optionalObject(errorObject['details']);
+        final outstandingMinor = details == null
+            ? null
+            : _optionalMinorValue(details['outstandingMinor']);
         throw CustomerApiException(
           statusCode: response.statusCode,
           code: code is String ? code : 'HTTP_ERROR',
           message: message is String
               ? message
               : _statusMessage(response.statusCode),
+          outstandingMinor: code == 'OUTSTANDING_DUES'
+              ? outstandingMinor
+              : null,
         );
       }
       return decoded;
@@ -1629,6 +1709,15 @@ int _requiredMinor(Map<String, dynamic> json, String key) {
     throw FormatException('Invalid $key.');
   }
   return parsed;
+}
+
+int? _optionalMinorValue(Object? value) {
+  final parsed = switch (value) {
+    int amount => amount,
+    String amount => int.tryParse(amount),
+    _ => null,
+  };
+  return parsed != null && parsed >= 0 ? parsed : null;
 }
 
 int _requiredInteger(

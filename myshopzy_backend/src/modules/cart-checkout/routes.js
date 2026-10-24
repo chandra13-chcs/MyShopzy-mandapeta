@@ -5,6 +5,7 @@ const {
   computeCommissionMinor,
   resolveCommissionBps,
 } = require('../commission/rules');
+const { getOutstandingMinor, lockCustomer } = require('../dues/ledger');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -23,16 +24,19 @@ function invokeCustomerAuthentication(authenticateCustomer, req, res, next) {
 }
 
 class ApiError extends Error {
-  constructor(status, code, message) {
+  constructor(status, code, message, details = undefined) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
 function sendApiError(res, error) {
+  const body = { code: error.code, message: error.message };
+  if (error.details !== undefined) body.details = error.details;
   res.status(error.status).json({
-    error: { code: error.code, message: error.message },
+    error: body,
   });
 }
 
@@ -655,47 +659,80 @@ function createCartCheckoutRouter({
     }
   });
 
-  router.post('/checkout/quote', async (req, res, next) => {
-    const body = parseObjectBody(req.body ?? {}, new Set());
-    if (body.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
-    if (!databasePool) return sendDatabaseUnavailable(res);
+  router.post(
+    '/checkout/quote',
+    (req, res, next) => {
+      if (!authenticateCustomer) {
+        return res.status(401).json({
+          error: {
+            code: 'AUTHENTICATION_REQUIRED',
+            message: 'Customer authentication is required to quote checkout.',
+          },
+        });
+      }
+      return invokeCustomerAuthentication(authenticateCustomer, req, res, next);
+    },
+    async (req, res, next) => {
+      const body = parseObjectBody(req.body ?? {}, new Set());
+      if (body.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
+      if (!databasePool) return sendDatabaseUnavailable(res);
+      const customerUserId = req.auth?.customerUserId;
+      if (typeof customerUserId !== 'string' || !UUID_PATTERN.test(customerUserId)) {
+        return res.status(401).json({
+          error: {
+            code: 'AUTHENTICATION_REQUIRED',
+            message: 'Customer authentication is required to quote checkout.',
+          },
+        });
+      }
 
-    try {
-      const tokenHash = hashCartToken(getCartToken(req));
-      const quote = await withTransaction(databasePool, async (client) => {
-        const cart = await findCart(client, tokenHash, { lock: true });
-        const checkout = await loadCheckoutItems(client, cart);
-        return {
-          ...checkout,
-          storeHours: isOpenNow(checkout.items[0]),
-        };
-      });
-      return res.status(200).json({
-        data: {
-          items: quote.items.map((item) => ({
-            productId: item.product_id,
-            variantId: item.variant_id,
-            variantLabel: item.variant_label,
-            name: item.name,
-            quantity: Number(item.quantity),
-            priceMinor: item.price_minor,
-            lineTotalMinor: item.line_total_minor,
-          })),
-          currency: quote.currency,
-          storeOpen: quote.storeHours.open,
-          opensAt: quote.storeHours.opensAt,
-          closesAt: quote.storeHours.closesAt,
-          itemSubtotalMinor: quote.subtotal.toString(),
-          deliveryFeeMinor: '0',
-          discountMinor: '0',
-          totalMinor: quote.subtotal.toString(),
-        },
-      });
-    } catch (error) {
-      if (error instanceof ApiError) return sendApiError(res, error);
-      return next(error);
-    }
-  });
+      try {
+        const tokenHash = hashCartToken(getCartToken(req));
+        const quote = await withTransaction(databasePool, async (client) => {
+          await lockCustomer(client, customerUserId);
+          const outstandingMinor = await getOutstandingMinor(client, customerUserId);
+          if (outstandingMinor > 0n) {
+            throw new ApiError(
+              409,
+              'OUTSTANDING_DUES',
+              'Resolve outstanding delivery dues before placing another order.',
+              { outstandingMinor: outstandingMinor.toString() },
+            );
+          }
+          const cart = await findCart(client, tokenHash, { lock: true });
+          const checkout = await loadCheckoutItems(client, cart);
+          return {
+            ...checkout,
+            storeHours: isOpenNow(checkout.items[0]),
+          };
+        });
+        return res.status(200).json({
+          data: {
+            items: quote.items.map((item) => ({
+              productId: item.product_id,
+              variantId: item.variant_id,
+              variantLabel: item.variant_label,
+              name: item.name,
+              quantity: Number(item.quantity),
+              priceMinor: item.price_minor,
+              lineTotalMinor: item.line_total_minor,
+            })),
+            currency: quote.currency,
+            storeOpen: quote.storeHours.open,
+            opensAt: quote.storeHours.opensAt,
+            closesAt: quote.storeHours.closesAt,
+            itemSubtotalMinor: quote.subtotal.toString(),
+            deliveryFeeMinor: '0',
+            discountMinor: '0',
+            totalMinor: quote.subtotal.toString(),
+          },
+        });
+      } catch (error) {
+        if (error instanceof ApiError) return sendApiError(res, error);
+        return next(error);
+      }
+    },
+  );
 
   router.post(
     '/orders',
@@ -730,6 +767,16 @@ function createCartCheckoutRouter({
       try {
         const tokenHash = hashCartToken(getCartToken(req));
         const order = await withTransaction(databasePool, async (client) => {
+          await lockCustomer(client, customerUserId);
+          const outstandingMinor = await getOutstandingMinor(client, customerUserId);
+          if (outstandingMinor > 0n) {
+            throw new ApiError(
+              409,
+              'OUTSTANDING_DUES',
+              'Resolve outstanding delivery dues before placing another order.',
+              { outstandingMinor: outstandingMinor.toString() },
+            );
+          }
           const deliveryZone = await client.query(
             `SELECT 1
              FROM app.serviceable_pincodes
@@ -798,9 +845,10 @@ function createCartCheckoutRouter({
             `INSERT INTO app.orders (
                id, customer_user_id, partner_id, shop_id, status, currency,
                items_subtotal_minor, delivery_fee_minor, discount_minor,
-               total_minor, delivery_address_snapshot, commission_minor
+               total_minor, delivery_address_snapshot, commission_minor,
+               payment_method
              )
-             VALUES ($1, $2, $3, $4, 'placed', $5, $6, $7, $8, $9, $10::jsonb, $11)`,
+             VALUES ($1, $2, $3, $4, 'placed', $5, $6, $7, $8, $9, $10::jsonb, $11, 'cod')`,
             [
               orderId,
               customerUserId,

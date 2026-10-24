@@ -91,12 +91,13 @@ Cart and checkout endpoints:
 - `PATCH /api/v1/cart/items/:productId` sets a positive quantity.
 - `DELETE /api/v1/cart/items/:productId` removes an item.
 - `DELETE /api/v1/cart/items` clears the cart.
-- `POST /api/v1/checkout/quote` calculates a quote from current PostgreSQL
-  product prices; delivery and discount are currently zero because pricing
-  rules and coupons are not modeled.
+- `POST /api/v1/checkout/quote` requires a trusted customer session and
+  calculates a quote from current PostgreSQL product prices. It returns
+  `409 OUTSTANDING_DUES` when that customer has a confirmed unpaid due.
 - `POST /api/v1/orders` accepts `{ "deliveryAddress": { ... } }`, creates the
   order and immutable item snapshots in one transaction, and decrements
-  tracked inventory in that same transaction.
+  tracked inventory in that same transaction. It writes `payment_method='cod'`
+  until a payment gateway is integrated; order totals are calculated server-side.
 
 Cart tokens are bearer secrets for anonymous carts, not customer identities.
 Anyone with a token can operate that cart; clients must protect it like a
@@ -104,9 +105,10 @@ credential. Configured Flutter catalog products, cart operations, checkout
 quotes, and order placement use these APIs. Order placement is disabled unless
 `createApp` receives a trusted `authenticateCustomer` middleware which sets
 `req.auth.customerUserId` from verified authentication. The running server
-injects the development-only customer authenticator described below. Request
-bodies cannot choose the customer, and private customer APIs remain protected
-by verified bearer-token authentication.
+injects the development-only customer authenticator described below. Quote and
+order placement both use that authenticated customer identity; neither accepts
+a customer ID or amount from the request. Outstanding balances and new orders
+are checked in transactions while holding the customer row lock.
 
 The Express JSON body parser rejects request bodies larger than 16 KB. The
 PostgreSQL pool bounds connection wait time to prevent requests and readiness
@@ -122,13 +124,17 @@ Authenticated customer API foundations (all return `401` unless a trusted
 - `GET /api/v1/me/wishlist`, `POST /api/v1/me/wishlist/items`,
   `DELETE /api/v1/me/wishlist/items/:productId`
 - `GET /api/v1/me/orders`, `GET /api/v1/me/orders/:orderId`
+- `GET /api/v1/me/dues`, `POST /api/v1/me/dues/:entryId/dispute`
 - `POST /api/v1/me/parcels`, `GET /api/v1/me/parcels`,
   `GET /api/v1/me/parcels/:parcelId`
 
 Migrations 002–004 add cart, customer-account, dynamic partner-category, and
-serviceability storage. Address, wishlist, profile, order, and parcel endpoints
-are customer-scoped and never accept a customer ID in their route or request
-body. Order history/details are read only.
+serviceability storage. Migration 012 adds COD/prepaid order payment method,
+delivery-failure records, and an append-only customer dues ledger. Pending
+failed-delivery dues do not block checkout; an admin must confirm them before
+they count toward the balance. Customer disputes append notes without changing
+the balance. Address, wishlist, profile, order, parcel, and dues endpoints are
+customer-scoped and never accept a customer ID in their request body.
 
 Rider API endpoints:
 
@@ -142,6 +148,10 @@ Rider API endpoints:
   `out_for_delivery`, or `delivered` in that order, and only updates orders
   assigned to that rider. Replaying the current stage is safe for client retry
   queues; delivery completion writes the rider settlement idempotently.
+- `PATCH /api/v1/rider/orders/:orderId/delivery-failed` records a permitted
+  customer-fault reason and the rider's last known coordinates. A COD order
+  creates a pending-review due using its server-stored total; prepaid orders
+  never create dues.
 - `POST /api/v1/rider/location` accepts `{ "latitude": 16.87, "longitude": 81.93 }`
   and stores the coordinates while marking the rider online.
 - `PATCH /api/v1/rider/availability` accepts `{ "isOnline": false }` to go off
@@ -155,8 +165,10 @@ the API uses `00000000-0000-4000-8000-000000000001`. Apply the migrations and
 is disabled in production; production deployments must inject a trusted
 `authenticateRider` middleware that sets `req.auth.riderUserId`.
 
-Prepared Super Admin read-only queries cover orders, customers, partners, and
-products. Admin routes mount only when `AUTH0_ISSUER_URL`, `AUTH0_AUDIENCE`,
+Prepared Super Admin queries cover orders, customers, partners, products, and
+dues. Dues can be confirmed with a support reference, waived with a reason, and
+cleared with a referenced payment; each action appends a ledger row. Admin
+routes mount only when `AUTH0_ISSUER_URL`, `AUTH0_AUDIENCE`,
 `AUTH0_ADMIN_USER_ID_CLAIM`, `SUPER_ADMIN_ORIGIN`, and PostgreSQL are
 configured. The Auth0 access token is
 verified against the issuer's remote JWKS, RS256 signature, issuer, audience,
@@ -169,6 +181,17 @@ database record's role and active status on every request. The origin setting pe
 configured frontend origin for browser requests. Keep these settings unset
 until the Auth0 application/API, claim namespace, and manual identity mappings
 have been configured and reviewed.
+
+Admin dues routes use the existing Auth0 admin authentication:
+
+- `GET /api/v1/admin/dues?status=pending_review&limit=20&offset=0`
+- `POST /api/v1/admin/dues/:entryId/confirm` requires
+  `{ "supportReference": "SUP-123", "note": "Optional" }`.
+- `POST /api/v1/admin/dues/:entryId/waive` requires
+  `{ "reason": "..." }`.
+- `POST /api/v1/admin/customers/:customerId/dues/payments` requires
+  `{ "amount": 500, "reference": "receipt-123" }`, where `amount` is integer
+  paise. Payments above the outstanding balance are rejected.
 
 ## Setup and run
 

@@ -485,7 +485,7 @@ async function getResource(databasePool, resourceName, id) {
         quantity: item.quantity,
         lineTotalMinor: item.lineTotalMinor,
         commissionBps: databaseInteger(item.commissionBps, 'commission basis points', 10000),
-        commissionMinor: databaseInteger(item.commissionMinor, 'commission minor units'),
+        commissionMinor: String(databaseInteger(item.commissionMinor, 'commission minor units')),
         currency: item.currency,
       })),
     };

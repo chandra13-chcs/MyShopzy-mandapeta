@@ -17,6 +17,8 @@ import '../../bakery/presentation/bakery_page.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../checkout/presentation/checkout_page.dart';
 import '../../profile/models/saved_address.dart';
+import '../../profile/presentation/dues_page.dart';
+import '../../profile/presentation/outstanding_dues_banner.dart';
 import '../../profile/presentation/saved_addresses_page.dart';
 import 'delivery_location_bottom_sheet.dart';
 import '../../parcel/data/parcel_location_service.dart';
@@ -98,7 +100,10 @@ class HomePage extends StatelessWidget {
     if (index < _homeIntroChildCount) {
       return switch (index) {
         0 => _buildHeader(context),
-        1 => const SizedBox(height: 10),
+        1 => const Padding(
+          padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
+          child: _HomeDuesBanner(),
+        ),
         2 => _buildSearchBar(context),
         3 => const SizedBox(height: 22),
         4 => _buildServiceGrid(),
@@ -878,6 +883,69 @@ class HomePage extends StatelessWidget {
         }
       },
     );
+  }
+}
+
+class _HomeDuesBanner extends StatefulWidget {
+  const _HomeDuesBanner();
+
+  @override
+  State<_HomeDuesBanner> createState() => _HomeDuesBannerState();
+}
+
+class _HomeDuesBannerState extends State<_HomeDuesBanner> {
+  ApiDues? _dues;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (CustomerApi.instance.isConfigured) {
+      _loadDues();
+    }
+  }
+
+  Future<void> _loadDues() async {
+    try {
+      final dues = await CustomerApi.instance.getDues();
+      if (mounted) setState(() {
+        _dues = dues;
+        _error = null;
+      });
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error.statusCode == 401 ? null : error.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dues = _dues;
+    if (dues != null && dues.outstandingMinor > 0) {
+      final entry = dues.entries.where((item) => item.status == 'confirmed');
+      final orderId = entry.isEmpty ? null : entry.first.orderId;
+      return OutstandingDuesBanner(
+        amountMinor: dues.outstandingMinor,
+        orderId: orderId,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (context) => const DuesPage()),
+        ),
+      );
+    }
+    if (_error != null) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _loadDues,
+          icon: const Icon(Icons.refresh_rounded, size: 16),
+          label: const Text('Could not refresh dues'),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 

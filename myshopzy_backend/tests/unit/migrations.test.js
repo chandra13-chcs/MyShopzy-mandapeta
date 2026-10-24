@@ -53,6 +53,10 @@ const categoryCodesSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/011_category_codes.sql',
 );
+const customerDuesSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/012_customer_dues_ledger.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -138,6 +142,7 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const partnerTypeCodesSchema = await readFile(partnerTypeCodesSchemaPath, 'utf8');
   const commissionSnapshotsSchema = await readFile(commissionSnapshotsSchemaPath, 'utf8');
   const categoryCodesSchema = await readFile(categoryCodesSchemaPath, 'utf8');
+  const customerDuesSchema = await readFile(customerDuesSchemaPath, 'utf8');
   const calls = pool.calls.map((call) => call.sql);
 
   assert.equal(appliedCount, migrationFiles.length);
@@ -176,6 +181,10 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('011').name,
     '011_category_codes.sql',
   );
+  assert.equal(
+    pool.applied.get('012').name,
+    '012_customer_dues_ledger.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -188,10 +197,22 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(partnerTypeCodesSchema.trim()));
   assert.ok(calls.includes(commissionSnapshotsSchema.trim()));
   assert.ok(calls.includes(categoryCodesSchema.trim()));
+  assert.ok(calls.includes(customerDuesSchema.trim()));
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
   assert.equal(pool.released, true);
+});
+
+test('customer dues migration adds payment method and append-only ledger constraints', async () => {
+  const schema = await readFile(customerDuesSchemaPath, 'utf8');
+  assert.match(schema, /payment_method text NOT NULL DEFAULT 'cod'/);
+  assert.match(schema, /CHECK \(payment_method IN \('cod', 'prepaid'\)\)/);
+  assert.match(schema, /'delivery_failed'/);
+  assert.match(schema, /CREATE TABLE app\.customer_ledger_entries\b/);
+  assert.match(schema, /amount_minor bigint NOT NULL CHECK \(amount_minor > 0\)/);
+  assert.match(schema, /CREATE UNIQUE INDEX customer_ledger_entries_one_due_per_order_idx/);
+  assert.match(schema, /BEFORE UPDATE OR DELETE ON app\.customer_ledger_entries/);
 });
 
 test('category-code migration validates codes and backfills frozen categories transactionally', async () => {
@@ -314,7 +335,10 @@ test('skips matching applied migrations and refuses checksum drift', async () =>
   const alreadyApplied = createMockPool({
     applied: new Map([['001', { checksum: migration.checksum }]]),
   });
-  assert.equal(await runMigrations(alreadyApplied), 7);
+  assert.equal(
+    await runMigrations(alreadyApplied),
+    (await readMigrations(path.dirname(schemaPath))).length,
+  );
   assert.equal(
     alreadyApplied.calls.some((call) => call.sql === migration.sql.trim()),
     false,

@@ -32,6 +32,10 @@ async function startServer(t, databasePool, { authenticateAdmin } = {}) {
 }
 
 function testAuthenticator(req, res, next) {
+  if (req.get('authorization')) {
+    req.auth = { adminUserId: adminId };
+    return next();
+  }
   if (req.get('authorization') === 'Bearer test-admin') {
     req.auth = { adminUserId: adminId };
   }
@@ -84,6 +88,28 @@ test('exposes category sales and commission totals only to authenticated admins'
   assert.deepEqual((await response.json()).data, expected);
   assert.equal(pool.calls.length, 1);
   assert.match(pool.calls[0].sql, /GROUP BY category\.category_code/);
+});
+
+test('rejects due confirmation without a support reference', async (t) => {
+  const pool = createPool();
+  const baseUrl = await startServer(t, pool, { authenticateAdmin: testAuthenticator });
+  const response = await request(
+    baseUrl,
+    '/api/v1/admin/dues/f3caf63d-228d-47b7-9dfd-ecc178c595f2/confirm',
+    {
+      method: 'POST',
+      headers: {
+        authorization: '******',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ note: 'Reviewed' }),
+    },
+  );
+  const body = await response.json();
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, 'INVALID_REQUEST');
+  assert.match(body.error.message, /supportReference/);
+  assert.equal(pool.calls.length, 0);
 });
 
 test('lists all four resources through the existing queries and response adapter', async (t) => {

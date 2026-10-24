@@ -463,3 +463,132 @@ test('requires injected rider authentication in production', async (t) => {
   const unrelatedResponse = await fetch(`${baseUrl}/api/v1/not-a-rider-route`);
   assert.equal(unrelatedResponse.status, 404);
 });
+
+test("a rider cannot mark another rider's order as delivery failed", async (t) => {
+  const otherRiderId = '00000000-0000-4000-8000-000000000002';
+  const baseUrl = await startServer(t, {
+    databasePool: transactionPool({
+      connectHandler(sql) {
+        if (sql.includes('FROM app.orders AS o')) {
+          return {
+            rows: [{
+              id: orderId,
+              customer_user_id: '10000000-0000-4000-8000-000000000001',
+              rider_id: otherRiderId,
+              status: 'out_for_delivery',
+              rider_stage: 'out_for_delivery',
+              payment_method: 'cod',
+              total_minor: '4500',
+              currency: 'INR',
+              current_latitude: 16.8,
+              current_longitude: 82.0,
+            }],
+          };
+        }
+        assert.fail(`Unexpected transaction query: ${sql}`);
+      },
+    }),
+    authenticateRider(req, res, next) {
+      req.auth = { riderUserId };
+      next();
+    },
+  });
+  const response = await fetch(
+    `${baseUrl}/api/v1/rider/orders/${orderId}/delivery-failed`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        reason: 'customer_refused',
+        attempts: 1,
+      }),
+    },
+  );
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, 'ORDER_NOT_ASSIGNED');
+});
+
+test('delivery failure ignores client amounts, records COD order total, and skips prepaid dues', async (t) => {
+  const customerId = '10000000-0000-4000-8000-000000000001';
+  const dueInserts = [];
+  let paymentMethod = 'cod';
+  const pool = transactionPool({
+    connectHandler(sql, params) {
+      if (sql.includes('FROM app.orders AS o')) {
+        return {
+          rows: [{
+            id: orderId,
+            customer_user_id: customerId,
+            rider_id: riderId,
+            status: 'out_for_delivery',
+            rider_stage: 'out_for_delivery',
+            payment_method: paymentMethod,
+            total_minor: '4500',
+            currency: 'INR',
+            current_latitude: 16.8,
+            current_longitude: 82.0,
+          }],
+        };
+      }
+      if (sql.includes('UPDATE app.orders')) {
+        return {
+          rows: [{
+            orderId,
+            status: 'delivery_failed',
+            riderId,
+            reason: params[1],
+          }],
+        };
+      }
+      if (sql.includes('INSERT INTO app.customer_ledger_entries')) {
+        dueInserts.push({ sql, params });
+        return { rows: [{ id: params[0] }] };
+      }
+      assert.fail(`Unexpected transaction query: ${sql}`);
+    },
+  });
+  const baseUrl = await startServer(t, {
+    databasePool: pool,
+    authenticateRider(req, res, next) {
+      req.auth = { riderUserId };
+      next();
+    },
+  });
+  const url = `${baseUrl}/api/v1/rider/orders/${orderId}/delivery-failed`;
+  const request = (body) => fetch(url, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const tampered = await request({
+    reason: 'customer_refused',
+    attempts: 1,
+    amountMinor: 1,
+  });
+  assert.equal(tampered.status, 400);
+  assert.equal(dueInserts.length, 0);
+
+  const codFailure = await request({
+    reason: 'customer_refused',
+    attempts: 1,
+    note: 'Customer declined delivery',
+  });
+  assert.equal(codFailure.status, 200);
+  assert.equal(dueInserts.length, 1);
+  assert.equal(dueInserts[0].params[3], '4500');
+  assert.equal(dueInserts[0].params[8], `rider:${riderId}`);
+  assert.deepEqual(JSON.parse(dueInserts[0].params[7]), {
+    attempts: 1,
+    latitude: 16.8,
+    longitude: 82.0,
+  });
+
+  paymentMethod = 'prepaid';
+  const prepaidFailure = await request({
+    reason: 'customer_unreachable',
+    attempts: 2,
+  });
+  assert.equal(prepaidFailure.status, 200);
+  assert.equal(dueInserts.length, 1);
+});

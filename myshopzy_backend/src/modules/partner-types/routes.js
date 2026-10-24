@@ -56,8 +56,8 @@ function requirePartnerAuthentication(authenticatePartner) {
 
 function createPartnerRouter({ databasePool, authenticatePartner = null }) {
   const router = express.Router();
-  router.use(requestIdMiddleware);
-  router.use(requirePartnerAuthentication(authenticatePartner));
+  router.use('/partner', requestIdMiddleware);
+  router.use('/partner', requirePartnerAuthentication(authenticatePartner));
   router.use(createPartnerProductOrderRouter({ databasePool }));
 
   router.get('/partner/me/config', async (req, res, next) => {

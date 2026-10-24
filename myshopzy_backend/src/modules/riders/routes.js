@@ -1,8 +1,15 @@
 const express = require('express');
+const { createPendingDue } = require('../dues/ledger');
+const { DUE_POLICY } = require('../dues/policy');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RIDER_STATUSES = new Set(['picked_up', 'out_for_delivery', 'delivered']);
+const DELIVERY_FAILURE_REASONS = new Set([
+  'customer_refused',
+  'customer_unreachable',
+  'wrong_address_by_customer',
+]);
 
 class ApiError extends Error {
   constructor(status, code, message) {
@@ -344,6 +351,7 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
                updated_at = now()
            WHERE id = $1
              AND rider_id = $2
+             AND status IN ('picked_up', 'out_for_delivery')
              AND rider_stage IN ($3, $4)
            RETURNING id AS "orderId", status, rider_id AS "riderId",
                      updated_at AS "updatedAt",
@@ -373,6 +381,149 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
           );
         }
         return result.rows[0];
+      });
+      return res.status(200).json({ data: { order } });
+    } catch (error) {
+      if (error instanceof ApiError) return sendApiError(res, error);
+      return next(error);
+    }
+  });
+
+  router.patch('/rider/orders/:orderId/delivery-failed', async (req, res, next) => {
+    const invalidOrderId = validateOrderId(req.params.orderId);
+    if (invalidOrderId) return sendApiError(res, invalidOrderId);
+    const bodyError = validateObjectBody(
+      req.body,
+      new Set(['reason', 'note', 'attempts']),
+    );
+    if (bodyError) {
+      return res.status(400).json({
+        error: { code: 'INVALID_REQUEST', message: bodyError },
+      });
+    }
+    const { reason, note, attempts } = req.body;
+    if (!DELIVERY_FAILURE_REASONS.has(reason)) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'reason must be customer_refused, customer_unreachable, or wrong_address_by_customer.',
+        },
+      });
+    }
+    if (
+      (note !== undefined &&
+        (typeof note !== 'string' || note.length > 300)) ||
+      !Number.isInteger(attempts) ||
+      attempts < 0 ||
+      attempts > 10
+    ) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'note must be at most 300 characters and attempts must be an integer between 0 and 10.',
+        },
+      });
+    }
+
+    let riderUserId;
+    try {
+      riderUserId = getRiderUserId(req);
+    } catch (error) {
+      return sendApiError(res, error);
+    }
+    if (!databasePool) {
+      return res.status(503).json({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Rider orders are temporarily unavailable.',
+        },
+      });
+    }
+
+    try {
+      const order = await withTransaction(databasePool, async (client) => {
+        await requireActiveRider(client, riderUserId, { lock: true });
+        const current = await client.query(
+          `SELECT o.id, o.customer_user_id, o.rider_id, o.status, o.rider_stage,
+                  o.payment_method, o.total_minor::text AS total_minor,
+                  o.currency, r.current_latitude, r.current_longitude
+           FROM app.orders AS o
+           LEFT JOIN app.riders AS r ON r.user_id = o.rider_id
+           WHERE o.id = $1
+           FOR UPDATE OF o`,
+          [req.params.orderId],
+        );
+        if (current.rows.length === 0 || current.rows[0].rider_id !== riderUserId) {
+          throw new ApiError(
+            404,
+            'ORDER_NOT_ASSIGNED',
+            'The order is not assigned to this rider.',
+          );
+        }
+        const existing = current.rows[0];
+        if (
+          existing.status !== 'out_for_delivery' ||
+          existing.rider_stage !== 'out_for_delivery'
+        ) {
+          throw new ApiError(
+            409,
+            'ORDER_NOT_IN_DELIVERY',
+            'Only orders in the out-for-delivery stage can be marked as failed.',
+          );
+        }
+        const updated = await client.query(
+          `UPDATE app.orders
+           SET status = 'delivery_failed',
+               delivery_failure_reason = $2,
+               delivery_failed_at = now(),
+               delivery_failure_note = $3,
+               delivery_failure_attempts = $4,
+               delivery_failure_latitude = $5,
+               delivery_failure_longitude = $6,
+               updated_at = now()
+           WHERE id = $1 AND rider_id = $7
+             AND status = 'out_for_delivery'
+             AND rider_stage = 'out_for_delivery'
+           RETURNING id AS "orderId", status, rider_id AS "riderId",
+                     delivery_failure_reason AS reason,
+                     delivery_failed_at AS "deliveryFailedAt"`,
+          [
+            existing.id,
+            reason,
+            note ?? null,
+            attempts,
+            existing.current_latitude,
+            existing.current_longitude,
+            riderUserId,
+          ],
+        );
+        if (updated.rows.length !== 1) {
+          throw new ApiError(
+            409,
+            'ORDER_NOT_IN_DELIVERY',
+            'Only orders in the out-for-delivery stage can be marked as failed.',
+          );
+        }
+        if (existing.payment_method === 'cod') {
+          const amountMinor = DUE_POLICY.amountMinor(existing);
+          if (BigInt(amountMinor) > 0n) {
+            await createPendingDue(client, {
+              customerUserId: existing.customer_user_id,
+              orderId: existing.id,
+              amountMinor,
+              currency: existing.currency,
+              reason,
+              note: note ?? null,
+              evidence: {
+                attempts,
+                latitude: existing.current_latitude,
+                longitude: existing.current_longitude,
+              },
+              createdByActor: `rider:${riderUserId}`,
+            });
+          }
+        }
+        return updated.rows[0];
       });
       return res.status(200).json({ data: { order } });
     } catch (error) {

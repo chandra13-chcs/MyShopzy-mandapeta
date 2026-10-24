@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/data/money_formatter.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../cart/data/cart_store.dart';
 import '../../coupons/models/demo_coupon.dart';
@@ -14,6 +15,8 @@ import '../../orders/presentation/order_success_page.dart';
 import '../../orders/presentation/orders_page.dart';
 import '../../orders/presentation/order_tracking_page.dart';
 import '../../profile/models/saved_address.dart';
+import '../../profile/presentation/dues_page.dart';
+import '../../profile/presentation/outstanding_dues_banner.dart';
 import 'delivery_unavailable_page.dart';
 
 class CheckoutPage extends StatefulWidget {
@@ -45,6 +48,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   ApiCartQuote? _backendQuote;
   String? _quoteError;
   bool _quoteLoading = false;
+  int _outstandingMinor = 0;
+  String? _blockingDueOrderId;
+  String? _duesError;
+  bool _duesLoading = false;
   bool _storeClosedByServer = false;
   bool _placingOrder = false;
   static const _storeClosedMessage = 'Store is closed. Orders open at 7:00 AM';
@@ -143,6 +150,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
     if (_isBackendCart) {
       Future<void>.delayed(Duration.zero, _refreshBackendQuote);
     }
+    if (CustomerApi.instance.isConfigured) {
+      Future<void>.delayed(Duration.zero, _refreshDues);
+    }
     if (widget.openNewAddressOnLoad) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _showNewAddressForm();
@@ -178,6 +188,33 @@ class _CheckoutPageState extends State<CheckoutPage> {
       if (mounted) setState(() => _savedAddressesError = error.message);
     } finally {
       if (mounted) setState(() => _savedAddressesLoading = false);
+    }
+  }
+
+  Future<void> _refreshDues() async {
+    if (!mounted) return;
+    setState(() {
+      _duesLoading = true;
+      _duesError = null;
+    });
+    try {
+      final dues = await CustomerApi.instance.getDues();
+      if (!mounted) return;
+      ApiDueEntry? blockingDue;
+      for (final entry in dues.entries) {
+        if (entry.status == 'confirmed' && entry.amountMinor > 0) {
+          blockingDue = entry;
+          break;
+        }
+      }
+      setState(() {
+        _outstandingMinor = dues.outstandingMinor;
+        _blockingDueOrderId = blockingDue?.orderId;
+      });
+    } on CustomerApiException catch (error) {
+      if (mounted) setState(() => _duesError = error.message);
+    } finally {
+      if (mounted) setState(() => _duesLoading = false);
     }
   }
 
@@ -251,8 +288,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
       setState(() {
         _backendQuote = null;
         _quoteError = error.message;
+        if (error.code == 'OUTSTANDING_DUES') {
+          _outstandingMinor = error.outstandingMinor ?? _outstandingMinor;
+        }
         _quoteLoading = false;
       });
+      if (error.code == 'OUTSTANDING_DUES') unawaited(_refreshDues());
     }
   }
 
@@ -302,6 +343,35 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                     ),
                     const SizedBox(height: 14),
+                  ],
+                  if (_outstandingMinor > 0) ...[
+                    OutstandingDuesBanner(
+                      amountMinor: _outstandingMinor,
+                      orderId: _blockingDueOrderId,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (context) => const DuesPage(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ] else if (_duesLoading) ...[
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 12),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  ] else if (_duesError != null && _quoteError == null) ...[
+                    Text(
+                      _duesError!,
+                      style: const TextStyle(
+                        color: Color(0xFFA85B5B),
+                        fontSize: 12,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _refreshDues,
+                      child: const Text('Retry dues'),
+                    ),
                   ],
                   if (_cartStore.items.isEmpty) ...[
                     _buildEmptyCartState(context),
@@ -416,6 +486,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               !_serviceabilityChecking &&
               (!_isBackendCart || _backendQuote != null) &&
               (!_isBackendCart || _backendQuote?.storeOpen != false) &&
+              _outstandingMinor <= 0 &&
               !_storeClosedByServer &&
               (!_isBackendCart || (!_quoteLoading && _quoteError == null)) &&
               !_placingOrder &&
@@ -1985,6 +2056,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
     } on CustomerApiException catch (error) {
       if (!mounted) return;
+      if (error.code == 'OUTSTANDING_DUES') {
+        setState(() {
+          _outstandingMinor = error.outstandingMinor ?? _outstandingMinor;
+        });
+        unawaited(_refreshDues());
+      }
       if (error.code == 'STORE_CLOSED') {
         setState(() => _storeClosedByServer = true);
       }
@@ -2013,10 +2090,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   String _formatPrice(int priceInPaise) {
-    final rupees = priceInPaise ~/ 100;
-    final paise = priceInPaise % 100;
-    if (paise == 0) return '₹$rupees';
-    return '₹$rupees.${paise.toString().padLeft(2, '0')}';
+    return formatMinorCurrency(priceInPaise);
   }
 
   String _displayPrice(int? amountInPaise) {

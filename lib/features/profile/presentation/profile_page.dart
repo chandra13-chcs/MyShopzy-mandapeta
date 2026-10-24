@@ -17,6 +17,7 @@ import '../../terms_conditions/presentation/terms_conditions_page.dart';
 import '../../wishlist/presentation/wishlist_page.dart';
 import '../../../shared/presentation/bottom_navigation_bar.dart';
 import 'edit_profile_page.dart';
+import 'dues_page.dart';
 import 'saved_addresses_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -85,6 +86,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   static const _accountItems = [
     _ProfileMenuItem('My Orders', Icons.inventory_2_outlined),
+    _ProfileMenuItem('My Dues', Icons.account_balance_wallet_outlined),
     _ProfileMenuItem('Saved Addresses', Icons.location_on_outlined),
     _ProfileMenuItem('Wishlist', Icons.favorite_border_rounded),
     _ProfileMenuItem('Coupons & Offers', Icons.local_offer_outlined),
@@ -476,6 +478,17 @@ class _ProfilePageState extends State<ProfilePage> {
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute<void>(builder: (context) => const OrdersPage()),
+          );
+        },
+        child: row,
+      );
+    }
+    if (item.title == 'My Dues') {
+      return InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(builder: (context) => const DuesPage()),
           );
         },
         child: row,

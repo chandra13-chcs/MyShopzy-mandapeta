@@ -96,7 +96,7 @@ function createApp({
         res.set('Access-Control-Allow-Origin', superAdminOrigin);
         res.vary('Origin');
         if (req.method === 'OPTIONS') {
-          res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+          res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
           res.set(
             'Access-Control-Allow-Headers',
             'Authorization, Content-Type, X-Request-ID',

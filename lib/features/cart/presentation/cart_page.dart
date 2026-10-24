@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/data/money_formatter.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../checkout/presentation/checkout_page.dart';
 import '../../home/presentation/free_delivery_progress_strip.dart';
+import '../../profile/presentation/dues_page.dart';
+import '../../profile/presentation/outstanding_dues_banner.dart';
 import '../data/cart_store.dart';
 import '../../product_details/data/product_availability_store.dart';
 
@@ -30,6 +33,9 @@ class _CartPageState extends State<CartPage> {
   String? _cartLoadError;
   bool _cartOfflineError = false;
   bool _storeOpen = true;
+  ApiDues? _dues;
+  String? _duesError;
+  bool _duesOffline = false;
   Future<void> Function()? _offlineMutationRetry;
 
   static const _storeClosedMessage =
@@ -38,9 +44,30 @@ class _CartPageState extends State<CartPage> {
   @override
   void initState() {
     super.initState();
+    if (CustomerApi.instance.isConfigured) {
+      Future<void>.delayed(Duration.zero, _refreshDues);
+    }
     if (CustomerApi.instance.isConfigured &&
         !_cartStore.items.any((item) => !item.isBackendProduct)) {
       Future<void>.delayed(Duration.zero, _refreshBackendCart);
+    }
+  }
+
+  Future<void> _refreshDues() async {
+    try {
+      final dues = await CustomerApi.instance.getDues();
+      if (!mounted) return;
+      setState(() {
+        _dues = dues;
+        _duesError = null;
+        _duesOffline = false;
+      });
+    } on CustomerApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _duesError = error.message;
+        _duesOffline = isOfflineApiError(error);
+      });
     }
   }
 
@@ -63,10 +90,23 @@ class _CartPageState extends State<CartPage> {
     } on CustomerApiException catch (error) {
       if (mounted) {
         setState(() {
-          _cartLoadError = error.message;
-          _cartOfflineError = isOfflineApiError(error);
+          if (error.code == 'OUTSTANDING_DUES' &&
+              (error.outstandingMinor ?? 0) > 0) {
+            _dues = ApiDues(
+              outstandingMinor: error.outstandingMinor!,
+              entries: const [],
+            );
+            _duesError = null;
+            _duesOffline = false;
+            _cartLoadError = null;
+            _cartOfflineError = false;
+          } else {
+            _cartLoadError = error.message;
+            _cartOfflineError = isOfflineApiError(error);
+          }
         });
       }
+      if (error.code == 'OUTSTANDING_DUES') await _refreshDues();
     } finally {
       if (mounted) setState(() => _loadingBackendCart = false);
     }
@@ -129,6 +169,32 @@ class _CartPageState extends State<CartPage> {
           _cartOfflineError
               ? OfflineErrorState(onRetry: _refreshBackendCart, compact: true)
               : _buildCartLoadErrorBanner(),
+          const SizedBox(height: 10),
+        ],
+        if ((_dues?.outstandingMinor ?? 0) > 0) ...[
+          OutstandingDuesBanner(
+            amountMinor: _dues!.outstandingMinor,
+            orderId: _blockingDue?.orderId,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (context) => const DuesPage(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ] else if (_duesError != null) ...[
+          _duesOffline
+              ? OfflineErrorState(
+                  onRetry: _refreshDues,
+                  compact: true,
+                )
+              : Text(
+                  _duesError!,
+                  style: const TextStyle(
+                    color: Color(0xFFA85B5B),
+                    fontSize: 12,
+                  ),
+                ),
           const SizedBox(height: 10),
         ],
         if (!_storeOpen) ...[
@@ -211,6 +277,14 @@ class _CartPageState extends State<CartPage> {
         ],
       ),
     );
+  }
+
+  ApiDueEntry? get _blockingDue {
+    final entries = _dues?.entries ?? const <ApiDueEntry>[];
+    for (final entry in entries) {
+      if (entry.status == 'confirmed' && entry.amountMinor > 0) return entry;
+    }
+    return null;
   }
 
   Widget _buildCartItem(CartItem item) {
@@ -672,9 +746,6 @@ class _CartPageState extends State<CartPage> {
   }
 
   String _formatPrice(int priceInPaise) {
-    final rupees = priceInPaise ~/ 100;
-    final paise = priceInPaise % 100;
-    if (paise == 0) return '₹$rupees';
-    return '₹$rupees.${paise.toString().padLeft(2, '0')}';
+    return formatMinorCurrency(priceInPaise);
   }
 }

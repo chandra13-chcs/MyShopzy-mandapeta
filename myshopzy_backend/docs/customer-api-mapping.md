@@ -65,6 +65,8 @@ middleware is configured. Client-supplied user IDs are never used as identity.
 | `DELETE /me/wishlist/items/:productId` | UUID path | Wishlist owner-scoped; `204` |
 | `GET /me/orders` | Optional `limit` (1–100), `offset` | Orders, order items, shops; authenticated customer's records only |
 | `GET /me/orders/:orderId` | UUID path | Order summary, address snapshot, immutable item snapshots; foreign and missing orders return `404` |
+| `GET /me/dues` | No parameters | Authenticated customer's outstanding balance and due summaries, including dispute notes |
+| `POST /me/dues/:entryId/dispute` | `{ "message": "..." }` (1–500 characters) | Appends a dispute note to the customer's own pending or confirmed due; does not change its amount or status |
 | `POST /me/parcels` | Pickup/drop strings, UI parcel type, weight `0 < kg <= 20` (up to three decimal places), optional instructions | `app.parcel_bookings`; creates a `requested` booking, `201` |
 
 OTP codes expire after five minutes, allow five verification attempts, and have
@@ -111,13 +113,15 @@ discount are fixed to zero because no delivery pricing/coupon rules exist.
 Order items snapshot the schema-supported product name, variant SKU and unit
 price, cart quantity, line total, currency, and variant details (`variantId`,
 label, unit, variant quantity, SKU, and unit price). Delivery
-instructions, payment details, and cancellation reason are not persisted.
+instructions, payment transactions/state, and cancellation reason are not
+persisted. Migration 012 stores the order payment method (`cod` for current
+order placement).
 
-`POST /orders` returns `401` unless `createApp` receives a trusted
+`POST /checkout/quote` and `POST /orders` return `401` unless `createApp` receives a trusted
 `authenticateCustomer` middleware which must set
 `req.auth.customerUserId` only after verifying customer authentication; the
-route additionally checks the corresponding active customer/user rows. It
-never reads customer identity from request data. Unit tests use a test-only
+order route additionally checks the corresponding active customer/user rows.
+These routes never read customer identity from request data. Unit tests use a test-only
 trusted middleware stub to exercise the transaction; the running server wires
 the production OTP session authenticator when configured and accepts the
 development-only token issuer only outside production. The allowlist check is
@@ -148,11 +152,12 @@ geofence coordinates. Customer order cancellation remains unavailable.
 | Vegetables/fruits landing page | `GET /shops?partnerType=grocery` | Produce remains a grocery subtype; product `attributes.produce_type` distinguishes fruit and vegetable. |
 | Produce catalog | `GET /shops?partnerType=grocery`, categories and `GET /products?partnerType=grocery` | Filters `attributes.produce_type` to `fruit` or `vegetable`; products without the attribute are not shown as produce. |
 | Cart and cart access controls | `POST /carts`, `GET /cart`, `POST /cart/items`, `PATCH /cart/items/:productId/:variantId`, `DELETE /cart/items/:productId/:variantId`, `DELETE /cart/items` | Implemented using anonymous bearer cart tokens. Add requests require `{ "productId": "<uuid>", "variantId": "<uuid>", "quantity": 1 }`; cart lines are unique by product and variant and expose `variantId`, `variantLabel`, and variant `priceMinor`. |
-| Checkout quote | `POST /checkout/quote` | Uses server-side variant prices and stock, one-shop validation, and zero delivery/discount pending pricing rules. Quote lines include `variantId`, `variantLabel`, `priceMinor`, and `lineTotalMinor`. |
-| Checkout, delivery options, instructions, address entry | `POST /delivery/serviceability`, `POST /orders`; trusted auth middleware required | Order totals and immutable variant snapshots are generated from server-side cart variants. Serviceability is checked before checkout and again at order placement. Delivery-fee rules, coupons, and instruction fields are not modeled. Running-server authentication is development-only. |
+| Checkout quote | `POST /checkout/quote`; trusted customer auth required | Uses server-side variant prices and stock, one-shop validation, and zero delivery/discount pending pricing rules. A confirmed unpaid due returns `409 OUTSTANDING_DUES`. Quote lines include `variantId`, `variantLabel`, `priceMinor`, and `lineTotalMinor`. |
+| Checkout, delivery options, instructions, address entry | `POST /delivery/serviceability`, `POST /orders`; trusted auth middleware required | Order totals and immutable variant snapshots are generated from server-side cart variants. Serviceability is checked before checkout and again at order placement. Placement writes `cod` for now; migration 012 also permits `prepaid`. Delivery-fee rules, coupons, and instruction fields are not modeled. Running-server authentication is development-only. |
 | Coupon picker and coupon validation | No endpoint available | Coupons/validation are demo data; no coupon or promotion table exists. |
-| Payment choice | No endpoint available | Options are demo UI; no payment table or provider is configured. |
-| Order success and receipt | `POST /orders` response and `GET /me/orders/:orderId` | Order creation requires injected trusted auth; detail read is implemented behind the same boundary. Payment state, payment method, delivery OTP, and cancellation reason are not stored. |
+| Payment choice | No payment endpoint available | Options are demo UI; no gateway is configured. Orders store `payment_method` as `cod` until a gateway is added. |
+| Failed delivery and dues | Rider delivery-failure endpoint; `GET /me/dues`, `POST /me/dues/:entryId/dispute` | COD customer-fault failures create pending-review dues from the order total. Only admin confirmation makes a due block checkout; payments, waivers, and disputes are append-only ledger events. Prepaid failures create no due. |
+| Order success and receipt | `POST /orders` response and `GET /me/orders/:orderId` | Order creation requires injected trusted auth; detail read is implemented behind the same boundary. Delivery OTP and cancellation reason are not stored. |
 | Orders list | `GET /me/orders` | Implemented with pagination and authenticated customer scoping. |
 | Order details | `GET /me/orders/:orderId` | Implemented; foreign and unknown order IDs return not found. |
 | Order tracking | `GET /me/orders/:orderId`; live tracking requires another data/service source | `app.orders.status` exists, but no tracking events, rider position, or ETA is stored. |

@@ -116,7 +116,7 @@ test('does not return arbitrary or nested order snapshot JSON in detail response
     quantity: 1,
     lineTotalMinor: '1000',
     commissionBps: 1000,
-    commissionMinor: 100,
+    commissionMinor: '100',
     currency: 'USD',
   }]);
   assert.doesNotMatch(pool.calls[1].sql, /variant_snapshot|variantSnapshot/);

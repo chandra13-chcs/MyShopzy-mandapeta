@@ -1,5 +1,12 @@
 const { randomUUID } = require('node:crypto');
 const express = require('express');
+const {
+  LedgerError,
+  addDispute,
+  getOutstandingMinor,
+  listDues,
+  withLedgerTransaction,
+} = require('../dues/ledger');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -22,8 +29,10 @@ class ApiError extends Error {
 }
 
 function sendError(res, error) {
+  const body = { code: error.code, message: error.message };
+  if (error.details !== undefined) body.details = error.details;
   res.status(error.status).json({
-    error: { code: error.code, message: error.message },
+    error: body,
   });
 }
 
@@ -166,6 +175,72 @@ function createCustomerAccountRouter({
       next();
     } catch (error) {
       sendError(res, error);
+    }
+  });
+
+  router.get('/me/dues', async (req, res, next) => {
+    if (!databasePool) return sendDatabaseUnavailable(res);
+    try {
+      const dues = await withLedgerTransaction(databasePool, async (client) => ({
+        outstandingMinor: (
+          await getOutstandingMinor(client, req.customerUserId)
+        ).toString(),
+        entries: await listDues(client, {
+          customerUserId: req.customerUserId,
+          limit: 100,
+          offset: 0,
+        }),
+      }));
+      return res.status(200).json({
+        data: {
+          outstandingMinor: dues.outstandingMinor,
+          entries: dues.entries.map((entry) => ({
+            entryId: entry.id,
+            orderId: entry.order_id,
+            reason: entry.reason,
+            status: entry.status,
+            amountMinor: entry.amount_minor,
+            disputes: entry.disputes,
+          })),
+        },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  router.post('/me/dues/:entryId/dispute', async (req, res, next) => {
+    if (!UUID_PATTERN.test(req.params.entryId)) {
+      return sendError(
+        res,
+        new ApiError(400, 'INVALID_REQUEST', 'entryId must be a valid UUID.'),
+      );
+    }
+    const body = parseObjectBody(req.body, new Set(['message']));
+    if (body.error) {
+      return sendError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
+    }
+    const message =
+      typeof body.value.message === 'string' ? body.value.message.trim() : '';
+    if (message.length < 1 || message.length > 500) {
+      return sendError(
+        res,
+        new ApiError(400, 'INVALID_REQUEST', 'message is required and must be at most 500 characters.'),
+      );
+    }
+    if (!databasePool) return sendDatabaseUnavailable(res);
+    try {
+      const entry = await withLedgerTransaction(databasePool, (client) =>
+        addDispute(client, {
+          dueEntryId: req.params.entryId,
+          customerUserId: req.customerUserId,
+          message,
+        }),
+      );
+      return res.status(201).json({ data: { entry } });
+    } catch (error) {
+      if (error instanceof LedgerError) return sendError(res, error);
+      return next(error);
     }
   });
 

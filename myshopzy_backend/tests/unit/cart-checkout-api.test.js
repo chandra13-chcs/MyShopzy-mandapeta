@@ -147,6 +147,7 @@ function createDatabase({ failOn } = {}) {
     },
     orders: [],
     orderItems: [],
+    outstandingMinor: '0',
   };
   const queries = [];
   let transactionSnapshot;
@@ -300,6 +301,14 @@ function createDatabase({ failOn } = {}) {
       return params[0] === customerId
         ? { rows: [{ user_id: customerId }], rowCount: 1 }
         : { rows: [], rowCount: 0 };
+    }
+    if (normalized.startsWith('SELECT user_id FROM app.customers WHERE user_id = $1')) {
+      return params[0] === customerId
+        ? { rows: [{ user_id: customerId }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    }
+    if (normalized.includes('FROM app.customer_ledger_entries')) {
+      return { rows: [{ outstanding_minor: state.outstandingMinor }], rowCount: 1 };
     }
     if (normalized.startsWith('SELECT 1 FROM app.serviceable_pincodes')) {
       return params[0] === '533308'
@@ -622,6 +631,8 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   assert.equal(insertOrder.params[5], '9000');
   assert.equal(insertOrder.params[8], '9000');
   assert.equal(insertOrder.params[10], '450');
+  assert.match(insertOrder.sql, /payment_method/);
+  assert.match(insertOrder.sql, /'cod'/);
   const teaSnapshot = database.state.orderItems.find(
     ({ params }) => params[4] === productId,
   );
@@ -651,6 +662,44 @@ test('quotes and creates a single-shop order with server-calculated prices and s
   assert.equal(database.state.orders.length, 1);
   assert.equal(database.state.orderItems.length, 3);
   assert.equal(Object.keys(database.state.items).length, 0);
+});
+
+test('confirmed dues block quote and order placement until the balance is cleared', async (t) => {
+  const database = createDatabase();
+  database.state.outstandingMinor = '750';
+  const baseUrl = await startServer(t, database.pool, { authenticated: true });
+  const token = await createCart(baseUrl);
+  await fetch(
+    `${baseUrl}/api/v1/cart/items`,
+    jsonRequest('POST', { productId, variantId: teaVariantId }, token),
+  );
+
+  const quote = await fetch(
+    `${baseUrl}/api/v1/checkout/quote`,
+    jsonRequest('POST', {}, token),
+  );
+  assert.equal(quote.status, 409);
+  assert.deepEqual((await quote.json()).error, {
+    code: 'OUTSTANDING_DUES',
+    message: 'Resolve outstanding delivery dues before placing another order.',
+    details: { outstandingMinor: '750' },
+  });
+
+  const blockedOrder = await fetch(
+    `${baseUrl}/api/v1/orders`,
+    jsonRequest('POST', { deliveryAddress }, token),
+  );
+  assert.equal(blockedOrder.status, 409);
+  assert.equal((await blockedOrder.json()).error.details.outstandingMinor, '750');
+  assert.equal(database.state.orders.length, 0);
+
+  database.state.outstandingMinor = '0';
+  const paidOrder = await fetch(
+    `${baseUrl}/api/v1/orders`,
+    jsonRequest('POST', { deliveryAddress }, token),
+  );
+  assert.equal(paidOrder.status, 201);
+  assert.equal(database.state.orders.length, 1);
 });
 
 test('applies category-code commission rates and snapshots item commissions in one order', async (t) => {
@@ -739,6 +788,7 @@ test('rejects order placement while closed and leaves cart mutations available',
 test('rejects cross-shop checkout, unavailable checkout products, and unauthenticated orders', async (t) => {
   const database = createDatabase();
   const publicUrl = await startServer(t, database.pool);
+  const authenticatedUrl = await startServer(t, database.pool, { authenticated: true });
   const token = await createCart(publicUrl);
   await fetch(
     `${publicUrl}/api/v1/cart/items`,
@@ -760,7 +810,7 @@ test('rejects cross-shop checkout, unavailable checkout products, and unauthenti
 
   database.state.products[productId].shop_status = 'closed';
   const unavailable = await fetch(
-    `${publicUrl}/api/v1/checkout/quote`,
+    `${authenticatedUrl}/api/v1/checkout/quote`,
     jsonRequest('POST', {}, token),
   );
   assert.equal(unavailable.status, 409);
@@ -794,7 +844,7 @@ test('rejects cross-shop checkout, unavailable checkout products, and unauthenti
     quantity: 1,
   };
   const corruptCheckout = await fetch(
-    `${publicUrl}/api/v1/checkout/quote`,
+    `${authenticatedUrl}/api/v1/checkout/quote`,
     jsonRequest('POST', {}, separateCart),
   );
   assert.equal(corruptCheckout.status, 409);
