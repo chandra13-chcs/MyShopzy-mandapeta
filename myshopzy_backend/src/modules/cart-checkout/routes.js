@@ -6,18 +6,32 @@ const {
   resolveCommissionBps,
 } = require('../commission/rules');
 const { getOutstandingMinor, lockCustomer } = require('../dues/ledger');
+const { computeDeliveryFeeMinor } = require('../delivery-fee/pricing');
+const { PLATFORM_FEE_MINOR } = require('../delivery-serviceability/pricing');
 const {
-  calculateDeliveryPricing,
-} = require('../delivery-serviceability/pricing');
-const {
-  validateCoordinate,
-} = require('../delivery-serviceability/google-routes');
+  validateCoordinates,
+} = require('../delivery-fee/distance');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CART_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const MAX_QUANTITY = 99;
 const MAX_BIGINT = 9223372036854775807n;
+const CLIENT_PRICING_FIELDS = new Set([
+  'deliveryFeeMinor',
+  'distanceMeters',
+  'deliveryDistanceM',
+  'delivery_fee_minor',
+  'delivery_distance_m',
+  'distanceM',
+  'distance_m',
+]);
+
+function omitClientPricingFields(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => !CLIENT_PRICING_FIELDS.has(key)),
+  );
+}
 
 function invokeCustomerAuthentication(authenticateCustomer, req, res, next) {
   try {
@@ -243,7 +257,8 @@ async function readCartItems(client, cartId, { lock = false } = {}) {
        v.stock AS variant_stock,
        v.is_available AS variant_is_available,
        s.status AS shop_status,
-       s.address AS shop_address,
+       s.latitude::double precision AS shop_latitude,
+       s.longitude::double precision AS shop_longitude,
        s.operating_details,
        partner.timezone,
       partner.status AS partner_status,
@@ -378,17 +393,34 @@ function validateDeliveryAddress(value) {
       error: 'deliveryAddress.pincode must be a 6-digit string.',
     };
   }
+  const latitude = value.latitude;
+  const longitude = value.longitude;
+  if (latitude === undefined || longitude === undefined) {
+    return {
+      error: 'deliveryAddress must include latitude and longitude.',
+      code: 'ADDRESS_LOCATION_REQUIRED',
+    };
+  }
+  let destination;
+  try {
+    destination = validateCoordinates({ latitude, longitude });
+  } catch {
+    return {
+      error: 'deliveryAddress coordinates must be finite and within India.',
+      code: 'ADDRESS_LOCATION_INVALID',
+    };
+  }
 
   let serialized;
   try {
-    serialized = JSON.stringify({ ...value, pincode });
+    serialized = JSON.stringify({ ...omitClientPricingFields(value), pincode });
   } catch {
     return { error: 'deliveryAddress must be valid JSON.' };
   }
   if (!serialized || Buffer.byteLength(serialized, 'utf8') > 4096) {
     return { error: 'deliveryAddress must not exceed 4096 bytes.' };
   }
-  return { value: serialized, pincode };
+  return { value: serialized, pincode, destination };
 }
 
 function validateQuoteDeliveryAddress(value) {
@@ -405,28 +437,12 @@ function validateQuoteDeliveryAddress(value) {
   const validatedAddress = validateDeliveryAddress(value);
   if (validatedAddress.error) return validatedAddress;
 
-  const destination = {};
-  for (const coordinate of ['latitude', 'longitude']) {
-    const valueForCoordinate = value[coordinate];
-    const minimum = coordinate === 'latitude' ? -90 : -180;
-    const maximum = coordinate === 'latitude' ? 90 : 180;
-    if (
-      typeof valueForCoordinate !== 'number' ||
-      !Number.isFinite(valueForCoordinate) ||
-      valueForCoordinate < minimum ||
-      valueForCoordinate > maximum
-    ) {
-      return {
-        error: `deliveryAddress.${coordinate} must be a finite number between ${minimum} and ${maximum}.`,
-      };
-    }
-    destination[coordinate] = valueForCoordinate;
-  }
+  const destination = validatedAddress.destination;
 
   let serialized;
   try {
     serialized = JSON.stringify({
-      ...value,
+      ...omitClientPricingFields(value),
       formattedAddress,
       pincode: validatedAddress.pincode,
     });
@@ -442,7 +458,7 @@ function validateQuoteDeliveryAddress(value) {
 function createCartCheckoutRouter({
   databasePool,
   authenticateCustomer = null,
-  deliveryRoutingClient = null,
+  deliveryDistanceClient = null,
 }) {
   const router = express.Router();
 
@@ -729,11 +745,33 @@ function createCartCheckoutRouter({
       return invokeCustomerAuthentication(authenticateCustomer, req, res, next);
     },
     async (req, res, next) => {
-      const body = parseObjectBody(req.body ?? {}, new Set(['deliveryAddress']));
+      const body = parseObjectBody(
+        req.body ?? {},
+        new Set([
+          'deliveryAddress',
+          'deliveryFeeMinor',
+          'distanceMeters',
+          'deliveryDistanceM',
+          'delivery_fee_minor',
+          'delivery_distance_m',
+          'distanceM',
+          'distance_m',
+        ]),
+      );
       if (body.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
       const address = validateQuoteDeliveryAddress(body.value.deliveryAddress);
       if (address.error) {
-        return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', address.error));
+        return sendApiError(
+          res,
+          new ApiError(
+            address.code === 'ADDRESS_LOCATION_REQUIRED' ||
+              address.code === 'ADDRESS_LOCATION_INVALID'
+              ? 422
+              : 400,
+            address.code || 'INVALID_REQUEST',
+            address.error,
+          ),
+        );
       }
       if (!databasePool) return sendDatabaseUnavailable(res);
       const customerUserId = req.auth?.customerUserId;
@@ -812,16 +850,10 @@ function createCartCheckoutRouter({
 
         let origin;
         try {
-          const shopAddress = cartSnapshot.items[0].shop_address;
-          origin = validateCoordinate(
-            shopAddress && typeof shopAddress === 'object'
-              ? {
-                  latitude: shopAddress.latitude,
-                  longitude: shopAddress.longitude,
-                }
-              : null,
-            'shop address',
-          );
+          origin = validateCoordinates({
+            latitude: cartSnapshot.items[0].shop_latitude,
+            longitude: cartSnapshot.items[0].shop_longitude,
+          });
         } catch {
           return sendApiError(
             res,
@@ -832,12 +864,12 @@ function createCartCheckoutRouter({
             ),
           );
         }
-        if (!deliveryRoutingClient) {
+        if (!deliveryDistanceClient) {
           return sendApiError(
             res,
             new ApiError(
               503,
-              'ROUTING_UNAVAILABLE',
+              'DISTANCE_UNAVAILABLE',
               'Delivery distance could not be verified.',
             ),
           );
@@ -845,19 +877,16 @@ function createCartCheckoutRouter({
 
         let distanceMeters;
         try {
-          distanceMeters = await deliveryRoutingClient.getDrivingDistanceMeters({
+          distanceMeters = await deliveryDistanceClient.getRoadDistanceMetres(
             origin,
-            destination: {
-              latitude: address.destination.latitude,
-              longitude: address.destination.longitude,
-            },
-          });
+            address.destination,
+          );
         } catch {
           return sendApiError(
             res,
             new ApiError(
               503,
-              'ROUTING_UNAVAILABLE',
+              'DISTANCE_UNAVAILABLE',
               'Delivery distance could not be verified.',
             ),
           );
@@ -867,7 +896,7 @@ function createCartCheckoutRouter({
             res,
             new ApiError(
               503,
-              'ROUTING_UNAVAILABLE',
+              'DISTANCE_UNAVAILABLE',
               'Delivery distance could not be verified.',
             ),
           );
@@ -880,28 +909,31 @@ function createCartCheckoutRouter({
             'Order total is too large.',
           );
         }
-        const pricing = calculateDeliveryPricing({
-          merchandiseSubtotalMinor: Number(cartSnapshot.subtotal),
-          distanceMeters,
-        });
+        let deliveryFeeMinor;
+        try {
+          deliveryFeeMinor = computeDeliveryFeeMinor('standard', distanceMeters);
+        } catch {
+          return sendApiError(
+            res,
+            new ApiError(
+              503,
+              'DISTANCE_UNAVAILABLE',
+              'Delivery distance could not be verified.',
+            ),
+          );
+        }
+        const platformFeeMinor = PLATFORM_FEE_MINOR;
+        const totalMinor =
+          cartSnapshot.subtotal + BigInt(deliveryFeeMinor) + BigInt(platformFeeMinor);
         return res.status(200).json({
           data: {
             ...quoteBase,
-            isDeliverable: pricing.deliverable,
-            message: pricing.deliverable
-              ? 'Delivery is available at this location.'
-              : "Sorry! We don't deliver here yet",
-            distanceMeters: pricing.distanceMeters,
-            deliveryFeeMinor:
-              pricing.deliveryFeeMinor === null
-                ? null
-                : String(pricing.deliveryFeeMinor),
-            platformFeeMinor:
-              pricing.platformFeeMinor === null
-                ? null
-                : String(pricing.platformFeeMinor),
-            totalMinor:
-              pricing.totalMinor === null ? null : String(pricing.totalMinor),
+            isDeliverable: true,
+            message: 'Delivery is available at this location.',
+            distanceMeters,
+            deliveryFeeMinor: String(deliveryFeeMinor),
+            platformFeeMinor: String(platformFeeMinor),
+            totalMinor: totalMinor.toString(),
           },
         });
       } catch (error) {
@@ -925,10 +957,34 @@ function createCartCheckoutRouter({
       return invokeCustomerAuthentication(authenticateCustomer, req, res, next);
     },
     async (req, res, next) => {
-      const body = parseObjectBody(req.body, new Set(['deliveryAddress']));
+      const body = parseObjectBody(
+        req.body,
+        new Set([
+          'deliveryAddress',
+          'deliveryFeeMinor',
+          'distanceMeters',
+          'deliveryDistanceM',
+          'delivery_fee_minor',
+          'delivery_distance_m',
+          'distanceM',
+          'distance_m',
+        ]),
+      );
       if (body.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
       const address = validateDeliveryAddress(body.value.deliveryAddress);
-      if (address.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', address.error));
+      if (address.error) {
+        return sendApiError(
+          res,
+          new ApiError(
+            address.code === 'ADDRESS_LOCATION_REQUIRED' ||
+              address.code === 'ADDRESS_LOCATION_INVALID'
+              ? 422
+              : 400,
+            address.code || 'INVALID_REQUEST',
+            address.error,
+          ),
+        );
+      }
 
       const customerUserId = req.auth?.customerUserId;
       if (typeof customerUserId !== 'string' || !UUID_PATTERN.test(customerUserId)) {
@@ -1001,9 +1057,65 @@ function createCartCheckoutRouter({
             );
           }
           const orderId = randomUUID();
-          const deliveryFee = 0n;
+          let shopCoordinates;
+          try {
+            shopCoordinates = validateCoordinates({
+              latitude: checkout.items[0].shop_latitude,
+              longitude: checkout.items[0].shop_longitude,
+            });
+          } catch {
+            throw new ApiError(
+              503,
+              'SHOP_LOCATION_UNAVAILABLE',
+              'The shop delivery location could not be verified.',
+            );
+          }
+          if (!deliveryDistanceClient) {
+            throw new ApiError(
+              503,
+              'DISTANCE_UNAVAILABLE',
+              'Delivery distance could not be verified.',
+            );
+          }
+          let deliveryDistanceM;
+          try {
+            deliveryDistanceM =
+              await deliveryDistanceClient.getRoadDistanceMetres(
+                shopCoordinates,
+                address.destination,
+              );
+          } catch {
+            throw new ApiError(
+              503,
+              'DISTANCE_UNAVAILABLE',
+              'Delivery distance could not be verified.',
+            );
+          }
+          if (!Number.isSafeInteger(deliveryDistanceM) || deliveryDistanceM < 0) {
+            throw new ApiError(
+              503,
+              'DISTANCE_UNAVAILABLE',
+              'Delivery distance could not be verified.',
+            );
+          }
+          let deliveryFeeMinor;
+          try {
+            deliveryFeeMinor = computeDeliveryFeeMinor(
+              'standard',
+              deliveryDistanceM,
+            );
+          } catch {
+            throw new ApiError(
+              503,
+              'DISTANCE_UNAVAILABLE',
+              'Delivery distance could not be verified.',
+            );
+          }
+          const deliveryFee = BigInt(deliveryFeeMinor);
+          const platformFee = BigInt(PLATFORM_FEE_MINOR);
           const discount = 0n;
-          const total = checkout.subtotal + deliveryFee - discount;
+          const total =
+            checkout.subtotal + deliveryFee + platformFee - discount;
           let commissionTotalMinor = 0n;
           for (const item of checkout.items) {
             item.commission_bps = resolveCommissionBps({
@@ -1024,9 +1136,10 @@ function createCartCheckoutRouter({
                id, customer_user_id, partner_id, shop_id, status, currency,
                items_subtotal_minor, delivery_fee_minor, discount_minor,
                total_minor, delivery_address_snapshot, commission_minor,
+               delivery_distance_m, delivery_fee_kind, platform_fee_minor,
                payment_method
              )
-             VALUES ($1, $2, $3, $4, 'placed', $5, $6, $7, $8, $9, $10::jsonb, $11, 'cod')`,
+             VALUES ($1, $2, $3, $4, 'placed', $5, $6, $7, $8, $9, $10::jsonb, $11, $12, 'standard', $13, 'cod')`,
             [
               orderId,
               customerUserId,
@@ -1039,6 +1152,8 @@ function createCartCheckoutRouter({
               total.toString(),
               address.value,
               commissionTotalMinor.toString(),
+              deliveryDistanceM,
+              platformFee.toString(),
             ],
           );
 

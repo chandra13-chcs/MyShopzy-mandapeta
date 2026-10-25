@@ -7,6 +7,11 @@ const {
   listDues,
   withLedgerTransaction,
 } = require('../dues/ledger');
+const {
+  InvalidCoordinatesError,
+  validateCoordinates,
+} = require('../delivery-fee/distance');
+const { computeDeliveryFeeMinor } = require('../delivery-fee/pricing');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -127,6 +132,7 @@ function requireCustomerAuthentication(authenticateCustomer) {
         },
       });
     }
+    if (!databasePool) return sendDatabaseUnavailable(res);
     try {
       const result = authenticateCustomer(req, res, next);
       if (result && typeof result.catch === 'function') {
@@ -164,6 +170,7 @@ async function findSavedAddress(databasePool, customerUserId, addressId) {
 function createCustomerAccountRouter({
   databasePool,
   authenticateCustomer = null,
+  deliveryDistanceClient = null,
 }) {
   const router = express.Router();
   const customerAuth = requireCustomerAuthentication(authenticateCustomer);
@@ -872,7 +879,10 @@ function createCustomerAccountRouter({
     try {
       const result = await databasePool.query(
         `SELECT id, pickup_location, drop_location, parcel_type,
-                weight_grams, instructions, status, created_at, updated_at
+                weight_grams, instructions, status, created_at, updated_at,
+                pickup_latitude, pickup_longitude, drop_latitude,
+                drop_longitude, delivery_distance_m, delivery_fee_minor,
+                delivery_fee_kind
          FROM app.parcel_bookings
          WHERE customer_user_id = $1
            AND ${activeCustomerPredicate('$1')}
@@ -892,7 +902,24 @@ function createCustomerAccountRouter({
   router.post('/me/parcels', async (req, res, next) => {
     const body = parseObjectBody(
       req.body,
-      new Set(['pickupLocation', 'dropLocation', 'parcelType', 'weightKg', 'instructions']),
+      new Set([
+        'pickupLocation',
+        'dropLocation',
+        'parcelType',
+        'weightKg',
+        'instructions',
+        'pickupLatitude',
+        'pickupLongitude',
+        'dropLatitude',
+        'dropLongitude',
+        'deliveryFeeMinor',
+        'distanceMeters',
+        'deliveryDistanceM',
+        'delivery_fee_minor',
+        'delivery_distance_m',
+        'distanceM',
+        'distance_m',
+      ]),
     );
     if (body.error) return sendError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
     const pickup = parseText(body.value.pickupLocation, 'pickupLocation', {
@@ -931,21 +958,111 @@ function createCustomerAccountRouter({
     if (validationError) {
       return sendError(res, new ApiError(400, 'INVALID_REQUEST', validationError));
     }
+    const coordinateNames = [
+      'pickupLatitude',
+      'pickupLongitude',
+      'dropLatitude',
+      'dropLongitude',
+    ];
+    if (coordinateNames.some((name) => body.value[name] === undefined)) {
+      return sendError(
+        res,
+        new ApiError(
+          422,
+          'ADDRESS_LOCATION_REQUIRED',
+          'Pickup and drop coordinates are required to price a parcel.',
+        ),
+      );
+    }
+    let pickupCoordinates;
+    let dropCoordinates;
+    try {
+      pickupCoordinates = validateCoordinates({
+        latitude: body.value.pickupLatitude,
+        longitude: body.value.pickupLongitude,
+      });
+      dropCoordinates = validateCoordinates({
+        latitude: body.value.dropLatitude,
+        longitude: body.value.dropLongitude,
+      });
+    } catch (error) {
+      if (error instanceof InvalidCoordinatesError) {
+        return sendError(
+          res,
+          new ApiError(422, 'ADDRESS_LOCATION_INVALID', error.message),
+        );
+      }
+      throw error;
+    }
     if (!databasePool) return sendDatabaseUnavailable(res);
+    if (!deliveryDistanceClient) {
+      return sendError(
+        res,
+        new ApiError(
+          503,
+          'DISTANCE_UNAVAILABLE',
+          'Parcel distance could not be verified.',
+        ),
+      );
+    }
+    let deliveryDistanceM;
+    try {
+      deliveryDistanceM = await deliveryDistanceClient.getRoadDistanceMetres(
+        pickupCoordinates,
+        dropCoordinates,
+      );
+    } catch {
+      return sendError(
+        res,
+        new ApiError(
+          503,
+          'DISTANCE_UNAVAILABLE',
+          'Parcel distance could not be verified.',
+        ),
+      );
+    }
+    if (!Number.isSafeInteger(deliveryDistanceM) || deliveryDistanceM < 0) {
+      return sendError(
+        res,
+        new ApiError(
+          503,
+          'DISTANCE_UNAVAILABLE',
+          'Parcel distance could not be verified.',
+        ),
+      );
+    }
+    let deliveryFeeMinor;
+    try {
+      deliveryFeeMinor = computeDeliveryFeeMinor('parcel', deliveryDistanceM);
+    } catch {
+      return sendError(
+        res,
+        new ApiError(
+          503,
+          'DISTANCE_UNAVAILABLE',
+          'Parcel distance could not be verified.',
+        ),
+      );
+    }
     try {
       const result = await databasePool.query(
         `INSERT INTO app.parcel_bookings (
            id, customer_user_id, pickup_location, drop_location, parcel_type,
-           weight_grams, instructions
+           weight_grams, instructions, pickup_latitude, pickup_longitude,
+           drop_latitude, drop_longitude, delivery_distance_m,
+           delivery_fee_minor, delivery_fee_kind
          )
-         SELECT $1, c.user_id, $3, $4, $5, $6, $7
+         SELECT $1, c.user_id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'parcel'
          FROM app.customers AS c
          JOIN app.users AS u ON u.id = c.user_id
          WHERE c.user_id = $2
            AND u.system_role = 'customer'
            AND u.status = 'active'
          RETURNING id, pickup_location, drop_location, parcel_type,
-                   weight_grams, instructions, status, created_at`,
+                   weight_grams, instructions, status, created_at,
+                   pickup_latitude, pickup_longitude, drop_latitude,
+                   drop_longitude, delivery_distance_m, delivery_fee_minor,
+                   delivery_fee_kind`,
         [
           randomUUID(),
           req.customerUserId,
@@ -954,6 +1071,12 @@ function createCustomerAccountRouter({
           parcelType.value,
           Math.round(weightKg * 1000),
           instructions.value,
+          pickupCoordinates.latitude,
+          pickupCoordinates.longitude,
+          dropCoordinates.latitude,
+          dropCoordinates.longitude,
+          deliveryDistanceM,
+          deliveryFeeMinor,
         ],
       );
       if (result.rows.length === 0) {
@@ -974,7 +1097,10 @@ function createCustomerAccountRouter({
     try {
       const result = await databasePool.query(
         `SELECT id, pickup_location, drop_location, parcel_type,
-                weight_grams, instructions, status, created_at, updated_at
+                weight_grams, instructions, status, created_at, updated_at,
+                pickup_latitude, pickup_longitude, drop_latitude,
+                drop_longitude, delivery_distance_m, delivery_fee_minor,
+                delivery_fee_kind
          FROM app.parcel_bookings
          WHERE id = $1
            AND customer_user_id = $2

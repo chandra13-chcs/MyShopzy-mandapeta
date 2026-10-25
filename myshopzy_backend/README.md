@@ -99,6 +99,23 @@ Cart and checkout endpoints:
   tracked inventory in that same transaction. It writes `payment_method='cod'`
   until a payment gateway is integrated; order totals are calculated server-side.
 
+Delivery pricing uses integer paise and integer metres. Standard orders use a
+4,000-metre base distance and 4,000-paise base fee; parcel bookings use a
+2,000-metre base distance and 2,500-paise base fee. Both add one paisa per
+metre beyond the base distance. The road route is pickup-to-drop only.
+Checkout addresses and parcel pickup/drop requests must include coordinates
+within India's configured bounding box. A missing route or provider failure
+returns `503 DISTANCE_UNAVAILABLE`; no straight-line or client-supplied
+distance/fee fallback is used.
+
+Configure routing on the backend only with `ROUTING_PROVIDER=google` and
+`ROUTING_API_KEY=<server-side Google Routes API key>`. The `fake` provider is
+available for tests and local development only; production startup rejects it.
+Apply migration `015_server_delivery_pricing.sql` before deploying the new
+checkout or parcel routes. Existing shop coordinates are copied from their
+address JSON when possible; shops without coordinates must be updated before
+they can be quoted or ordered.
+
 Cart tokens are bearer secrets for anonymous carts, not customer identities.
 Anyone with a token can operate that cart; clients must protect it like a
 credential. Configured Flutter catalog products, cart operations, checkout
@@ -138,24 +155,35 @@ customer-scoped and never accept a customer ID in their request body.
 
 Rider API endpoints:
 
-- `GET /api/v1/rider/orders/available` lists unassigned `getting_packed` orders
-  with their shop and delivery details only while the requesting rider is
-  online; offline riders receive `403 RIDER_OFFLINE`.
+- `GET /api/v1/rider/orders/available` lists unassigned `packed` orders
+  within 5 km of the rider's fresh location, only while online, within the
+  server-enforced 7:00 AM–10:00 PM Asia/Kolkata duty window, and below the
+  active-order limit. Offers do not include the customer's address or phone.
 - `POST /api/v1/rider/orders/:orderId/accept` atomically assigns an available
-  order only while the rider is online, then returns assigned delivery,
-  coordinates, and customer/shop contact details.
+  order only while the rider is online, within duty hours, and below the
+  active-order limit; accepted orders then return delivery and contact details.
+- `PATCH /api/v1/rider/orders/:orderId/cancel` accepts a required reason and
+  returns an order to the available pool only before pickup.
 - `PATCH /api/v1/rider/orders/:orderId/status` accepts `picked_up`,
   `out_for_delivery`, or `delivered` in that order, and only updates orders
   assigned to that rider. Replaying the current stage is safe for client retry
   queues; delivery completion writes the rider settlement idempotently.
+- `PATCH /api/v1/rider/orders/:orderId/arrived` marks the assigned rider's
+  arrival once while the order is out for delivery. The rider response includes
+  the server-recorded arrival time, support availability time, and support
+  phone. A customer-fault delivery failure is rejected until that support
+  waiting period has elapsed.
 - `PATCH /api/v1/rider/orders/:orderId/delivery-failed` records a permitted
-  customer-fault reason and the rider's last known coordinates. A COD order
-  creates a pending-review due using its server-stored total; prepaid orders
-  never create dues.
-- `POST /api/v1/rider/location` accepts `{ "latitude": 16.87, "longitude": 81.93 }`
-  and stores the coordinates while marking the rider online.
+  customer-fault reason and the rider's last known coordinates only after the
+  support waiting period. A COD order creates a pending-review due using its
+  server-stored total; prepaid orders never create dues.
+- `POST /api/v1/rider/location` accepts latitude, longitude, accuracy, and an
+  accuracy in metres plus an ISO-8601 `capturedAt`; the server compares it to
+  server time and rejects fixes older than 60 seconds. A fix older than two
+  minutes is stale and prevents offers until a fresh fix is received.
 - `PATCH /api/v1/rider/availability` accepts `{ "isOnline": false }` to go off
-  duty; going online requires a valid location ping.
+  duty; going online requires the fresh location fields accepted by the
+  location endpoint. Active deliveries keep the rider online after closing.
 - `GET /api/v1/rider/earnings/summary` returns the rider's daily and lifetime
   completed-delivery settlement totals in minor currency units.
 
@@ -164,6 +192,11 @@ the API uses `00000000-0000-4000-8000-000000000001`. Apply the migrations and
 `database/seed.sql` to create that sample rider. The mock header authenticator
 is disabled in production; production deployments must inject a trusted
 `authenticateRider` middleware that sets `req.auth.riderUserId`.
+`RIDER_OFFER_RADIUS_M` and `RIDER_MAX_ACTIVE_ORDERS` are backend settings,
+defaulting to 5000 metres and 2 active orders. Apply migration
+`017_rider_support_escalations.sql` after the earlier migrations before
+deploying support escalation routes. `SUPPORT_PHONE` defaults to
+`+91 88972 67490`; `SUPPORT_ESCALATION_MINUTES` defaults to 10.
 
 Prepared Super Admin queries cover orders, customers, partners, products, and
 dues. Dues can be confirmed with a support reference, waived with a reason, and
@@ -192,6 +225,17 @@ Admin dues routes use the existing Auth0 admin authentication:
 - `POST /api/v1/admin/customers/:customerId/dues/payments` requires
   `{ "amount": 500, "reference": "receipt-123" }`, where `amount` is integer
   paise. Payments above the outstanding balance are rejected.
+
+Support escalation routes use the same admin authentication:
+
+- `GET /api/v1/admin/support/escalations?limit=20&offset=0` lists orders
+  waiting beyond the configured support window and marks their first
+  escalation time on read.
+- `POST /api/v1/admin/support/escalations/:orderId/resolve` requires
+  `{ "supportReference": "SUP-123", "outcome": "customer_unreachable",
+  "note": "Optional" }`. `customer_reached` clears the escalation; the two
+  customer-fault outcomes create one pending due for a COD order, based only on
+  the order total.
 
 ## Setup and run
 
@@ -301,8 +345,8 @@ a session. The endpoint returns 404 in production, and customer authentication
 is never accepted by the production customer authenticator. Flutter keeps
 customer tokens in memory; they are lost when the app restarts. Do not use this
 mechanism in production or treat it as provider-backed OTP authentication.
-The migrations do not model coupons, refunds, reviews,
-support requests, notifications, or payment verification. Coupon
+The migrations do not model coupons, refunds, reviews, general support
+ticketing, notifications, or payment verification. Coupon
 eligibility/redemption, notification delivery, support ticketing, payment
 verification/provider references, and review/rating records need separately
 designed schema and integrations before those APIs can be implemented. Order

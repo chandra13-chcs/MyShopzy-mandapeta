@@ -14,7 +14,7 @@ const ORDER_STATUSES = Object.freeze([
   'placed',
   'confirmed',
   'preparing',
-  'getting_packed',
+  'packed',
   'ready_for_pickup',
   'picked_up',
   'out_for_delivery',

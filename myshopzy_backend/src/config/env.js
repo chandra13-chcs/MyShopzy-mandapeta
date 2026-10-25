@@ -6,6 +6,19 @@ const POSTGRES_ENV_KEYS = [
   'PGPASSWORD',
 ];
 
+const DEFAULT_SUPPORT_PHONE = '+91 88972 67490';
+const DEFAULT_SUPPORT_ESCALATION_MINUTES = 10;
+
+function parsePositiveIntegerEnv(env, name, fallback) {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return value;
+}
+
 function loadConfig(env = process.env) {
   const rawPort = env.PORT || '3000';
   const port = Number(rawPort);
@@ -68,6 +81,16 @@ function loadConfig(env = process.env) {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
+  const routingProvider = env.ROUTING_PROVIDER?.trim() || 'google';
+  if (!['google', 'fake'].includes(routingProvider)) {
+    throw new Error('ROUTING_PROVIDER must be google or fake.');
+  }
+  const supportPhone = env.SUPPORT_PHONE?.trim() || DEFAULT_SUPPORT_PHONE;
+  const supportEscalationMinutes = parsePositiveIntegerEnv(
+    env,
+    'SUPPORT_ESCALATION_MINUTES',
+    DEFAULT_SUPPORT_ESCALATION_MINUTES,
+  );
 
   if (Boolean(auth0IssuerUrl) !== Boolean(auth0Audience)) {
     throw new Error('Set both AUTH0_ISSUER_URL and AUTH0_AUDIENCE.');
@@ -229,6 +252,10 @@ function loadConfig(env = process.env) {
     nodeEnv: env.NODE_ENV || 'development',
     database,
     googleMapsApiKey: env.GOOGLE_MAPS_API_KEY?.trim() || null,
+    routingProvider,
+    routingApiKey: env.ROUTING_API_KEY?.trim() || null,
+    supportPhone,
+    supportEscalationMinutes,
     developmentCustomerOtp: env.DEVELOPMENT_CUSTOMER_OTP || null,
     developmentCustomerSessionSecret:
       env.DEVELOPMENT_CUSTOMER_SESSION_SECRET || null,

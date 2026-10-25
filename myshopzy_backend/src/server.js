@@ -18,6 +18,7 @@ const { mockRiderAuth } = require('./middleware/mock-rider-auth');
 const {
   createGoogleRoutesClient,
 } = require('./modules/delivery-serviceability/google-routes');
+const { createDistanceClient } = require('./modules/delivery-fee/distance');
 
 function shutdownServer(server, pool) {
   return new Promise((resolve, reject) => {
@@ -58,6 +59,13 @@ function startServer({
     }),
     config,
   });
+  if (config.nodeEnv === 'production' && config.routingProvider === 'fake') {
+    throw new Error('ROUTING_PROVIDER=fake cannot be used in production.');
+  }
+  const deliveryDistanceClient = createDistanceClient({
+    provider: config.routingProvider,
+    apiKey: config.routingApiKey,
+  });
   const customerOtpAuthRouter = createCustomerOtpAuth({
     databasePool: pool,
     config,
@@ -77,6 +85,7 @@ function startServer({
     : null;
   const app = createApp({
     databasePool: pool,
+    deliveryDistanceClient,
     authenticateCustomer: createCustomerAuthenticator({
       databasePool: pool,
       config,
@@ -84,6 +93,8 @@ function startServer({
     authenticateRider:
       authenticateRider ??
       (config.nodeEnv === 'production' ? null : mockRiderAuth),
+    supportPhone: config.supportPhone,
+    supportEscalationMinutes: config.supportEscalationMinutes,
     authenticateAdmin,
     authenticatePartner,
     nodeEnv: config.nodeEnv,

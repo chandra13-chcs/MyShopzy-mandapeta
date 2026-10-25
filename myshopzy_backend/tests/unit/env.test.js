@@ -9,6 +9,10 @@ test('uses development defaults and permits health-only configuration', () => {
     nodeEnv: 'development',
     database: null,
     googleMapsApiKey: null,
+    routingProvider: 'google',
+    routingApiKey: null,
+    supportPhone: '+91 88972 67490',
+    supportEscalationMinutes: 10,
     developmentCustomerOtp: null,
     developmentCustomerSessionSecret: null,
     customerOtpPepper: null,
@@ -19,6 +23,22 @@ test('uses development defaults and permits health-only configuration', () => {
     superAdminOrigin: null,
     partnerPortalOrigins: ['http://localhost:5173'],
   });
+});
+
+test('loads support contact settings and validates the escalation window', () => {
+  const config = loadConfig({
+    SUPPORT_PHONE: '+91 12345 67890',
+    SUPPORT_ESCALATION_MINUTES: '15',
+  });
+  assert.equal(config.supportPhone, '+91 12345 67890');
+  assert.equal(config.supportEscalationMinutes, 15);
+  for (const value of ['0', '-1', '1.5', 'invalid']) {
+    assert.throws(
+      () => loadConfig({ SUPPORT_ESCALATION_MINUTES: value }),
+      /SUPPORT_ESCALATION_MINUTES must be a positive integer/,
+    );
+  }
+});
 
   test('parses complete backend-only customer OTP provider settings', () => {
     const config = loadConfig({
@@ -243,6 +263,23 @@ test('rejects insecure Auth0 issuers and non-origin Super Admin URLs', () => {
 test('loads the Google Maps key into backend-only configuration', () => {
   const config = loadConfig({
     GOOGLE_MAPS_API_KEY: '  backend-test-google-maps-key  ',
+  });
+
+  test('loads routing settings from server-only environment variables', () => {
+    const config = loadConfig({
+      ROUTING_PROVIDER: 'fake',
+      ROUTING_API_KEY: '  backend-routing-secret  ',
+    });
+
+    assert.equal(config.routingProvider, 'fake');
+    assert.equal(config.routingApiKey, 'backend-routing-secret');
+  });
+
+  test('rejects unsupported routing providers', () => {
+    assert.throws(
+      () => loadConfig({ ROUTING_PROVIDER: 'straight-line' }),
+      /ROUTING_PROVIDER must be google or fake/,
+    );
   });
 
   assert.equal(config.googleMapsApiKey, 'backend-test-google-maps-key');

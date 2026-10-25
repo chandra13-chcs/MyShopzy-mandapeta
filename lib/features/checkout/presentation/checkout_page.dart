@@ -295,7 +295,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
       setState(() {
         _backendQuote = null;
         _quoteLoading = false;
-        _quoteError = address == null ? null : 'This address needs a valid pincode and map coordinates to calculate delivery.';
+        _quoteError = address == null
+            ? null
+            : 'This address needs a valid pincode and map coordinates to calculate delivery.';
       });
       return;
     }
@@ -1917,7 +1919,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         landmark: _landmarkController.text.trim(),
       );
       _someoneElseSelected = false;
-      _currentLocationSuggested = false;
     });
     unawaited(_refreshBackendQuote(_confirmedDeliveryAddress!));
   }
@@ -1937,7 +1938,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
         _savedAddresses.add(address);
       }
       _confirmedDeliveryAddress = address;
-      _currentLocationSuggested = false;
       _someoneElseSelected = false;
     });
     widget.onAddressSelected?.call(address);
@@ -1947,7 +1947,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
   void _confirmAddress(CheckoutDeliveryAddress address) {
     setState(() {
       _confirmedDeliveryAddress = address;
-      _currentLocationSuggested = false;
       _someoneElseSelected = false;
     });
     widget.onAddressSelected?.call(address);

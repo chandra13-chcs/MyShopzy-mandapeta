@@ -41,8 +41,8 @@ admin write endpoint for service areas.
 
 ## Customer account API
 
-Additive migrations 003 and 004 add saved-address, wishlist, parcel-booking,
-dynamic partner-category, and delivery-serviceability storage. The partner
+Additive migrations 003, 004, and 015 add saved-address, wishlist,
+parcel-booking, delivery-serviceability, and server-priced delivery storage. The partner
 `is_active` value is generated from approval status; partner type identifiers
 use normalized lowercase slugs, so new types do not require code changes.
 All customer routes below require a
@@ -67,7 +67,7 @@ middleware is configured. Client-supplied user IDs are never used as identity.
 | `GET /me/orders/:orderId` | UUID path | Order summary, address snapshot, immutable item snapshots; foreign and missing orders return `404` |
 | `GET /me/dues` | No parameters | Authenticated customer's outstanding balance and due summaries, including dispute notes |
 | `POST /me/dues/:entryId/dispute` | `{ "message": "..." }` (1–500 characters) | Appends a dispute note to the customer's own pending or confirmed due; does not change its amount or status |
-| `POST /me/parcels` | Pickup/drop strings, UI parcel type, weight `0 < kg <= 20` (up to three decimal places), optional instructions | `app.parcel_bookings`; creates a `requested` booking, `201` |
+| `POST /me/parcels` | Pickup/drop strings and coordinates, UI parcel type, weight `0 < kg <= 20` (up to three decimal places), optional instructions | `app.parcel_bookings`; recomputes road distance and parcel fee server-side, creates a `requested` booking, `201` |
 
 OTP codes expire after five minutes, allow five verification attempts, and have
 a 30-second resend cooldown. Requests are limited to three per phone per 15
@@ -78,9 +78,10 @@ is only created after code verification.
 | `GET /me/parcels` | Optional `limit` (1–100), `offset` | Authenticated customer's booking list |
 | `GET /me/parcels/:parcelId` | UUID path | Owner-scoped booking details; foreign and missing IDs return `404` |
 
-Parcel booking records express a request only. There is no dispatch, distance
-verification, delivery price, or completion integration, so the API does not
-claim that a parcel has been accepted or delivered.
+Parcel booking records express a request only. They persist pickup/drop
+coordinates, server-calculated distance and fee, but have no dispatch or
+completion integration, so the API does not claim that a parcel has been
+accepted or delivered.
 
 ## Cart, checkout, and order API foundations
 
@@ -101,15 +102,17 @@ that cart.
 | `PATCH /cart/items/:productId/:variantId` | `X-Cart-Token`; `{ "quantity": 1 }` | Sets quantity for that product/variant line; quantity must be 1–99 and within variant stock when tracked | Cart tables and catalog tables |
 | `DELETE /cart/items/:productId/:variantId` | `X-Cart-Token` | `204` after removal of that product/variant line | Cart tables |
 | `DELETE /cart/items` | `X-Cart-Token` | Clears cart contents and releases the cart's single-shop binding | Cart tables |
-| `POST /checkout/quote` | `X-Cart-Token`; no client price/total fields | Items (including `variantId` and `variantLabel`), currency, subtotal, delivery fee, discount, and total; prices are freshly read from PostgreSQL variants | Cart tables, products, product variants, shops, partners |
-| `POST /orders` | `X-Cart-Token`; `{ "deliveryAddress": { ... , "pincode": "533308" } }`; trusted authenticated customer context | `201` with order ID/status and server-calculated totals. Requires the address pincode to be active in `app.serviceable_pincodes`; order and immutable item snapshots are inserted transactionally. | Customers, users, cart tables, products, product variants, shops, partners, serviceable pincodes, orders, order items |
+| `POST /checkout/quote` | `X-Cart-Token`; delivery address with latitude, longitude, and pincode; no client price/distance fields | Items (including `variantId` and `variantLabel`), currency, subtotal, server-calculated road distance and delivery fee, discount, and total | Cart tables, products, product variants, shops, partners |
+| `POST /orders` | `X-Cart-Token`; `{ "deliveryAddress": { "latitude": number, "longitude": number, "pincode": "533308" } }`; trusted authenticated customer context | `201` with order ID/status and server-calculated totals. Requires the address pincode to be active in `app.serviceable_pincodes`; recomputes road distance/fee and inserts order and immutable item snapshots transactionally. | Customers, users, cart tables, products, product variants, shops, partners, serviceable pincodes, orders, order items |
 
 Order placement checks that every product, shop, and partner is active/approved,
 that all products belong to the cart's one shop, that each variant's stock is
 sufficient,
 and that monetary totals fit PostgreSQL `bigint`. It does not accept submitted
-prices, line totals, subtotal, delivery fee, or discount. Delivery fee and
-discount are fixed to zero because no delivery pricing/coupon rules exist.
+prices, line totals, subtotal, delivery fee, distance, or discount. Delivery
+distance is the road route from the shop to the customer address; routing
+failures return `503 DISTANCE_UNAVAILABLE` and fail closed. New rules use
+integer paise/metres and are described in the backend README.
 Order items snapshot the schema-supported product name, variant SKU and unit
 price, cart quantity, line total, currency, and variant details (`variantId`,
 label, unit, variant quantity, SKU, and unit price). Delivery
@@ -167,7 +170,7 @@ geofence coordinates. Customer order cancellation remains unavailable.
 | Edit profile | `PATCH /me/profile` with `displayName`, `email`, and/or `phone` | Implemented; uniqueness is enforced by existing indexes. |
 | Saved addresses | `GET/POST /me/addresses`, `PATCH/DELETE /me/addresses/:addressId` | Implemented using migration 003; configured Flutter flows load and save customer-owned address snapshots. |
 | Wishlist and save-list controls | `GET /me/wishlist`, `POST /me/wishlist/items`, `DELETE /me/wishlist/items/:productId` | Implemented using migration 003; current Flutter store remains in-memory. |
-| Parcel booking, history, and details | `POST/GET /me/parcels`, `GET /me/parcels/:parcelId` | Flutter uses these APIs when configured and surfaces authentication errors; records are requests only, with no dispatch, distance verification, or price. |
+| Parcel booking, history, and details | `POST/GET /me/parcels`, `GET /me/parcels/:parcelId` | Parcel requests require pickup/drop coordinates; the backend stores server-calculated road distance and fee. Records are requests only, with no dispatch or delivery completion. |
 | Notifications | No endpoint available | Notifications are demo data; no notification table/provider exists. |
 | Reviews list, write review, order rating | No endpoint available | No review/rating table exists. |
 | Help and support | No endpoint available | Contact options/submissions have no support table/service. |

@@ -3,6 +3,10 @@ const http = require('node:http');
 const test = require('node:test');
 
 const { createApp } = require('../../src/app');
+const {
+  createDistanceClient,
+  createFakeDistanceProvider,
+} = require('../../src/modules/delivery-fee/distance');
 
 const customerId = '27dcad4a-f166-4fc8-a224-3d1c099dd459';
 const otherCustomerId = '69303022-f984-4acd-8258-bb48dfd4a94b';
@@ -252,7 +256,21 @@ function createDatabase({
       return { rows, rowCount: rows.length };
     }
     if (normalized.startsWith('INSERT INTO app.parcel_bookings')) {
-      const [id, ownerId, pickup, drop, type, weight, instructions] = params;
+      const [
+        id,
+        ownerId,
+        pickup,
+        drop,
+        type,
+        weight,
+        instructions,
+        pickupLatitude,
+        pickupLongitude,
+        dropLatitude,
+        dropLongitude,
+        distanceM,
+        feeMinor,
+      ] = params;
       if (ownerId !== customerId) return { rows: [], rowCount: 0 };
       const parcel = {
         id,
@@ -263,6 +281,13 @@ function createDatabase({
         weight_grams: weight,
         instructions,
         status: 'requested',
+        pickup_latitude: pickupLatitude,
+        pickup_longitude: pickupLongitude,
+        drop_latitude: dropLatitude,
+        drop_longitude: dropLongitude,
+        delivery_distance_m: distanceM,
+        delivery_fee_minor: feeMinor,
+        delivery_fee_kind: 'parcel',
       };
       parcels.set(id, parcel);
       return { rows: [parcel], rowCount: 1 };
@@ -282,7 +307,17 @@ function createDatabase({
   };
 }
 
-async function startServer(t, databasePool, { authenticated = false } = {}) {
+async function startServer(
+  t,
+  databasePool,
+  {
+    authenticated = false,
+    deliveryDistanceClient = createDistanceClient({
+      provider: 'fake',
+      fakeProvider: createFakeDistanceProvider({ distanceMetres: 5700 }),
+    }),
+  } = {},
+) {
   const authenticateCustomer = authenticated
     ? (req, res, next) => {
         req.auth = { customerUserId: customerId };
@@ -290,7 +325,7 @@ async function startServer(t, databasePool, { authenticated = false } = {}) {
       }
     : null;
   const server = http.createServer(
-    createApp({ databasePool, authenticateCustomer }),
+    createApp({ databasePool, authenticateCustomer, deliveryDistanceClient }),
   );
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
@@ -591,6 +626,12 @@ test('creates and reads parcel bookings with validated UI-supported fields', asy
     parcelType: 'Documents',
     weightKg: 1.25,
     instructions: 'Call on arrival',
+    pickupLatitude: 16.87,
+    pickupLongitude: 81.93,
+    dropLatitude: 16.88,
+    dropLongitude: 81.94,
+    deliveryFeeMinor: 1,
+    distanceMeters: 1,
   };
 
   const create = await fetch(
@@ -602,10 +643,30 @@ test('creates and reads parcel bookings with validated UI-supported fields', asy
   assert.equal(parcel.parcel_type, 'Documents');
   assert.equal(parcel.weight_grams, 1250);
   assert.equal(parcel.status, 'requested');
+  assert.equal(parcel.delivery_distance_m, 5700);
+  assert.equal(parcel.delivery_fee_minor, 6200);
+  assert.equal(parcel.delivery_fee_kind, 'parcel');
   const insertQuery = database.queries.find((query) =>
     query.sql.startsWith('INSERT INTO app.parcel_bookings'),
   );
   assert.equal(insertQuery.params[1], customerId);
+  assert.equal(insertQuery.params[11], 5700);
+  assert.equal(insertQuery.params[12], 6200);
+
+  const missingCoordinates = await fetch(
+    `${baseUrl}/api/v1/me/parcels`,
+    jsonRequest('POST', {
+      pickupLocation: payload.pickupLocation,
+      dropLocation: payload.dropLocation,
+      parcelType: payload.parcelType,
+      weightKg: payload.weightKg,
+    }),
+  );
+  assert.equal(missingCoordinates.status, 422);
+  assert.equal(
+    (await missingCoordinates.json()).error.code,
+    'ADDRESS_LOCATION_REQUIRED',
+  );
 
   const invalidWeight = await fetch(
     `${baseUrl}/api/v1/me/parcels`,

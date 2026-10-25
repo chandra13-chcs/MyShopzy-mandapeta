@@ -15,7 +15,12 @@ function createApp({
   databasePool = null,
   authenticateCustomer = null,
   deliveryRoutingClient = null,
+  deliveryDistanceClient = null,
   authenticateRider = null,
+  canAcceptOrders = () => true,
+  applyRiderCancelPenalty = async () => {},
+  supportPhone = '+91 88972 67490',
+  supportEscalationMinutes = 10,
   authenticateAdmin = null,
   authenticatePartner = null,
   superAdminOrigin = null,
@@ -27,6 +32,18 @@ function createApp({
   logger = console,
 } = {}) {
   const app = express();
+  const configuredDistanceClient =
+    deliveryDistanceClient ??
+    (deliveryRoutingClient
+      ? {
+          getRoadDistanceMetres(origin, destination) {
+            return deliveryRoutingClient.getDrivingDistanceMeters({
+              origin,
+              destination,
+            });
+          },
+        }
+      : null);
 
   app.use(express.json({ limit: '16kb' }));
 
@@ -55,6 +72,11 @@ function createApp({
     '/api/v1',
     createRiderRouter({
       databasePool,
+      now,
+      canAcceptOrders,
+      applyRiderCancelPenalty,
+      supportPhone,
+      supportEscalationMinutes,
       authenticateRider:
         authenticateRider ??
         (nodeEnv === 'production' ? null : mockRiderAuth),
@@ -66,12 +88,16 @@ function createApp({
     createCartCheckoutRouter({
       databasePool,
       authenticateCustomer,
-      deliveryRoutingClient,
+      deliveryDistanceClient: configuredDistanceClient,
     }),
   );
   app.use(
     '/api/v1',
-    createCustomerAccountRouter({ databasePool, authenticateCustomer }),
+    createCustomerAccountRouter({
+      databasePool,
+      authenticateCustomer,
+      deliveryDistanceClient: configuredDistanceClient,
+    }),
   );
   app.use('/api/v1/partner', (req, res, next) => {
     const origin = req.get('origin');
@@ -110,7 +136,11 @@ function createApp({
     }
     app.use(
       '/api/v1',
-      createAdminReadRouter({ databasePool, authenticateAdmin }),
+      createAdminReadRouter({
+        databasePool,
+        authenticateAdmin,
+        supportEscalationMinutes,
+      }),
     );
   }
 

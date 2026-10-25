@@ -3048,6 +3048,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
             ),
           );
         }
+
         if (snapshot.hasError) {
           final error = snapshot.error;
           if (isOfflineApiError(error)) {

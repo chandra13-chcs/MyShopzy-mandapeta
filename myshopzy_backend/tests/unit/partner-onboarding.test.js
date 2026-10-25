@@ -41,12 +41,18 @@ test('creates partner defaults in one transaction and reuses the shared type pro
     type: 'bakery',
     ownerEmail: 'Owner@Example.test',
     ownerPhone: '+919876543210',
-    shop: { name: 'Main Shop', address: { city: 'Mandapeta' } },
+    shop: {
+      name: 'Main Shop',
+      address: { city: 'Mandapeta', latitude: 16.87, longitude: 81.93 },
+    },
   });
 
   assert.equal(pool.calls[0].sql, 'BEGIN');
   assert.equal(pool.calls.at(-1).sql, 'COMMIT');
   assert.equal(pool.calls.filter(({ sql }) => /INSERT INTO app\.categories/.test(sql)).length, 4);
+  const shopInsert = pool.calls.find(({ sql }) => /INSERT INTO app\.shops/.test(sql));
+  assert.match(shopInsert.sql, /latitude, longitude/);
+  assert.deepEqual(shopInsert.params.slice(6), [16.87, 81.93]);
   assert.deepEqual(result.categories.map(({ name }) => name), [
     'Cakes',
     'Bread',

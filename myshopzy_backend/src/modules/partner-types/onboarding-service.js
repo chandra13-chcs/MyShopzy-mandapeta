@@ -43,6 +43,22 @@ async function createPartnerWithDefaults({
       (!shop.address || typeof shop.address !== 'object' || Array.isArray(shop.address))) {
     throw new TypeError('Shop address must be an object.');
   }
+  const shopLatitude = shop.address?.latitude ?? null;
+  const shopLongitude = shop.address?.longitude ?? null;
+  if (
+    (shopLatitude === null) !== (shopLongitude === null) ||
+    (shopLatitude !== null &&
+      (typeof shopLatitude !== 'number' ||
+        !Number.isFinite(shopLatitude) ||
+        shopLatitude < -90 ||
+        shopLatitude > 90 ||
+        typeof shopLongitude !== 'number' ||
+        !Number.isFinite(shopLongitude) ||
+        shopLongitude < -180 ||
+        shopLongitude > 180))
+  ) {
+    throw new TypeError('Shop address coordinates must be a valid latitude/longitude pair.');
+  }
   if (shop.operatingDetails !== undefined &&
       (!shop.operatingDetails ||
         typeof shop.operatingDetails !== 'object' ||
@@ -107,9 +123,10 @@ async function createPartnerWithDefaults({
 
     await client.query(
       `INSERT INTO app.shops (
-         id, partner_id, name, slug, status, address, operating_details
+         id, partner_id, name, slug, status, address, operating_details,
+         latitude, longitude
        )
-       VALUES ($1::uuid, $2::uuid, $3, $4, 'pending', $5::jsonb, $6::jsonb)`,
+       VALUES ($1::uuid, $2::uuid, $3, $4, 'pending', $5::jsonb, $6::jsonb, $7, $8)`,
       [
         shopId,
         partnerId,
@@ -117,6 +134,8 @@ async function createPartnerWithDefaults({
         shopSlug,
         JSON.stringify(shop.address ?? {}),
         JSON.stringify(shop.operatingDetails ?? {}),
+        shopLatitude,
+        shopLongitude,
       ],
     );
 

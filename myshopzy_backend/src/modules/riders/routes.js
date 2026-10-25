@@ -1,10 +1,22 @@
 const express = require('express');
+const { RIDER_FEE_SHARE_BPS } = require('../delivery-fee/pricing');
 const { createPendingDue } = require('../dues/ledger');
 const { DUE_POLICY } = require('../dues/policy');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RIDER_STATUSES = new Set(['picked_up', 'out_for_delivery', 'delivered']);
+const RIDER_HOURS = Object.freeze({ open: '07:00', close: '22:00' });
+const RIDER_LOCATION_MAX_AGE_MS = 60_000;
+const RIDER_LOCATION_STALE_MS = 120_000;
+const RIDER_OFFER_RADIUS_M = parsePositiveIntegerEnv(
+  'RIDER_OFFER_RADIUS_M',
+  5000,
+);
+const RIDER_MAX_ACTIVE_ORDERS = parsePositiveIntegerEnv(
+  'RIDER_MAX_ACTIVE_ORDERS',
+  2,
+);
 const DELIVERY_FAILURE_REASONS = new Set([
   'customer_refused',
   'customer_unreachable',
@@ -12,17 +24,134 @@ const DELIVERY_FAILURE_REASONS = new Set([
 ]);
 
 class ApiError extends Error {
-  constructor(status, code, message) {
+  constructor(status, code, message, details = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
 function sendApiError(res, error) {
   return res.status(error.status).json({
-    error: { code: error.code, message: error.message },
+    error: { code: error.code, message: error.message, ...error.details },
   });
+}
+
+function parsePositiveIntegerEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return value;
+}
+
+function getRiderDutyStatus(now) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const localTime = parts
+    .filter((part) => part.type === 'hour' || part.type === 'minute')
+    .map((part) => part.value)
+    .join(':');
+  const currentMinutes =
+    Number(localTime.slice(0, 2)) * 60 + Number(localTime.slice(3));
+  const toMinutes = (time) =>
+    Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
+  const openingMinutes = toMinutes(RIDER_HOURS.open);
+  const closingMinutes = toMinutes(RIDER_HOURS.close);
+  return {
+    open: currentMinutes >= openingMinutes && currentMinutes < closingMinutes,
+    opensAt: RIDER_HOURS.open,
+    closesAt: RIDER_HOURS.close,
+  };
+}
+
+function validateLocationFix(body, now) {
+  const requiredFields = [
+    'latitude',
+    'longitude',
+    'accuracy',
+    'capturedAt',
+  ];
+  if (
+    requiredFields.some((field) => body[field] === undefined) ||
+    typeof body.latitude !== 'number' ||
+    !Number.isFinite(body.latitude) ||
+    body.latitude < -90 ||
+    body.latitude > 90 ||
+    typeof body.longitude !== 'number' ||
+    !Number.isFinite(body.longitude) ||
+    body.longitude < -180 ||
+    body.longitude > 180 ||
+    typeof body.accuracy !== 'number' ||
+    !Number.isFinite(body.accuracy) ||
+    body.accuracy < 0 ||
+    typeof body.capturedAt !== 'string' ||
+    !Number.isFinite(Date.parse(body.capturedAt))
+  ) {
+    throw new ApiError(
+      422,
+      'LOCATION_REQUIRED',
+      'A valid latitude, longitude, accuracy, and capturedAt are required.',
+    );
+  }
+  const capturedAtMs = Date.parse(body.capturedAt);
+  const ageMs = now.getTime() - capturedAtMs;
+  if (ageMs > RIDER_LOCATION_MAX_AGE_MS || ageMs < -5000) {
+    throw new ApiError(
+      422,
+      'LOCATION_STALE',
+      'The location fix must be no older than 60 seconds.',
+    );
+  }
+  return {
+    latitude: body.latitude,
+    longitude: body.longitude,
+    accuracy: body.accuracy,
+    capturedAt: new Date(capturedAtMs).toISOString(),
+  };
+}
+
+function isLocationStale(rider, now) {
+  const updatedAt = new Date(rider.current_location_updated_at).getTime();
+  return (
+    !Number.isFinite(updatedAt) ||
+    now.getTime() - updatedAt > RIDER_LOCATION_STALE_MS
+  );
+}
+
+function haversineDistanceMetres(first, second) {
+  const radians = (degrees) => (degrees * Math.PI) / 180;
+  const latitudeDelta = radians(second.latitude - first.latitude);
+  const longitudeDelta = radians(second.longitude - first.longitude);
+  const rawA =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(radians(first.latitude)) *
+      Math.cos(radians(second.latitude)) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  const a = Math.min(1, Math.max(0, rawA));
+  return Math.round(6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function getOfferBounds(coordinates, radiusM) {
+  const latitudeDelta = radiusM / 111_320;
+  const longitudeScale = Math.max(
+    Math.cos((coordinates.latitude * Math.PI) / 180),
+    0.01,
+  );
+  const longitudeDelta = radiusM / (111_320 * longitudeScale);
+  return {
+    minLatitude: coordinates.latitude - latitudeDelta,
+    maxLatitude: coordinates.latitude + latitudeDelta,
+    minLongitude: coordinates.longitude - longitudeDelta,
+    maxLongitude: coordinates.longitude + longitudeDelta,
+  };
 }
 
 function requireRiderAuthentication(authenticateRider) {
@@ -97,27 +226,142 @@ async function withTransaction(databasePool, callback) {
   }
 }
 
-async function requireActiveRider(queryable, riderUserId, { lock = false } = {}) {
+async function requireActiveRider(
+  queryable,
+  riderUserId,
+  { lock = false, forUpdate = false } = {},
+) {
   const result = await queryable.query(
-    `SELECT r.user_id, r.is_online
+    `SELECT r.user_id, r.is_online, r.current_latitude,
+            r.current_longitude, r.current_location_accuracy,
+            r.current_location_updated_at,
+            (SELECT COUNT(*)::int
+             FROM app.orders AS active_order
+             WHERE active_order.rider_id = r.user_id
+               AND active_order.status IN ('out_for_delivery', 'picked_up')
+            ) AS active_order_count
      FROM app.riders AS r
      JOIN app.users AS u ON u.id = r.user_id
      WHERE r.user_id = $1
        AND r.status = 'active'
        AND u.system_role = 'rider'
        AND u.status = 'active'
-     ${lock ? 'FOR SHARE OF r, u' : ''}`,
+     ${forUpdate ? 'FOR UPDATE OF r, u' : lock ? 'FOR SHARE OF r, u' : ''}`,
     [riderUserId],
   );
   if (result.rows.length === 0) {
     throw new ApiError(403, 'RIDER_NOT_ALLOWED', 'The rider account is not active.');
   }
-  return result.rows[0].is_online === true;
+  return result.rows[0];
 }
 
-function createRiderRouter({ databasePool = null, authenticateRider = null } = {}) {
+function createRiderRouter({
+  databasePool = null,
+  authenticateRider = null,
+  now = () => new Date(),
+  canAcceptOrders = () => true,
+  applyRiderCancelPenalty = async () => {},
+  offerRadiusM = RIDER_OFFER_RADIUS_M,
+  maxActiveOrders = RIDER_MAX_ACTIVE_ORDERS,
+  supportPhone = '+91 88972 67490',
+  supportEscalationMinutes = 10,
+} = {}) {
   const router = express.Router();
   router.use('/rider', requireRiderAuthentication(authenticateRider));
+
+  router.patch('/rider/orders/:orderId/arrived', async (req, res, next) => {
+    const invalidOrderId = validateOrderId(req.params.orderId);
+    if (invalidOrderId) return sendApiError(res, invalidOrderId);
+    const bodyError =
+      req.body === undefined ? null : validateObjectBody(req.body, new Set());
+    if (bodyError) {
+      return res.status(400).json({
+        error: { code: 'INVALID_REQUEST', message: bodyError },
+      });
+    }
+    let riderUserId;
+    try {
+      riderUserId = getRiderUserId(req);
+    } catch (error) {
+      return sendApiError(res, error);
+    }
+    if (!databasePool) {
+      return res.status(503).json({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Rider orders are temporarily unavailable.',
+        },
+      });
+    }
+
+    try {
+      const order = await withTransaction(databasePool, async (client) => {
+        await requireActiveRider(client, riderUserId, { lock: true });
+        const current = await client.query(
+          `SELECT id, rider_id, status, rider_stage
+           FROM app.orders
+           WHERE id = $1
+           FOR UPDATE`,
+          [req.params.orderId],
+        );
+        if (
+          current.rows.length === 0 ||
+          current.rows[0].rider_id !== riderUserId
+        ) {
+          throw new ApiError(
+            404,
+            'ORDER_NOT_ASSIGNED',
+            'The order is not assigned to this rider.',
+          );
+        }
+        if (
+          current.rows[0].status !== 'out_for_delivery' ||
+          current.rows[0].rider_stage !== 'out_for_delivery'
+        ) {
+          throw new ApiError(
+            409,
+            'ORDER_NOT_IN_DELIVERY',
+            'Only orders in the out-for-delivery stage can be marked as arrived.',
+          );
+        }
+        const updated = await client.query(
+          `UPDATE app.orders
+           SET rider_arrived_at = COALESCE(rider_arrived_at, now()),
+               updated_at = CASE
+                 WHEN rider_arrived_at IS NULL THEN now()
+                 ELSE updated_at
+               END
+           WHERE id = $1 AND rider_id = $2
+             AND status = 'out_for_delivery'
+             AND rider_stage = 'out_for_delivery'
+           RETURNING rider_arrived_at`,
+          [req.params.orderId, riderUserId],
+        );
+        if (updated.rows.length !== 1) {
+          throw new ApiError(
+            409,
+            'ORDER_NOT_IN_DELIVERY',
+            'Only orders in the out-for-delivery stage can be marked as arrived.',
+          );
+        }
+        const riderArrivedAt = updated.rows[0].rider_arrived_at;
+        const supportAvailableAt = new Date(
+          new Date(riderArrivedAt).getTime() +
+            supportEscalationMinutes * 60_000,
+        ).toISOString();
+        return {
+          orderId: req.params.orderId,
+          rider_arrived_at: riderArrivedAt,
+          supportAvailableAt,
+          supportPhone,
+        };
+      });
+      return res.status(200).json({ data: { order } });
+    } catch (error) {
+      if (error instanceof ApiError) return sendApiError(res, error);
+      return next(error);
+    }
+  });
 
   router.get('/rider/orders/available', async (req, res, next) => {
     let riderUserId;
@@ -136,56 +380,88 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
     }
 
     try {
-      const isOnline = await requireActiveRider(databasePool, riderUserId);
-      if (!isOnline) {
+      const rider = await requireActiveRider(databasePool, riderUserId);
+      if (!rider.is_online) {
         return res.status(403).json({
           error: { code: 'RIDER_OFFLINE', message: 'Rider is offline.' },
         });
       }
+      const serverNow = now();
+      if (!getRiderDutyStatus(serverNow).open) {
+        return res.status(200).json({ data: { orders: [] } });
+      }
+      if (isLocationStale(rider, serverNow)) {
+        return res.status(200).json({ data: { orders: [] } });
+      }
+      if (rider.active_order_count >= maxActiveOrders) {
+        return res.status(200).json({ data: { orders: [] } });
+      }
+      if (!(await canAcceptOrders(rider))) {
+        return res.status(200).json({ data: { orders: [] } });
+      }
+      const riderCoordinates = {
+        latitude: Number(rider.current_latitude),
+        longitude: Number(rider.current_longitude),
+      };
+      if (
+        !Number.isFinite(riderCoordinates.latitude) ||
+        !Number.isFinite(riderCoordinates.longitude)
+      ) {
+        return res.status(200).json({ data: { orders: [] } });
+      }
+      const bounds = getOfferBounds(riderCoordinates, offerRadiusM);
       const result = await databasePool.query(
         `SELECT
            o.id AS "orderId",
-           o.status,
-           o.shop_id AS "shopId",
-           s.name AS store,
-           cu.display_name AS "customerName",
-           s.address AS pickup,
-           o.delivery_address_snapshot AS "drop",
-           o.currency,
-           o.items_subtotal_minor::text AS "itemsSubtotalMinor",
+           COALESCE(
+             s.address->>'area',
+             s.address->>'locality',
+             s.address->>'city',
+             ''
+           ) AS "pickupArea",
+           o.delivery_distance_m AS "distanceMeters",
            o.delivery_fee_minor::text AS "deliveryFeeMinor",
-           (o.delivery_fee_minor::numeric / 100)::numeric(12, 2) AS payout,
-           o.total_minor::text AS "totalMinor",
-           o.placed_at AS "placedAt",
-           CASE WHEN s.address->>'latitude' ~ '^-?[0-9]+([.][0-9]+)?$'
-             THEN (s.address->>'latitude')::numeric END AS "pickupLatitude",
-           CASE WHEN s.address->>'longitude' ~ '^-?[0-9]+([.][0-9]+)?$'
-             THEN (s.address->>'longitude')::numeric END AS "pickupLongitude",
-           CASE WHEN o.delivery_address_snapshot->>'latitude' ~ '^-?[0-9]+([.][0-9]+)?$'
-             THEN (o.delivery_address_snapshot->>'latitude')::numeric END AS "dropLatitude",
-           CASE WHEN o.delivery_address_snapshot->>'longitude' ~ '^-?[0-9]+([.][0-9]+)?$'
-             THEN (o.delivery_address_snapshot->>'longitude')::numeric END AS "dropLongitude"
+           o.payment_method AS "paymentMethod",
+           CASE WHEN o.payment_method = 'cod'
+             THEN o.total_minor::text END AS "codAmountMinor",
+           s.latitude::double precision AS "pickupLatitude",
+           s.longitude::double precision AS "pickupLongitude"
          FROM app.orders AS o
          JOIN app.shops AS s
            ON s.id = o.shop_id AND s.partner_id = o.partner_id
-         JOIN app.users AS cu ON cu.id = o.customer_user_id
-         WHERE o.status = 'getting_packed'
+         WHERE o.status = 'packed'
            AND o.rider_id IS NULL
-           AND EXISTS (
-             SELECT 1
-             FROM app.riders AS online_rider
-             JOIN app.users AS online_user
-               ON online_user.id = online_rider.user_id
-             WHERE online_rider.user_id = $1
-               AND online_rider.is_online = true
-               AND online_rider.status = 'active'
-               AND online_user.system_role = 'rider'
-               AND online_user.status = 'active'
-           )
+           AND s.latitude BETWEEN $1 AND $2
+           AND s.longitude BETWEEN $3 AND $4
          ORDER BY o.placed_at ASC, o.id ASC`,
-        [riderUserId],
+        [
+          bounds.minLatitude,
+          bounds.maxLatitude,
+          bounds.minLongitude,
+          bounds.maxLongitude,
+        ],
       );
-      return res.status(200).json({ data: { orders: result.rows } });
+      const orders = result.rows
+        .filter((order) => {
+          if (
+            !Number.isSafeInteger(order.distanceMeters) ||
+            order.distanceMeters < 0 ||
+            !Number.isFinite(Number(order.pickupLatitude)) ||
+            !Number.isFinite(Number(order.pickupLongitude))
+          ) {
+            return false;
+          }
+          const pickupDistanceM = haversineDistanceMetres(
+            riderCoordinates,
+            {
+              latitude: Number(order.pickupLatitude),
+              longitude: Number(order.pickupLongitude),
+            },
+          );
+          return pickupDistanceM <= offerRadiusM;
+        })
+        .map(({ pickupLatitude, pickupLongitude, ...order }) => order);
+      return res.status(200).json({ data: { orders } });
     } catch (error) {
       if (error instanceof ApiError) return sendApiError(res, error);
       return next(error);
@@ -212,30 +488,48 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
 
     try {
       const order = await withTransaction(databasePool, async (client) => {
-        const isOnline = await requireActiveRider(client, riderUserId, {
-          lock: true,
+        const rider = await requireActiveRider(client, riderUserId, {
+          forUpdate: true,
         });
-        if (!isOnline) {
+        if (!rider.is_online) {
           throw new ApiError(403, 'RIDER_OFFLINE', 'Rider is offline');
         }
-        const current = await client.query(
-          `SELECT id, status, rider_id
-           FROM app.orders
-           WHERE id = $1
-           FOR UPDATE`,
-          [req.params.orderId],
-        );
-        if (current.rows.length === 0) {
-          throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found.');
+        const serverNow = now();
+        const duty = getRiderDutyStatus(serverNow);
+        if (!duty.open) {
+          throw new ApiError(
+            403,
+            'RIDER_OUTSIDE_HOURS',
+            'Riders may accept new orders only between 7:00 AM and 10:00 PM.',
+            { opensAt: duty.opensAt },
+          );
         }
-        if (
-          current.rows[0].status !== 'getting_packed' ||
-          current.rows[0].rider_id !== null
-        ) {
+        if (isLocationStale(rider, serverNow)) {
+          throw new ApiError(
+            403,
+            'RIDER_LOCATION_STALE',
+            'Share a fresh location before accepting orders.',
+          );
+        }
+        if (!(await canAcceptOrders(rider))) {
+          throw new ApiError(
+            403,
+            'RIDER_CANNOT_ACCEPT_ORDERS',
+            'This rider cannot accept new orders.',
+          );
+        }
+        const activeOrders = await client.query(
+          `SELECT COUNT(*)::int AS count
+           FROM app.orders
+           WHERE rider_id = $1
+             AND status IN ('out_for_delivery', 'picked_up')`,
+          [riderUserId],
+        );
+        if (activeOrders.rows[0].count >= maxActiveOrders) {
           throw new ApiError(
             409,
-            'ORDER_NOT_AVAILABLE',
-            'This order is no longer available.',
+            'RIDER_ACTIVE_ORDER_LIMIT',
+            'The rider already has the maximum number of active orders.',
           );
         }
 
@@ -246,7 +540,7 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
                rider_stage = 'accepted',
                updated_at = now()
            WHERE id = $1
-             AND status = 'getting_packed'
+             AND status = 'packed'
              AND rider_id IS NULL
            RETURNING id AS "orderId", status, rider_id AS "riderId",
                      updated_at AS "updatedAt"`,
@@ -255,8 +549,8 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
         if (accepted.rows.length === 0) {
           throw new ApiError(
             409,
-            'ORDER_NOT_AVAILABLE',
-            'This order is no longer available.',
+            'ORDER_TAKEN',
+            'This order has already been accepted.',
           );
         }
         const details = await client.query(
@@ -290,15 +584,79 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
       });
       return res.status(200).json({ data: { order } });
     } catch (error) {
-      if (
-        error instanceof ApiError &&
-        ['RIDER_OFFLINE', 'RIDER_NOT_ALLOWED'].includes(error.code)
-      ) {
-        return res.status(error.status).json({
-          success: false,
-          message: 'Rider is offline',
-        });
-      }
+      if (error instanceof ApiError) return sendApiError(res, error);
+      return next(error);
+    }
+  });
+
+  router.patch('/rider/orders/:orderId/cancel', async (req, res, next) => {
+    const invalidOrderId = validateOrderId(req.params.orderId);
+    if (invalidOrderId) return sendApiError(res, invalidOrderId);
+    const bodyError = validateObjectBody(req.body, new Set(['reason']));
+    const reason = req.body?.reason;
+    if (
+      bodyError ||
+      typeof reason !== 'string' ||
+      reason.trim().length === 0 ||
+      reason.trim().length > 300
+    ) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_REQUEST',
+          message: bodyError ?? 'reason must be a non-empty string of at most 300 characters.',
+        },
+      });
+    }
+    let riderUserId;
+    try {
+      riderUserId = getRiderUserId(req);
+    } catch (error) {
+      return sendApiError(res, error);
+    }
+    if (!databasePool) {
+      return res.status(503).json({
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'Rider orders are temporarily unavailable.',
+        },
+      });
+    }
+
+    try {
+      const order = await withTransaction(databasePool, async (client) => {
+        await requireActiveRider(client, riderUserId, { forUpdate: true });
+        const result = await client.query(
+          `UPDATE app.orders
+           SET rider_id = NULL,
+               status = 'packed',
+               rider_stage = 'accepted',
+               cancellation_reason = $3,
+               updated_at = now()
+           WHERE id = $1
+             AND rider_id = $2
+             AND status = 'out_for_delivery'
+             AND rider_stage = 'accepted'
+           RETURNING id AS "orderId", status, rider_id AS "riderId",
+                     cancellation_reason AS "cancellationReason",
+                     updated_at AS "updatedAt"`,
+          [req.params.orderId, riderUserId, reason.trim()],
+        );
+        if (result.rows.length === 0) {
+          throw new ApiError(
+            404,
+            'ORDER_NOT_ASSIGNED',
+            'The order is not assigned to this rider or has already been picked up.',
+          );
+        }
+        await applyRiderCancelPenalty(
+          client,
+          riderUserId,
+          req.params.orderId,
+        );
+        return result.rows[0];
+      });
+      return res.status(200).json({ data: { order } });
+    } catch (error) {
       if (error instanceof ApiError) return sendApiError(res, error);
       return next(error);
     }
@@ -355,7 +713,7 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
              AND rider_stage IN ($3, $4)
            RETURNING id AS "orderId", status, rider_id AS "riderId",
                      updated_at AS "updatedAt",
-                     delivery_fee_minor AS "payoutMinor",
+                     delivery_fee_minor::text AS "deliveryFeeMinor",
                      currency`,
           [req.params.orderId, riderUserId, req.body.status, expectedStage],
         );
@@ -367,6 +725,11 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
           );
         }
         if (req.body.status === 'delivered') {
+          const payoutMinor = (
+            (BigInt(result.rows[0].deliveryFeeMinor) *
+              BigInt(RIDER_FEE_SHARE_BPS)) /
+            10000n
+          ).toString();
           await client.query(
             `INSERT INTO app.rider_delivery_earnings
                (order_id, rider_id, payout_minor, currency)
@@ -375,10 +738,12 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
             [
               result.rows[0].orderId,
               riderUserId,
-              result.rows[0].payoutMinor,
+              payoutMinor,
               result.rows[0].currency,
             ],
           );
+          result.rows[0].payoutMinor = payoutMinor;
+          delete result.rows[0].deliveryFeeMinor;
         }
         return result.rows[0];
       });
@@ -445,6 +810,7 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
         await requireActiveRider(client, riderUserId, { lock: true });
         const current = await client.query(
           `SELECT o.id, o.customer_user_id, o.rider_id, o.status, o.rider_stage,
+                  o.rider_arrived_at,
                   o.payment_method, o.total_minor::text AS total_minor,
                   o.currency, r.current_latitude, r.current_longitude
            FROM app.orders AS o
@@ -469,6 +835,34 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
             409,
             'ORDER_NOT_IN_DELIVERY',
             'Only orders in the out-for-delivery stage can be marked as failed.',
+          );
+        }
+        const serverNow = now();
+        const arrivedAt = existing.rider_arrived_at
+          ? new Date(existing.rider_arrived_at)
+          : null;
+        const supportAvailableAt = arrivedAt
+          ? new Date(
+              arrivedAt.getTime() + supportEscalationMinutes * 60_000,
+            )
+          : null;
+        if (!supportAvailableAt || serverNow < supportAvailableAt) {
+          const remainingSeconds = supportAvailableAt
+            ? Math.max(
+                0,
+                Math.ceil((supportAvailableAt.getTime() - serverNow.getTime()) / 1000),
+              )
+            : supportEscalationMinutes * 60;
+          throw new ApiError(
+            409,
+            'SUPPORT_WAIT_NOT_ELAPSED',
+            'The support waiting period has not elapsed.',
+            {
+              remainingSeconds,
+              ...(supportAvailableAt
+                ? { supportAvailableAt: supportAvailableAt.toISOString() }
+                : {}),
+            },
           );
         }
         const updated = await client.query(
@@ -533,7 +927,16 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
   });
 
   router.patch('/rider/availability', async (req, res, next) => {
-    const bodyError = validateObjectBody(req.body, new Set(['isOnline']));
+    const bodyError = validateObjectBody(
+      req.body,
+      new Set([
+        'isOnline',
+        'latitude',
+        'longitude',
+        'accuracy',
+        'capturedAt',
+      ]),
+    );
     if (bodyError || typeof req.body.isOnline !== 'boolean') {
       return res.status(400).json({
         error: {
@@ -542,13 +945,14 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
         },
       });
     }
+    let locationFix = null;
     if (req.body.isOnline) {
-      return res.status(409).json({
-        error: {
-          code: 'LOCATION_REQUIRED',
-          message: 'Share a valid location to go online.',
-        },
-      });
+      try {
+        locationFix = validateLocationFix(req.body, now());
+      } catch (error) {
+        if (error instanceof ApiError) return sendApiError(res, error);
+        throw error;
+      }
     }
     let riderUserId;
     try {
@@ -566,17 +970,61 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
     }
 
     try {
+      const serverNow = now();
+      if (req.body.isOnline) {
+        const current = await requireActiveRider(databasePool, riderUserId);
+        if (
+          !current.is_online &&
+          !getRiderDutyStatus(serverNow).open
+        ) {
+          return sendApiError(
+            res,
+            new ApiError(
+              403,
+              'RIDER_OUTSIDE_HOURS',
+              'Riders may go online only between 7:00 AM and 10:00 PM.',
+              { opensAt: RIDER_HOURS.open },
+            ),
+          );
+        }
+      }
       const result = await databasePool.query(
         `UPDATE app.riders AS r
-         SET is_online = false, updated_at = now()
+         SET is_online = CASE
+               WHEN EXISTS (
+                 SELECT 1 FROM app.orders AS active_order
+                 WHERE active_order.rider_id = r.user_id
+                   AND active_order.status IN ('out_for_delivery', 'picked_up')
+               ) THEN true
+               ELSE $2
+             END,
+             current_latitude = CASE WHEN $2 THEN $3 ELSE r.current_latitude END,
+             current_longitude = CASE WHEN $2 THEN $4 ELSE r.current_longitude END,
+             current_location_accuracy = CASE
+               WHEN $2 THEN $5 ELSE r.current_location_accuracy END,
+             current_location_updated_at = CASE
+               WHEN $2 THEN $6::timestamptz
+               ELSE r.current_location_updated_at END,
+             updated_at = now()
          FROM app.users AS u
          WHERE r.user_id = $1
            AND u.id = r.user_id
            AND r.status = 'active'
            AND u.system_role = 'rider'
            AND u.status = 'active'
-         RETURNING r.is_online AS "isOnline"`,
-        [riderUserId],
+         RETURNING r.is_online AS "isOnline",
+                   r.current_latitude AS latitude,
+                   r.current_longitude AS longitude,
+                   r.current_location_accuracy AS accuracy,
+                   r.current_location_updated_at AS "locationUpdatedAt"`,
+        [
+          riderUserId,
+          req.body.isOnline,
+          locationFix?.latitude ?? null,
+          locationFix?.longitude ?? null,
+          locationFix?.accuracy ?? null,
+          locationFix?.capturedAt ?? null,
+        ],
       );
       if (result.rows.length === 0) {
         throw new ApiError(
@@ -640,41 +1088,32 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
   });
 
   router.post('/rider/location', async (req, res, next) => {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return sendApiError(
+        res,
+        new ApiError(
+          422,
+          'LOCATION_REQUIRED',
+          'A valid latitude, longitude, accuracy, and capturedAt are required.',
+        ),
+      );
+    }
     const bodyError = validateObjectBody(
       req.body,
-      new Set(['latitude', 'longitude']),
+      new Set(['latitude', 'longitude', 'accuracy', 'capturedAt']),
     );
     if (bodyError) {
       return res.status(400).json({
         error: { code: 'INVALID_REQUEST', message: bodyError },
       });
     }
-    const { latitude, longitude } = req.body;
-    if (
-      typeof latitude !== 'number' ||
-      !Number.isFinite(latitude) ||
-      latitude < -90 ||
-      latitude > 90
-    ) {
-      return res.status(400).json({
-        error: {
-          code: 'INVALID_REQUEST',
-          message: 'latitude must be a finite number between -90 and 90.',
-        },
-      });
-    }
-    if (
-      typeof longitude !== 'number' ||
-      !Number.isFinite(longitude) ||
-      longitude < -180 ||
-      longitude > 180
-    ) {
-      return res.status(400).json({
-        error: {
-          code: 'INVALID_REQUEST',
-          message: 'longitude must be a finite number between -180 and 180.',
-        },
-      });
+    let locationFix;
+    const serverNow = now();
+    try {
+      locationFix = validateLocationFix(req.body, serverNow);
+    } catch (error) {
+      if (error instanceof ApiError) return sendApiError(res, error);
+      throw error;
     }
     let riderUserId;
     try {
@@ -692,13 +1131,34 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
     }
 
     try {
+      const rider = await requireActiveRider(databasePool, riderUserId);
+      if (!rider.is_online && !getRiderDutyStatus(serverNow).open) {
+        return sendApiError(
+          res,
+          new ApiError(
+            403,
+            'RIDER_OUTSIDE_HOURS',
+            'Riders may go online only between 7:00 AM and 10:00 PM.',
+            { opensAt: RIDER_HOURS.open },
+          ),
+        );
+      }
       const location = await withTransaction(databasePool, async (client) => {
-        await requireActiveRider(client, riderUserId, { lock: true });
+        await requireActiveRider(client, riderUserId, { forUpdate: true });
         const result = await client.query(
           `UPDATE app.riders AS r
            SET current_latitude = $2,
                current_longitude = $3,
-               is_online = true,
+               current_location_accuracy = $4,
+               current_location_updated_at = $6::timestamptz,
+               is_online = CASE
+                 WHEN $5 OR EXISTS (
+                   SELECT 1 FROM app.orders AS active_order
+                   WHERE active_order.rider_id = r.user_id
+                     AND active_order.status IN ('out_for_delivery', 'picked_up')
+                 ) THEN true
+                 ELSE r.is_online
+               END,
                updated_at = now()
            FROM app.users AS u
            WHERE r.user_id = $1
@@ -709,9 +1169,18 @@ function createRiderRouter({ databasePool = null, authenticateRider = null } = {
            RETURNING r.user_id AS "riderId",
                      r.current_latitude AS latitude,
                      r.current_longitude AS longitude,
+                     r.current_location_accuracy AS accuracy,
+                     r.current_location_updated_at AS "locationUpdatedAt",
                      r.is_online AS "isOnline",
                      r.updated_at AS "updatedAt"`,
-          [riderUserId, latitude, longitude],
+          [
+            riderUserId,
+            locationFix.latitude,
+            locationFix.longitude,
+            locationFix.accuracy,
+            getRiderDutyStatus(serverNow).open,
+            locationFix.capturedAt,
+          ],
         );
         if (result.rows.length === 0) {
           throw new ApiError(

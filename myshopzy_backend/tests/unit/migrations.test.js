@@ -65,6 +65,18 @@ const platformFeeSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/014_order_platform_fee.sql',
 );
+const deliveryPricingSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/015_server_delivery_pricing.sql',
+);
+const riderLocationFreshnessSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/016_rider_location_freshness.sql',
+);
+const riderSupportEscalationsSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/017_rider_support_escalations.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -153,14 +165,23 @@ test('applies an unapplied migration transactionally and records its checksum', 
   const customerDuesSchema = await readFile(customerDuesSchemaPath, 'utf8');
   const cancellationSchema = await readFile(cancellationSchemaPath, 'utf8');
   const platformFeeSchema = await readFile(platformFeeSchemaPath, 'utf8');
+  const deliveryPricingSchema = await readFile(deliveryPricingSchemaPath, 'utf8');
+  const riderLocationFreshnessSchema = await readFile(
+    riderLocationFreshnessSchemaPath,
+    'utf8',
+  );
+  const riderSupportEscalationsSchema = await readFile(
+    riderSupportEscalationsSchemaPath,
+    'utf8',
+  );
   const calls = pool.calls.map((call) => call.sql);
 
   assert.equal(appliedCount, migrationFiles.length);
   assert.deepEqual(
     migrationFiles.slice(-2).map(({ version, name }) => ({ version, name })),
     [
-      { version: '013', name: '013_order_cancellation_reason.sql' },
-      { version: '014', name: '014_order_platform_fee.sql' },
+      { version: '016', name: '016_rider_location_freshness.sql' },
+      { version: '017', name: '017_rider_support_escalations.sql' },
     ],
   );
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
@@ -210,6 +231,18 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('014').name,
     '014_order_platform_fee.sql',
   );
+  assert.equal(
+    pool.applied.get('015').name,
+    '015_server_delivery_pricing.sql',
+  );
+  assert.equal(
+    pool.applied.get('016').name,
+    '016_rider_location_freshness.sql',
+  );
+  assert.equal(
+    pool.applied.get('017').name,
+    '017_rider_support_escalations.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -225,6 +258,13 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(customerDuesSchema.trim()));
   assert.ok(calls.includes(cancellationSchema.trim()));
   assert.ok(calls.includes(platformFeeSchema.trim()));
+  assert.ok(calls.includes(deliveryPricingSchema.trim()));
+  assert.ok(calls.includes(riderLocationFreshnessSchema.trim()));
+  assert.ok(calls.includes(riderSupportEscalationsSchema.trim()));
+  assert.match(riderSupportEscalationsSchema, /^BEGIN;[\s\S]*COMMIT;\s*$/);
+  assert.match(riderSupportEscalationsSchema, /ADD COLUMN rider_arrived_at timestamptz/);
+  assert.match(riderSupportEscalationsSchema, /ADD COLUMN support_escalated_at timestamptz/);
+  assert.match(riderSupportEscalationsSchema, /CREATE TABLE app\.order_support_resolutions/);
   assert.ok(calls.includes('COMMIT'));
   assert.ok(calls.includes('SELECT pg_advisory_lock($1, $2)'));
   assert.ok(calls.includes('SELECT pg_advisory_unlock($1, $2)'));
@@ -248,6 +288,17 @@ test('platform fee migration preserves historical totals and includes the fee in
     /ADD CONSTRAINT orders_total_includes_platform_fee_check\s+CHECK\s*\(\s*total_minor\s*=\s*items_subtotal_minor \+ delivery_fee_minor \+ platform_fee_minor - discount_minor/s,
   );
   assert.doesNotMatch(migration, /\bUPDATE\s+app\.orders\b/i);
+});
+
+test('rider location migration renames the pool state and tracks fix freshness', async () => {
+  const migration = await readFile(riderLocationFreshnessSchemaPath, 'utf8');
+
+  assert.match(migration, /BEGIN;/);
+  assert.match(migration, /SET status = 'packed'\s+WHERE status = 'getting_packed'/);
+  assert.match(migration, /WHERE status = 'packed' AND rider_id IS NULL/);
+  assert.match(migration, /ADD COLUMN current_location_accuracy double precision/);
+  assert.match(migration, /ADD COLUMN current_location_updated_at timestamptz/);
+  assert.match(migration, /COMMIT;/);
 });
 
 test('defaulting platform fees to zero preserves historical order amounts', () => {
@@ -408,6 +459,18 @@ test('customer account migration adds address, wishlist, and parcel foundations'
   assert.match(schema, /CREATE TABLE app\.parcel_bookings\b/);
   assert.match(schema, /weight_grams integer NOT NULL CHECK \(weight_grams BETWEEN 1 AND 20000\)/);
   assert.match(schema, /status text NOT NULL DEFAULT 'requested'/);
+});
+
+test('delivery pricing migration stores server-calculated distances and fees', async () => {
+  const schema = await readFile(deliveryPricingSchemaPath, 'utf8');
+
+  assert.match(schema, /^BEGIN;/);
+  assert.match(schema, /delivery_distance_m integer/);
+  assert.match(schema, /delivery_fee_kind text/);
+  assert.match(schema, /pickup_latitude numeric/);
+  assert.match(schema, /drop_longitude numeric/);
+  assert.match(schema, /delivery_fee_minor bigint/);
+  assert.match(schema, /COMMIT;\s*$/);
 });
 
 test('cart migration adds token-protected single-shop cart persistence', async () => {

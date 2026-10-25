@@ -7,10 +7,16 @@ const { DEMO_RIDER_ID } = require('../../src/middleware/mock-rider-auth');
 
 const riderId = '00000000-0000-4000-8000-000000000001';
 const orderId = 'd1ca6b39-b9d9-423b-b93b-3e513f232d9a';
+const serverNow = new Date('2026-10-15T10:00:00.000Z');
+const freshLocationAt = new Date(serverNow).toISOString();
 
 async function startServer(t, options = {}) {
   const server = http.createServer(
-    createApp({ logger: { error() {} }, ...options }),
+    createApp({
+      logger: { error() {} },
+      now: () => new Date(serverNow),
+      ...options,
+    }),
   );
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
@@ -23,13 +29,27 @@ function transactionPool({
   isRiderOnline = true,
   riderExists = true,
   riderQueries = null,
+  locationUpdatedAt = freshLocationAt,
+  currentLatitude = 16.87,
+  currentLongitude = 81.93,
+  activeOrderCount = 0,
 } = {}) {
   return {
     async query(sql, params) {
       if (sql.includes('FROM app.riders AS r')) {
         riderQueries?.push(sql);
         return riderExists
-          ? { rows: [{ user_id: params[0], is_online: isRiderOnline }] }
+          ? {
+              rows: [{
+                user_id: params[0],
+                is_online: isRiderOnline,
+                current_latitude: currentLatitude,
+                current_longitude: currentLongitude,
+                current_location_accuracy: 15,
+                current_location_updated_at: locationUpdatedAt,
+                active_order_count: activeOrderCount,
+              }],
+            }
           : { rows: [] };
       }
       if (queryHandler) return queryHandler(sql, params);
@@ -43,7 +63,17 @@ function transactionPool({
           calls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
           if (sql.includes('FROM app.riders AS r')) {
             return riderExists
-              ? { rows: [{ user_id: params[0], is_online: isRiderOnline }] }
+              ? {
+                  rows: [{
+                    user_id: params[0],
+                    is_online: isRiderOnline,
+                    current_latitude: currentLatitude,
+                    current_longitude: currentLongitude,
+                    current_location_accuracy: 15,
+                    current_location_updated_at: locationUpdatedAt,
+                    active_order_count: activeOrderCount,
+                  }],
+                }
               : { rows: [] };
           }
           if (connectHandler) return connectHandler(sql, params, calls);
@@ -57,40 +87,59 @@ function transactionPool({
   };
 }
 
-test('lists available packed orders with shop and delivery details', async (t) => {
+test('lists nearby available packed orders without customer address data', async (t) => {
   const queries = [];
   const riderQueries = [];
   const order = {
     orderId,
-    status: 'getting_packed',
-    shopId: '20000000-0000-4000-8000-000000000001',
-    store: 'Green Basket',
-    pickup: { locality: 'Mandapeta' },
-    drop: { formattedAddress: '12 Market Road' },
-    currency: 'INR',
-    itemsSubtotalMinor: '6000',
-    deliveryFeeMinor: '0',
-    totalMinor: '6000',
-    placedAt: '2026-10-15T10:00:00.000Z',
+    pickupArea: 'Mandapeta',
+    distanceMeters: 5700,
+    deliveryFeeMinor: '5700',
+    paymentMethod: 'cod',
+    codAmountMinor: '6000',
+    pickupLatitude: 16.87,
+    pickupLongitude: 81.93,
   };
   const baseUrl = await startServer(t, {
     databasePool: transactionPool({
       riderQueries,
       queryHandler(sql) {
         queries.push(sql);
-        return { rows: [order] };
+        return {
+          rows: [
+            order,
+            {
+              ...order,
+              orderId: 'd1ca6b39-b9d9-423b-b93b-3e513f232d9b',
+              pickupLatitude: 17.1,
+            },
+          ],
+        };
       },
     }),
   });
 
   const response = await fetch(`${baseUrl}/api/v1/rider/orders/available`);
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { data: { orders: [order] } });
+  assert.deepEqual(await response.json(), {
+    data: {
+      orders: [{
+        orderId,
+        pickupArea: 'Mandapeta',
+        distanceMeters: 5700,
+        deliveryFeeMinor: '5700',
+        paymentMethod: 'cod',
+        codAmountMinor: '6000',
+      }],
+    },
+  });
   const listQuery = queries.find((sql) => sql.includes('app.orders AS o'));
   assert.match(listQuery, /JOIN app\.shops AS s/);
-  assert.match(listQuery, /o\.status = 'getting_packed'/);
+  assert.match(listQuery, /o\.status = 'packed'/);
   assert.match(listQuery, /o\.rider_id IS NULL/);
-  assert.match(listQuery, /online_rider\.is_online = true/);
+  assert.match(listQuery, /s\.latitude BETWEEN \$1 AND \$2/);
+  assert.match(listQuery, /s\.longitude BETWEEN \$3 AND \$4/);
+  assert.doesNotMatch(listQuery, /delivery_address_snapshot|cu\.phone|customerPhone/);
   assert.match(riderQueries[0], /r\.is_online/);
 });
 
@@ -132,16 +181,85 @@ test('offline and missing riders cannot poll for available orders', async (t) =>
   });
 });
 
+test('riders cannot go online or accept orders outside duty hours', async (t) => {
+  const outsideNow = () => new Date('2026-10-15T16:30:00.000Z');
+  const baseUrl = await startServer(t, {
+    now: outsideNow,
+    databasePool: transactionPool({
+      isRiderOnline: true,
+      queryHandler(sql) {
+        assert.fail(`Outside-hours rider must not query offers: ${sql}`);
+      },
+    }),
+  });
+  const fix = {
+    latitude: 16.87,
+    longitude: 81.93,
+    accuracy: 10,
+    capturedAt: outsideNow().toISOString(),
+  };
+
+  const offers = await fetch(`${baseUrl}/api/v1/rider/orders/available`);
+  assert.equal(offers.status, 200);
+  assert.deepEqual((await offers.json()).data.orders, []);
+
+  const accept = await fetch(
+    `${baseUrl}/api/v1/rider/orders/${orderId}/accept`,
+    { method: 'POST' },
+  );
+  assert.equal(accept.status, 403);
+  assert.deepEqual((await accept.json()).error, {
+    code: 'RIDER_OUTSIDE_HOURS',
+    message: 'Riders may accept new orders only between 7:00 AM and 10:00 PM.',
+    opensAt: '07:00',
+  });
+
+  const offlineBaseUrl = await startServer(t, {
+    now: outsideNow,
+    databasePool: transactionPool({ isRiderOnline: false }),
+  });
+  const online = await fetch(`${offlineBaseUrl}/api/v1/rider/availability`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ isOnline: true, ...fix }),
+  });
+  assert.equal(online.status, 403);
+  assert.deepEqual((await online.json()).error, {
+    code: 'RIDER_OUTSIDE_HOURS',
+    message: 'Riders may go online only between 7:00 AM and 10:00 PM.',
+    opensAt: '07:00',
+  });
+});
+
+test('stale rider locations receive no offers and cannot accept orders', async (t) => {
+  const baseUrl = await startServer(t, {
+    databasePool: transactionPool({
+      locationUpdatedAt: new Date(serverNow.getTime() - 121_000).toISOString(),
+      queryHandler(sql) {
+        assert.fail(`A stale rider must not query offers: ${sql}`);
+      },
+    }),
+  });
+  const offers = await fetch(`${baseUrl}/api/v1/rider/orders/available`);
+  assert.equal(offers.status, 200);
+  assert.deepEqual((await offers.json()).data.orders, []);
+
+  const accept = await fetch(
+    `${baseUrl}/api/v1/rider/orders/${orderId}/accept`,
+    { method: 'POST' },
+  );
+  assert.equal(accept.status, 403);
+  assert.equal((await accept.json()).error.code, 'RIDER_LOCATION_STALE');
+});
+
 test('accepts an unassigned packed order transactionally', async (t) => {
   const transactionCalls = [];
   const baseUrl = await startServer(t, {
     databasePool: transactionPool({
       connectHandler(sql, params) {
         transactionCalls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
-        if (sql.includes('SELECT id, status, rider_id')) {
-          return {
-            rows: [{ id: orderId, status: 'getting_packed', rider_id: null }],
-          };
+        if (sql.includes('SELECT COUNT(*)::int AS count')) {
+          return { rows: [{ count: 0 }] };
         }
         if (sql.includes('UPDATE app.orders')) {
           return {
@@ -211,10 +329,112 @@ test('accepts an unassigned packed order transactionally', async (t) => {
     ),
     ['BEGIN', 'COMMIT'],
   );
-  assert.match(
-    transactionCalls.find(({ sql }) => sql.includes('UPDATE app.orders')).sql,
-    /rider_id IS NULL/,
+  const assignment = transactionCalls.find(({ sql }) =>
+    sql.includes('UPDATE app.orders'),
+  ).sql;
+  assert.match(assignment, /rider_id IS NULL/);
+  assert.match(assignment, /status = 'packed'/);
+  assert.equal(
+    transactionCalls.filter(({ sql }) => sql.includes('UPDATE app.orders')).length,
+    1,
   );
+});
+
+test('only one rider can accept an order in concurrent requests', async (t) => {
+  const orderState = { riderId: null };
+  const otherRiderId = '00000000-0000-4000-8000-000000000002';
+  const makeDatabase = () => transactionPool({
+    connectHandler(sql, params) {
+      if (sql.includes('SELECT COUNT(*)::int AS count')) {
+        return { rows: [{ count: 0 }] };
+      }
+      if (sql.includes('UPDATE app.orders')) {
+        if (orderState.riderId !== null) return { rows: [] };
+        orderState.riderId = params[1];
+        return {
+          rows: [{
+            orderId,
+            status: 'out_for_delivery',
+            riderId: params[1],
+            updatedAt: freshLocationAt,
+          }],
+        };
+      }
+      if (sql.includes('FROM app.orders AS o')) {
+        return {
+          rows: [{
+            orderId,
+            status: 'out_for_delivery',
+            store: 'Green Basket',
+            pickup: { area: 'Mandapeta' },
+            drop: { formattedAddress: 'Delivered after acceptance' },
+            customerName: 'Customer',
+            customerPhone: '+911234567890',
+            storePhone: '+911098765432',
+            payout: '57.00',
+          }],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+  const firstUrl = await startServer(t, {
+    databasePool: makeDatabase(),
+    authenticateRider(req, res, next) {
+      req.auth = { riderUserId: riderId };
+      next();
+    },
+  });
+  const secondUrl = await startServer(t, {
+    databasePool: makeDatabase(),
+    authenticateRider(req, res, next) {
+      req.auth = { riderUserId: otherRiderId };
+      next();
+    },
+  });
+  const responses = await Promise.all([
+    fetch(`${firstUrl}/api/v1/rider/orders/${orderId}/accept`, {
+      method: 'POST',
+    }),
+    fetch(`${secondUrl}/api/v1/rider/orders/${orderId}/accept`, {
+      method: 'POST',
+    }),
+  ]);
+  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409]);
+  const loser = responses.find((response) => response.status === 409);
+  assert.equal((await loser.json()).error.code, 'ORDER_TAKEN');
+});
+
+test("a rider cannot cancel another rider's order", async (t) => {
+  let penaltyCalls = 0;
+  let updateSql;
+  const baseUrl = await startServer(t, {
+    databasePool: transactionPool({
+      connectHandler(sql) {
+        if (sql.includes('UPDATE app.orders')) {
+          updateSql = sql;
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }),
+    applyRiderCancelPenalty: async () => {
+      penaltyCalls += 1;
+    },
+  });
+  const response = await fetch(
+    `${baseUrl}/api/v1/rider/orders/${orderId}/cancel`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'Cannot reach pickup' }),
+    },
+  );
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, 'ORDER_NOT_ASSIGNED');
+  assert.match(updateSql, /rider_id = \$2/);
+  assert.match(updateSql, /rider_stage = 'accepted'/);
+  assert.equal(penaltyCalls, 0);
 });
 
 test('rejects order acceptance and does not inspect or update orders while offline', async (t) => {
@@ -238,8 +458,7 @@ test('rejects order acceptance and does not inspect or update orders while offli
   );
   assert.equal(response.status, 403);
   assert.deepEqual(await response.json(), {
-    success: false,
-    message: 'Rider is offline',
+    error: { code: 'RIDER_OFFLINE', message: 'Rider is offline' },
   });
   assert.deepEqual(orderQueries, []);
 });
@@ -265,8 +484,10 @@ test('rejects order acceptance when the rider does not exist', async (t) => {
   );
   assert.equal(response.status, 403);
   assert.deepEqual(await response.json(), {
-    success: false,
-    message: 'Rider is offline',
+    error: {
+      code: 'RIDER_NOT_ALLOWED',
+      message: 'The rider account is not active.',
+    },
   });
   assert.deepEqual(orderQueries, []);
 });
@@ -275,6 +496,7 @@ test('updates status only when the order belongs to the requesting rider', async
   let updatedParams;
   let updateSql;
   let earningsInsertSql;
+  let earningsInsertParams;
   const baseUrl = await startServer(t, {
     databasePool: transactionPool({
       connectHandler(sql, params) {
@@ -287,13 +509,14 @@ test('updates status only when the order belongs to the requesting rider', async
               status: 'delivered',
               riderId,
               updatedAt: '2026-10-15T10:00:00.000Z',
-              payoutMinor: '8500',
+              deliveryFeeMinor: '8500',
               currency: 'INR',
             }],
           };
         }
         if (sql.includes('INSERT INTO app.rider_delivery_earnings')) {
           earningsInsertSql = sql;
+          earningsInsertParams = params;
         }
         return { rows: [] };
       },
@@ -326,6 +549,7 @@ test('updates status only when the order belongs to the requesting rider', async
   assert.equal(replayResponse.status, 200);
   assert.match(updateSql, /rider_stage IN \(\$3, \$4\)/);
   assert.match(earningsInsertSql, /ON CONFLICT \(order_id\) DO NOTHING/);
+  assert.equal(earningsInsertParams[2], '8500');
 
   const invalidResponse = await fetch(
     `${baseUrl}/api/v1/rider/orders/${orderId}/status`,
@@ -352,6 +576,8 @@ test('updates live location and marks the rider online', async (t) => {
               riderId,
               latitude: 16.87,
               longitude: 81.93,
+              accuracy: 15,
+              locationUpdatedAt: freshLocationAt,
               isOnline: true,
               updatedAt: '2026-10-15T10:00:00.000Z',
             }],
@@ -365,18 +591,54 @@ test('updates live location and marks the rider online', async (t) => {
   const response = await fetch(`${baseUrl}/api/v1/rider/location`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ latitude: 16.87, longitude: 81.93 }),
+    body: JSON.stringify({
+      latitude: 16.87,
+      longitude: 81.93,
+      accuracy: 15,
+      capturedAt: freshLocationAt,
+    }),
   });
   assert.equal(response.status, 200);
   assert.deepEqual((await response.json()).data.location, {
     riderId,
     latitude: 16.87,
     longitude: 81.93,
+    accuracy: 15,
+    locationUpdatedAt: '2026-10-15T10:00:00.000Z',
     isOnline: true,
     updatedAt: '2026-10-15T10:00:00.000Z',
   });
-  assert.deepEqual(updateParams, [riderId, 16.87, 81.93]);
-  assert.match(updateSql, /is_online = true/);
+  assert.deepEqual(updateParams, [
+    riderId,
+    16.87,
+    81.93,
+    15,
+    true,
+    freshLocationAt,
+  ]);
+  assert.match(updateSql, /is_online = CASE/);
+});
+
+test('rejects a location fix older than 60 seconds using server time', async (t) => {
+  const baseUrl = await startServer(t, {
+    databasePool: transactionPool({
+      queryHandler(sql) {
+        assert.fail(`A stale fix must not update rider state: ${sql}`);
+      },
+    }),
+  });
+  const response = await fetch(`${baseUrl}/api/v1/rider/location`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      latitude: 16.87,
+      longitude: 81.93,
+      accuracy: 10,
+      capturedAt: new Date(serverNow.getTime() - 61_000).toISOString(),
+    }),
+  });
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).error.code, 'LOCATION_STALE');
 });
 
 test('offline riders can clear duty, but cannot enable it without a location fix', async (t) => {
@@ -402,18 +664,18 @@ test('offline riders can clear duty, but cannot enable it without a location fix
   assert.deepEqual((await offlineResponse.json()).data.availability, {
     isOnline: false,
   });
-  assert.deepEqual(updateParams, [riderId]);
+  assert.deepEqual(updateParams, [riderId, false, null, null, null, null]);
 
   const onlineResponse = await fetch(`${baseUrl}/api/v1/rider/availability`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ isOnline: true }),
   });
-  assert.equal(onlineResponse.status, 409);
+  assert.equal(onlineResponse.status, 422);
   assert.deepEqual(await onlineResponse.json(), {
     error: {
       code: 'LOCATION_REQUIRED',
-      message: 'Share a valid location to go online.',
+      message: 'A valid latitude, longitude, accuracy, and capturedAt are required.',
     },
   });
 });
@@ -477,6 +739,7 @@ test("a rider cannot mark another rider's order as delivery failed", async (t) =
               rider_id: otherRiderId,
               status: 'out_for_delivery',
               rider_stage: 'out_for_delivery',
+              rider_arrived_at: new Date('2026-10-15T09:00:00.000Z'),
               payment_method: 'cod',
               total_minor: '4500',
               currency: 'INR',
@@ -522,6 +785,7 @@ test('delivery failure ignores client amounts, records COD order total, and skip
             rider_id: riderId,
             status: 'out_for_delivery',
             rider_stage: 'out_for_delivery',
+            rider_arrived_at: new Date('2026-10-15T09:00:00.000Z'),
             payment_method: paymentMethod,
             total_minor: '4500',
             currency: 'INR',
@@ -591,4 +855,165 @@ test('delivery failure ignores client amounts, records COD order total, and skip
   });
   assert.equal(prepaidFailure.status, 200);
   assert.equal(dueInserts.length, 1);
+});
+
+test('only the assigned rider can mark an out-for-delivery order arrived', async (t) => {
+  let updates = 0;
+  const pool = transactionPool({
+    connectHandler(sql) {
+      if (sql.includes('SELECT id, rider_id, status, rider_stage')) {
+        return {
+          rows: [{
+            id: orderId,
+            rider_id: riderId,
+            status: 'out_for_delivery',
+            rider_stage: 'out_for_delivery',
+          }],
+        };
+      }
+      if (sql.includes('SET rider_arrived_at')) {
+        updates += 1;
+        return { rows: [{ rider_arrived_at: new Date('2026-10-15T10:00:00Z') }] };
+      }
+      assert.fail(`Unexpected transaction query: ${sql}`);
+    },
+  });
+  const baseUrl = await startServer(t, {
+    databasePool: pool,
+    supportPhone: '+91 12345 67890',
+    supportEscalationMinutes: 10,
+    authenticateRider(req, res, next) {
+      req.auth = { riderUserId };
+      next();
+    },
+  });
+  const url = `${baseUrl}/api/v1/rider/orders/${orderId}/arrived`;
+  const first = await fetch(url, { method: 'PATCH' });
+  const firstOrder = (await first.json()).data.order;
+  const second = await fetch(url, { method: 'PATCH' });
+  const secondOrder = (await second.json()).data.order;
+
+  assert.equal(first.status, 200);
+  assert.equal(firstOrder.rider_arrived_at, '2026-10-15T10:00:00.000Z');
+  assert.equal(firstOrder.supportAvailableAt, '2026-10-15T10:10:00.000Z');
+  assert.equal(firstOrder.supportPhone, '+91 12345 67890');
+  assert.equal(second.status, 200);
+  assert.equal(secondOrder.rider_arrived_at, firstOrder.rider_arrived_at);
+  assert.equal(updates, 2);
+});
+
+test('a different rider cannot mark an order arrived', async (t) => {
+  const otherRiderId = '00000000-0000-4000-8000-000000000002';
+  let updates = 0;
+  const baseUrl = await startServer(t, {
+    databasePool: transactionPool({
+      connectHandler(sql) {
+        if (sql.includes('SELECT id, rider_id, status, rider_stage')) {
+          return {
+            rows: [{
+              id: orderId,
+              rider_id: otherRiderId,
+              status: 'out_for_delivery',
+              rider_stage: 'out_for_delivery',
+            }],
+          };
+        }
+        if (sql.includes('SET rider_arrived_at')) updates += 1;
+        assert.fail(`Unexpected transaction query: ${sql}`);
+      },
+    }),
+    authenticateRider(req, res, next) {
+      req.auth = { riderUserId };
+      next();
+    },
+  });
+  const response = await fetch(
+    `${baseUrl}/api/v1/rider/orders/${orderId}/arrived`,
+    { method: 'PATCH' },
+  );
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, 'ORDER_NOT_ASSIGNED');
+  assert.equal(updates, 0);
+});
+
+test('delivery failure enforces the exact support-wait boundary for every customer-fault reason', async (t) => {
+  const customerId = '10000000-0000-4000-8000-000000000001';
+  let arrivedAt = new Date('2026-10-15T09:50:01.000Z');
+  const dueInserts = [];
+  const pool = transactionPool({
+    connectHandler(sql, params) {
+      if (sql.includes('FROM app.orders AS o')) {
+        return {
+          rows: [{
+            id: orderId,
+            customer_user_id: customerId,
+            rider_id: riderId,
+            status: 'out_for_delivery',
+            rider_stage: 'out_for_delivery',
+            rider_arrived_at: arrivedAt,
+            payment_method: 'cod',
+            total_minor: '4500',
+            currency: 'INR',
+            current_latitude: 16.8,
+            current_longitude: 82.0,
+          }],
+        };
+      }
+      if (sql.includes('UPDATE app.orders')) {
+        return { rows: [{ orderId, status: 'delivery_failed', riderId }] };
+      }
+      if (sql.includes('INSERT INTO app.customer_ledger_entries')) {
+        dueInserts.push(params);
+        return { rows: [{ id: params[0] }] };
+      }
+      assert.fail(`Unexpected transaction query: ${sql}`);
+    },
+  });
+  const baseUrl = await startServer(t, {
+    databasePool: pool,
+    now: () => new Date('2026-10-15T10:00:00.000Z'),
+    authenticateRider(req, res, next) {
+      req.auth = { riderUserId };
+      next();
+    },
+  });
+  const url = `${baseUrl}/api/v1/rider/orders/${orderId}/delivery-failed`;
+  for (const reason of [
+    'customer_refused',
+    'customer_unreachable',
+    'wrong_address_by_customer',
+  ]) {
+    const waiting = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason, attempts: 1 }),
+    });
+    const waitingBody = await waiting.json();
+    assert.equal(waiting.status, 409);
+    assert.equal(waitingBody.error.code, 'SUPPORT_WAIT_NOT_ELAPSED');
+    assert.equal(waitingBody.error.remainingSeconds, 1);
+    assert.equal(dueInserts.length, 0);
+  }
+
+  arrivedAt = new Date('2026-10-15T09:50:00.000Z');
+  const elapsed = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      reason: 'wrong_address_by_customer',
+      attempts: 1,
+    }),
+  });
+  assert.equal(elapsed.status, 200);
+  assert.equal(dueInserts.length, 1);
+});
+
+test('support phone is absent from public endpoints', async (t) => {
+  const baseUrl = await startServer(t, {
+    supportPhone: '+91 12345 67890',
+  });
+  const response = await fetch(`${baseUrl}/health`);
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(body.includes('+91 12345 67890'), false);
 });
