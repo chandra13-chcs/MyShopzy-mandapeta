@@ -137,44 +137,111 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     final grid = tester.widget<SliverGrid>(find.byType(SliverGrid).first);
-    expect(
-      (grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount)
-          .crossAxisCount,
-      4,
-    );
+    final gridDelegate =
+        grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    expect(gridDelegate.crossAxisCount, 4);
+    expect(gridDelegate.childAspectRatio, 0.8);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('category images use rounded square colored rings without crop', (
+  testWidgets('category cards use uniform rounded image areas and labels', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
 
     final imageFinder = find.byType(Image).first;
     final image = tester.widget<Image>(imageFinder);
-    expect(image.fit, BoxFit.contain);
+    expect(image.fit, BoxFit.cover);
 
     final imageContainerFinder = find.byKey(
       const ValueKey('category-image-Fresh Vegetables'),
     );
-    final imageContainer = tester.widget<Container>(imageContainerFinder);
+    final imageContainer = tester.widget<SizedBox>(imageContainerFinder);
     final imageSize = tester.getSize(imageContainerFinder);
-    expect(imageSize.width, imageSize.height);
-    final imageDecoration = imageContainer.decoration! as BoxDecoration;
-    expect(imageDecoration.borderRadius, BorderRadius.circular(14));
-    expect(imageDecoration.border, isNotNull);
-    expect(imageDecoration.boxShadow, isNotEmpty);
+    expect(imageContainer.height, 70);
+    expect(imageContainer.width, double.infinity);
+    expect(imageSize.height, 70);
+    expect(
+      find.descendant(
+        of: imageContainerFinder,
+        matching: find.byType(ClipRRect),
+      ),
+      findsOneWidget,
+    );
+    final clippedImage = tester.widget<ClipRRect>(
+      find.descendant(
+        of: imageContainerFinder,
+        matching: find.byType(ClipRRect),
+      ),
+    );
+    expect(clippedImage.borderRadius, BorderRadius.circular(12));
+
+    final categoryCardFinder = find.byKey(
+      const ValueKey('category-card-Fresh Vegetables'),
+    );
+    final categoryCard = tester.widget<AnimatedContainer>(categoryCardFinder);
+    final cardDecoration = categoryCard.decoration! as BoxDecoration;
+    expect(cardDecoration.color, const Color(0xFFE1F2E4));
+    expect(cardDecoration.borderRadius, BorderRadius.circular(16));
+    expect(cardDecoration.border, isNull);
+    expect(cardDecoration.boxShadow, hasLength(1));
+    expect(cardDecoration.boxShadow!.single.blurRadius, 8);
+    expect(cardDecoration.boxShadow!.single.offset, const Offset(0, 3));
+    expect(
+      cardDecoration.boxShadow!.single.color,
+      Colors.black.withValues(alpha: 0.03),
+    );
 
     expect(
       tester.widget<Text>(find.text('Fresh Vegetables')).textAlign,
       TextAlign.center,
     );
+    final label = tester.widget<Text>(find.text('Fresh Vegetables'));
+    expect(label.maxLines, 2);
+    expect(label.overflow, TextOverflow.ellipsis);
+    expect(label.style!.fontSize, 11);
+    expect(label.style!.fontWeight, FontWeight.w600);
+    expect(label.style!.color, const Color.fromRGBO(0, 0, 0, 0.8));
 
     final grid = tester.widget<SliverGrid>(find.byType(SliverGrid).first);
     final delegate =
         grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
     expect(delegate.crossAxisSpacing, 8);
     expect(delegate.mainAxisSpacing, 8);
+  });
+
+  testWidgets('category card animates its fill and scale while pressed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
+    await tester.pumpAndSettle();
+
+    final categoryCardFinder = find.byKey(
+      const ValueKey('category-card-Fresh Vegetables'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(categoryCardFinder),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final scaleFinder = find.byKey(
+      const ValueKey('category-scale-Fresh Vegetables'),
+    );
+    expect(tester.widget<AnimatedScale>(scaleFinder).scale, 0.94);
+    final pressedCard = tester.widget<AnimatedContainer>(categoryCardFinder);
+    expect(
+      (pressedCard.decoration! as BoxDecoration).color,
+      Color.lerp(const Color(0xFFE1F2E4), Colors.black, 0.035),
+    );
+
+    await gesture.up();
+    await tester.pump();
+    expect(tester.widget<AnimatedScale>(scaleFinder).scale, 1);
+    final releasedCard = tester.widget<AnimatedContainer>(categoryCardFinder);
+    expect(
+      (releasedCard.decoration! as BoxDecoration).color,
+      const Color(0xFFE1F2E4),
+    );
   });
 
   testWidgets('categories use their supplied local images', (tester) async {
@@ -228,7 +295,7 @@ void main() {
           entry.value,
         ),
       );
-      expect(image.fit, BoxFit.contain);
+      expect(image.fit, BoxFit.cover);
     }
   });
 }

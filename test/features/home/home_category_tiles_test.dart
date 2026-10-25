@@ -129,10 +129,31 @@ void main() {
         find.byKey(ValueKey('home-category-tile-${categoryKeys[entry.key]}')),
       );
       final tileDecoration = tileContainer.decoration! as BoxDecoration;
-      expect(tileDecoration.borderRadius, BorderRadius.circular(12));
-      expect(tileDecoration.boxShadow, isNotEmpty);
-      expect(tileDecoration.border, isNotNull);
+      expect(tileDecoration.borderRadius, BorderRadius.circular(22));
+      expect(tileDecoration.border, isNull);
+      expect(tileDecoration.boxShadow, hasLength(1));
+      expect(tileDecoration.boxShadow!.single.blurRadius, 16);
+      expect(tileDecoration.boxShadow!.single.offset, const Offset(0, 6));
+      final glassContainer = tester.widget<AnimatedContainer>(
+        find.byKey(ValueKey('home-category-glass-${categoryKeys[entry.key]}')),
+      );
+      final glassDecoration = glassContainer.decoration! as BoxDecoration;
+      expect(glassDecoration.borderRadius, BorderRadius.circular(22));
+      expect(glassDecoration.color, Colors.white.withValues(alpha: 0.65));
+      expect(glassDecoration.border!.top.width, 1.2);
+      expect(
+        glassDecoration.border!.top.color,
+        Colors.white.withValues(alpha: 0.5),
+      );
+      expect(
+        find.descendant(of: tile, matching: find.byType(BackdropFilter)),
+        findsOneWidget,
+      );
       expect(find.text(entry.key), findsOneWidget);
+      final label = tester.widget<Text>(find.text(entry.key));
+      expect(label.style!.fontSize, 13);
+      expect(label.style!.fontWeight, FontWeight.w600);
+      expect(label.style!.color, Colors.black87);
       expect(tileBounds.width / tileBounds.height, closeTo(1.15, 0.02));
     }
     for (final subtitle in [
@@ -185,7 +206,7 @@ void main() {
     final meatTile = find.byKey(
       const ValueKey('home-category-meat_only_chicken'),
     );
-    final pressScale = find.ancestor(
+    final pressScale = find.descendant(
       of: meatTile,
       matching: find.byType(AnimatedScale),
     );
@@ -218,7 +239,7 @@ void main() {
     }
   });
 
-  testWidgets('Home category tiles animate their rotating border colors', (
+  testWidgets('Home category tiles use frosted glass and press feedback', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -228,38 +249,37 @@ void main() {
     );
     await pumpHomeTransitions(tester);
 
-    final tileFinder = find.byKey(
-      const ValueKey('home-category-tile-restaurants'),
+    final glassFinder = find.byKey(
+      const ValueKey('home-category-glass-restaurants'),
     );
-    final initialColor =
-        (tester.widget<Container>(tileFinder).decoration as BoxDecoration)
-            .border!
-            .top
-            .color;
+    final gestureFinder = find.byKey(
+      const ValueKey('home-category-restaurants'),
+    );
+    final scaleFinder = find.descendant(
+      of: gestureFinder,
+      matching: find.byType(AnimatedScale),
+    );
+    final gesture = await tester.startGesture(tester.getCenter(gestureFinder));
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(tester.widget<AnimatedScale>(scaleFinder).scale, 0.95);
+    final pressedDecoration =
+        tester.widget<AnimatedContainer>(glassFinder).decoration!
+            as BoxDecoration;
+    expect(pressedDecoration.color, Colors.white.withValues(alpha: 0.76));
     expect(
-      [
-        Colors.black,
-        const Color(0xFF1E5CFF),
-        const Color(0xFF1FAF5B),
-      ].contains(initialColor),
-      isTrue,
+      pressedDecoration.border!.top.color,
+      Colors.white.withValues(alpha: 0.8),
     );
 
-    await tester.pump(const Duration(milliseconds: 600));
-    final animatedColor =
-        (tester.widget<Container>(tileFinder).decoration as BoxDecoration)
-            .border!
-            .top
-            .color;
-    expect(animatedColor != initialColor, isTrue);
-    expect(
-      [
-        Colors.black,
-        const Color(0xFF1E5CFF),
-        const Color(0xFF1FAF5B),
-      ].contains(animatedColor),
-      isTrue,
-    );
+    await gesture.cancel();
+    await tester.pump(const Duration(milliseconds: 250));
+
+    expect(tester.widget<AnimatedScale>(scaleFinder).scale, 1);
+    final releasedDecoration =
+        tester.widget<AnimatedContainer>(glassFinder).decoration!
+            as BoxDecoration;
+    expect(releasedDecoration.color, Colors.white.withValues(alpha: 0.65));
   });
 
   testWidgets('home black header contains location and search only', (

@@ -13,7 +13,6 @@ import '../../search/presentation/search_page.dart';
 import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import '../../../shared/presentation/bottom_navigation_bar.dart';
 import '../../../shared/presentation/motion.dart';
-import '../../../shared/presentation/press_scale_feedback.dart';
 
 class CategoriesPage extends StatelessWidget {
   const CategoriesPage({super.key, this.onMainTabSelected});
@@ -22,12 +21,6 @@ class CategoriesPage extends StatelessWidget {
 
   static const _ink = AppTheme.primaryText;
   static const _page = AppTheme.lightBackground;
-  static const _categoryRingColors = [
-    Color(0xFF2E9B62),
-    Color(0xFFED8B3A),
-    Color(0xFF8964C8),
-    Color(0xFF438BCB),
-  ];
 
   static const _freshCategories = [
     _CategoryTile(
@@ -256,46 +249,29 @@ class CategoriesPage extends StatelessWidget {
       slivers: [
         SliverToBoxAdapter(child: _SectionHeading(title: title)),
         SliverLayoutBuilder(
-          builder: (context, constraints) {
-            final crossAxisCount = switch (constraints.crossAxisExtent) {
-              < 280 => 2,
-              < 320 => 3,
-              _ => 4,
-            };
-            final textScale = MediaQuery.textScalerOf(context).scale(10) / 10;
-            final mainAxisExtent = (140 + 200 * (textScale - 1))
-                .clamp(140.0, double.infinity)
-                .toDouble();
-
-            return SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-              sliver: SliverGrid(
-                delegate: SliverChildBuilderDelegate((context, index) {
-                  final category = categories[index];
-                  final tile = PressScaleFeedback(
-                    child: _GridCategory(
-                      category: category,
-                      ringColor:
-                          _categoryRingColors[index %
-                              _categoryRingColors.length],
-                      onTap: _gridCategoryAction(context, category.name),
-                    ),
-                  );
-                  return fadeSlideItem(
-                    itemKey: 'category-${category.name}',
-                    index: index,
-                    child: tile,
-                  );
-                }, childCount: categories.length),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: crossAxisCount,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  mainAxisExtent: mainAxisExtent,
-                ),
+          builder: (context, constraints) => SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            sliver: SliverGrid(
+              delegate: SliverChildBuilderDelegate((context, index) {
+                final category = categories[index];
+                final tile = _GridCategory(
+                  category: category,
+                  onTap: _gridCategoryAction(context, category.name),
+                );
+                return fadeSlideItem(
+                  itemKey: 'category-${category.name}',
+                  index: index,
+                  child: tile,
+                );
+              }, childCount: categories.length),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                childAspectRatio: 0.8,
               ),
-            );
-          },
+            ),
+          ),
         ),
       ],
     );
@@ -409,44 +385,70 @@ class _SectionHeading extends StatelessWidget {
   }
 }
 
-class _GridCategory extends StatelessWidget {
-  const _GridCategory({
-    required this.category,
-    required this.ringColor,
-    required this.onTap,
-  });
+class _GridCategory extends StatefulWidget {
+  const _GridCategory({required this.category, required this.onTap});
 
   final _CategoryTile category;
-  final Color ringColor;
   final VoidCallback? onTap;
+
+  @override
+  State<_GridCategory> createState() => _GridCategoryState();
+}
+
+class _GridCategoryState extends State<_GridCategory> {
+  bool _isPressed = false;
+
+  void _setPressed(bool isPressed) {
+    if (_isPressed == isPressed) return;
+    setState(() => _isPressed = isPressed);
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final imageSize = constraints.maxWidth.clamp(48.0, 88.0).toDouble();
-          return Column(
-            children: [
-              _CategoryImage(
-                category: category,
-                size: imageSize,
-                ringColor: ringColor,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        key: ValueKey('category-scale-${widget.category.name}'),
+        scale: _isPressed ? 0.94 : 1,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutBack,
+        child: AnimatedContainer(
+          key: ValueKey('category-card-${widget.category.name}'),
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          decoration: BoxDecoration(
+            color: _isPressed
+                ? Color.lerp(widget.category.color, Colors.black, 0.035)
+                : widget.category.color,
+            borderRadius: BorderRadius.circular(16),
+            border: null,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
-              const SizedBox(height: 7),
+            ],
+          ),
+          child: Column(
+            children: [
+              _CategoryImage(category: widget.category),
+              const SizedBox(height: 6),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 3),
                   child: Text(
-                    category.name,
+                    widget.category.name,
                     textAlign: TextAlign.center,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: CategoriesPage._ink,
-                      fontSize: 10.5,
+                      color: Color.fromRGBO(0, 0, 0, 0.8),
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                       height: 1.2,
                     ),
@@ -454,60 +456,38 @@ class _GridCategory extends StatelessWidget {
                 ),
               ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 }
 
 class _CategoryImage extends StatelessWidget {
-  const _CategoryImage({
-    required this.category,
-    required this.size,
-    required this.ringColor,
-  });
+  const _CategoryImage({required this.category});
 
   final _CategoryTile category;
-  final double size;
-  final Color ringColor;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       key: ValueKey('category-image-${category.name}'),
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: Colors.white,
-        border: Border.all(color: ringColor, width: 2.5),
-        boxShadow: [
-          BoxShadow(
-            color: ringColor.withValues(alpha: 0.18),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Center(
-        child: SizedBox(
-          width: size * 0.64,
-          height: size * 0.64,
-          child: category.imagePath == null
-              ? DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: category.color,
-                    borderRadius: BorderRadius.circular(size * 0.16),
-                  ),
+      height: 70,
+      width: double.infinity,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: category.imagePath == null
+            ? ColoredBox(
+                color: category.color,
+                child: Center(
                   child: Icon(
                     category.icon,
                     color: const Color(0xFF34453A),
-                    size: size * 0.37,
+                    size: 30,
                   ),
-                )
-              : Image.asset(category.imagePath!, fit: BoxFit.contain),
-        ),
+                ),
+              )
+            : Image.asset(category.imagePath!, fit: BoxFit.cover),
       ),
     );
   }

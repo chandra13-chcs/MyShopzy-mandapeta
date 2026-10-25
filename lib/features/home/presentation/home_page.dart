@@ -3007,13 +3007,6 @@ class _HomeServiceGrid extends StatefulWidget {
 }
 
 class _HomeServiceGridState extends State<_HomeServiceGrid> {
-  static const _categoryRingColors = [
-    Color(0xFF2E9B62),
-    Color(0xFFED8B3A),
-    Color(0xFF8964C8),
-    Color(0xFF438BCB),
-  ];
-
   late Future<List<_Service>> _servicesFuture;
 
   @override
@@ -3140,8 +3133,6 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
                   index: index,
                   child: _HomeCategoryTile(
                     service: service,
-                    ringColor:
-                        _categoryRingColors[index % _categoryRingColors.length],
                     cacheWidth:
                         (tileWidth * MediaQuery.devicePixelRatioOf(context))
                             .round(),
@@ -3160,13 +3151,11 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
 class _HomeCategoryTile extends StatefulWidget {
   const _HomeCategoryTile({
     required this.service,
-    required this.ringColor,
     required this.cacheWidth,
     required this.onTap,
   });
 
   final _Service service;
-  final Color ringColor;
   final int cacheWidth;
   final VoidCallback onTap;
 
@@ -3174,36 +3163,8 @@ class _HomeCategoryTile extends StatefulWidget {
   State<_HomeCategoryTile> createState() => _HomeCategoryTileState();
 }
 
-class _HomeCategoryTileState extends State<_HomeCategoryTile>
-    with SingleTickerProviderStateMixin {
+class _HomeCategoryTileState extends State<_HomeCategoryTile> {
   bool _pressed = false;
-  late final AnimationController _borderController;
-  late final Animation<double> _borderProgress;
-
-  @override
-  void initState() {
-    super.initState();
-    _borderController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat();
-    _borderProgress = CurvedAnimation(
-      parent: _borderController,
-      curve: Curves.easeInOutSine,
-    );
-  }
-
-  @override
-  void dispose() {
-    _borderController.dispose();
-    super.dispose();
-  }
-
-  Color _borderColorForProgress(double progress) {
-    const colors = [Colors.black, Color(0xFF1E5CFF), Color(0xFF1FAF5B)];
-    final cycle = (progress * colors.length).floor() % colors.length;
-    return colors[cycle];
-  }
 
   void _setPressed(bool pressed) {
     if (_pressed == pressed || !mounted) return;
@@ -3213,97 +3174,104 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile>
   @override
   Widget build(BuildContext context) {
     final reduceAnimations = reduceMotion(context);
-    final duration = reduceAnimations
+    final animationDuration = reduceAnimations
         ? Duration.zero
-        : const Duration(milliseconds: 180);
-
-    if (reduceAnimations) {
-      _borderController.stop(canceled: false);
-    } else if (!_borderController.isAnimating) {
-      _borderController.repeat();
-    }
-    if (reduceAnimations) {
-      _borderController.stop(canceled: false);
-    } else if (!_borderController.isAnimating) {
-      _borderController.repeat();
-    }
+        : const Duration(milliseconds: 150);
+    final blur = _pressed ? 12.0 : 10.0;
 
     return Listener(
       behavior: HitTestBehavior.deferToChild,
       onPointerDown: (_) => _setPressed(true),
       onPointerUp: (_) => _setPressed(false),
       onPointerCancel: (_) => _setPressed(false),
-      child: AnimatedScale(
-        scale: _pressed && !reduceAnimations ? 0.985 : 1,
-        duration: duration,
-        curve: Curves.easeOutCubic,
-        child: AnimatedBuilder(
-          animation: _borderProgress,
-          builder: (context, child) {
-            final borderColor = _borderColorForProgress(_borderProgress.value);
-            return Container(
-              key: ValueKey('home-category-tile-${widget.service.key}'),
-              decoration: BoxDecoration(
-                color: AppTheme.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: borderColor, width: 2.5),
-                boxShadow: [
-                  BoxShadow(
-                    color: borderColor.withValues(alpha: 0.18),
-                    blurRadius: _pressed ? 4 : 8,
-                    offset: Offset(0, _pressed ? 1 : 3),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.all(2),
-              child: child,
-            );
-          },
-          child: Material(
-            color: AppTheme.white,
-            borderRadius: BorderRadius.circular(9),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              key: ValueKey('home-category-${widget.service.key}'),
-              borderRadius: BorderRadius.circular(9),
-              overlayColor: const WidgetStatePropertyAll(Colors.transparent),
-              splashColor: Colors.transparent,
-              onTap: widget.onTap,
-              onHighlightChanged: _setPressed,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                      child: Image.asset(
-                        key: ValueKey(
-                          'home-category-image-${widget.service.key}',
-                        ),
-                        widget.service.assetPath,
-                        width: double.infinity,
-                        fit: BoxFit.contain,
-                        cacheWidth: widget.cacheWidth,
-                        semanticLabel: widget.service.name,
+      child: GestureDetector(
+        key: ValueKey('home-category-${widget.service.key}'),
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _setPressed(true),
+        onTapUp: (_) => _setPressed(false),
+        onTapCancel: () => _setPressed(false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: _pressed && !reduceAnimations ? 0.95 : 1,
+          duration: animationDuration,
+          curve: Curves.easeInOut,
+          child: Container(
+            key: ValueKey('home-category-tile-${widget.service.key}'),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 16,
+                  offset: Offset(0, 6),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(22),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween<double>(end: blur),
+                duration: reduceAnimations
+                    ? Duration.zero
+                    : const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                builder: (context, sigma, child) => BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                  child: child,
+                ),
+                child: AnimatedContainer(
+                  key: ValueKey('home-category-glass-${widget.service.key}'),
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(
+                      alpha: _pressed ? 0.76 : 0.65,
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withValues(
+                        alpha: _pressed ? 0.8 : 0.5,
                       ),
+                      width: 1.2,
                     ),
                   ),
-                  if (widget.service.partnerType == null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
-                      child: Text(
-                        widget.service.tileLabel,
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppTheme.primaryText,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                          child: Image.asset(
+                            key: ValueKey(
+                              'home-category-image-${widget.service.key}',
+                            ),
+                            widget.service.assetPath,
+                            width: double.infinity,
+                            fit: BoxFit.contain,
+                            cacheWidth: widget.cacheWidth,
+                            semanticLabel: widget.service.name,
+                          ),
                         ),
                       ),
-                    ),
-                ],
+                      if (widget.service.partnerType == null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
+                          child: Text(
+                            widget.service.tileLabel,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
