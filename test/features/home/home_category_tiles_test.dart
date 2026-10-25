@@ -41,6 +41,19 @@ void main() {
       'local_stores': LocalStoresPage,
     };
 
+    const labelOrder = [
+      'Restaurants',
+      'Bakery',
+      'Meat',
+      'Fruits',
+      'Parcel',
+      'Groceries',
+    ];
+
+    for (final label in labelOrder) {
+      expect(find.text(label), findsOneWidget);
+    }
+
     expect(find.byType(GridView), findsOneWidget);
     expect(
       find.byKey(const ValueKey('free-delivery-progress-strip')),
@@ -59,7 +72,7 @@ void main() {
       find.byWidgetPredicate(
         (widget) =>
             widget is Image &&
-            widget.semanticLabel == 'Meat Only Chicken' &&
+            widget.semanticLabel == 'Meat' &&
             widget.image is ResizeImage,
       ),
       findsOneWidget,
@@ -68,19 +81,18 @@ void main() {
     const categoryAssets = {
       'Restaurants': 'assets/category_tiles/restarant tile.jpeg',
       'Bakery': 'assets/category_tiles/bakery tile.jpeg',
-      'Meat Only Chicken': 'assets/category_tiles/meat tiles.jpeg',
-      'Fruits & Vegetables':
-          'assets/category_tiles/fruits nd vegetables tile.jpeg',
+      'Meat': 'assets/category_tiles/meat tiles.jpeg',
+      'Fruits': 'assets/category_tiles/fruits nd vegetables tile.jpeg',
       'Parcel': 'assets/category_tiles/parcel tiles.jpeg',
-      'Local Stores': 'assets/category_tiles/local stores tiles.jpeg',
+      'Groceries': 'assets/category_tiles/local stores tiles.jpeg',
     };
     const categoryKeys = {
       'Restaurants': 'restaurants',
       'Bakery': 'bakery',
-      'Meat Only Chicken': 'meat_only_chicken',
-      'Fruits & Vegetables': 'fruits_vegetables',
+      'Meat': 'meat_only_chicken',
+      'Fruits': 'fruits_vegetables',
       'Parcel': 'parcel',
-      'Local Stores': 'local_stores',
+      'Groceries': 'local_stores',
     };
     for (final entry in categoryAssets.entries) {
       final imageFinder = find.byWidgetPredicate(
@@ -100,25 +112,27 @@ void main() {
           ),
         ),
       );
-      final tile = find.ancestor(
-        of: imageFinder,
-        matching: find.byType(InkWell),
+      final tile = find.byKey(
+        ValueKey('home-category-tile-${categoryKeys[entry.key]}'),
       );
       final imageBounds = tester.getRect(imageFinder);
       final tileBounds = tester.getRect(tile);
-      expect(imageBounds, tileBounds);
+      expect(tileBounds.top <= imageBounds.top, isTrue);
+      expect(tileBounds.left <= imageBounds.left, isTrue);
+      expect(tileBounds.right >= imageBounds.right, isTrue);
+      expect(tileBounds.bottom >= imageBounds.bottom, isTrue);
       final imageContainer = tester.widget<Image>(
         find.byKey(ValueKey('home-category-image-${categoryKeys[entry.key]}')),
       );
       expect(imageContainer.fit, BoxFit.contain);
-      final tileContainer = tester.widget<AnimatedContainer>(
+      final tileContainer = tester.widget<Container>(
         find.byKey(ValueKey('home-category-tile-${categoryKeys[entry.key]}')),
       );
       final tileDecoration = tileContainer.decoration! as BoxDecoration;
       expect(tileDecoration.borderRadius, BorderRadius.circular(12));
       expect(tileDecoration.boxShadow, isNotEmpty);
       expect(tileDecoration.border, isNotNull);
-      expect(find.text(entry.key), findsNothing);
+      expect(find.text(entry.key), findsOneWidget);
       expect(tileBounds.width / tileBounds.height, closeTo(1.15, 0.02));
     }
     for (final subtitle in [
@@ -204,6 +218,50 @@ void main() {
     }
   });
 
+  testWidgets('Home category tiles animate their rotating border colors', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomePage(clock: _middayClock)),
+    );
+    await pumpHomeTransitions(tester);
+
+    final tileFinder = find.byKey(
+      const ValueKey('home-category-tile-restaurants'),
+    );
+    final initialColor =
+        (tester.widget<Container>(tileFinder).decoration as BoxDecoration)
+            .border!
+            .top
+            .color;
+    expect(
+      [
+        Colors.black,
+        const Color(0xFF1E5CFF),
+        const Color(0xFF1FAF5B),
+      ].contains(initialColor),
+      isTrue,
+    );
+
+    await tester.pump(const Duration(milliseconds: 600));
+    final animatedColor =
+        (tester.widget<Container>(tileFinder).decoration as BoxDecoration)
+            .border!
+            .top
+            .color;
+    expect(animatedColor != initialColor, isTrue);
+    expect(
+      [
+        Colors.black,
+        const Color(0xFF1E5CFF),
+        const Color(0xFF1FAF5B),
+      ].contains(animatedColor),
+      isTrue,
+    );
+  });
+
   testWidgets('home black header contains location and search only', (
     tester,
   ) async {
@@ -224,14 +282,21 @@ void main() {
 
     final searchFinder = find.byKey(const ValueKey('home-search-bar'));
     final search = tester.widget<Container>(searchFinder);
-    expect((search.decoration! as BoxDecoration).color, Colors.black);
+    expect((search.decoration! as BoxDecoration).color, Colors.white);
     expect(
       tester.getRect(searchFinder).bottom,
       lessThan(tester.getRect(headerFinder).bottom),
     );
     expect(
       tester.widget<Icon>(find.byIcon(Icons.search_rounded)).color,
-      Colors.white,
+      const Color(0xFF1B211D),
+    );
+    expect(
+      tester
+          .widget<Text>(find.text('Search restaurants, groceries, products...'))
+          .style
+          ?.color,
+      const Color(0xFF1B211D),
     );
 
     for (final label in ['30 mins', 'delivery', 'Choose your location']) {

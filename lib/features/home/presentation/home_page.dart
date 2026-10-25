@@ -211,20 +211,28 @@ class HomePage extends StatelessWidget {
         height: 52,
         padding: const EdgeInsets.symmetric(horizontal: 15),
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white54),
+          border: Border.all(color: const Color(0xFFDBE1D9)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.search_rounded, color: Colors.white, size: 23),
+            const Icon(
+              Icons.search_rounded,
+              color: Color(0xFF1B211D),
+              size: 23,
+            ),
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
                 'Search restaurants, groceries, products...',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: Colors.white, fontSize: 13),
+                style: TextStyle(
+                  color: Color(0xFF1B211D),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
@@ -946,11 +954,12 @@ class _HomeDuesBannerState extends State<_HomeDuesBanner> {
   Future<void> _loadDues() async {
     try {
       final dues = await CustomerApi.instance.getDues();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _dues = dues;
           _error = null;
         });
+      }
     } on CustomerApiException catch (error) {
       if (mounted) {
         setState(() {
@@ -2940,6 +2949,18 @@ class _Service {
   final String assetPath;
   final String? partnerType;
 
+  String get tileLabel => partnerType == null
+      ? switch (key) {
+          'restaurants' => 'Restaurants',
+          'bakery' => 'Bakery',
+          'meat_only_chicken' => 'Meat',
+          'fruits_vegetables' => 'Fruits',
+          'parcel' => 'Parcel',
+          'local_stores' => 'Groceries',
+          _ => name,
+        }
+      : '';
+
   int get displayOrder => switch (partnerType ?? key) {
     'restaurant' || 'restaurants' => 0,
     'bakery' => 1,
@@ -2959,18 +2980,18 @@ const _demoHomeServices = [
   ),
   _Service('Bakery', 'bakery', 'assets/category_tiles/bakery tile.jpeg'),
   _Service(
-    'Meat Only Chicken',
+    'Meat',
     'meat_only_chicken',
     'assets/category_tiles/meat tiles.jpeg',
   ),
   _Service(
-    'Fruits & Vegetables',
+    'Fruits',
     'fruits_vegetables',
     'assets/category_tiles/fruits nd vegetables tile.jpeg',
   ),
   _Service('Parcel', 'parcel', 'assets/category_tiles/parcel tiles.jpeg'),
   _Service(
-    'Local Stores',
+    'Groceries',
     'local_stores',
     'assets/category_tiles/local stores tiles.jpeg',
   ),
@@ -3153,8 +3174,36 @@ class _HomeCategoryTile extends StatefulWidget {
   State<_HomeCategoryTile> createState() => _HomeCategoryTileState();
 }
 
-class _HomeCategoryTileState extends State<_HomeCategoryTile> {
+class _HomeCategoryTileState extends State<_HomeCategoryTile>
+    with SingleTickerProviderStateMixin {
   bool _pressed = false;
+  late final AnimationController _borderController;
+  late final Animation<double> _borderProgress;
+
+  @override
+  void initState() {
+    super.initState();
+    _borderController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+    _borderProgress = CurvedAnimation(
+      parent: _borderController,
+      curve: Curves.easeInOutSine,
+    );
+  }
+
+  @override
+  void dispose() {
+    _borderController.dispose();
+    super.dispose();
+  }
+
+  Color _borderColorForProgress(double progress) {
+    const colors = [Colors.black, Color(0xFF1E5CFF), Color(0xFF1FAF5B)];
+    final cycle = (progress * colors.length).floor() % colors.length;
+    return colors[cycle];
+  }
 
   void _setPressed(bool pressed) {
     if (_pressed == pressed || !mounted) return;
@@ -3168,6 +3217,17 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
         ? Duration.zero
         : const Duration(milliseconds: 180);
 
+    if (reduceAnimations) {
+      _borderController.stop(canceled: false);
+    } else if (!_borderController.isAnimating) {
+      _borderController.repeat();
+    }
+    if (reduceAnimations) {
+      _borderController.stop(canceled: false);
+    } else if (!_borderController.isAnimating) {
+      _borderController.repeat();
+    }
+
     return Listener(
       behavior: HitTestBehavior.deferToChild,
       onPointerDown: (_) => _setPressed(true),
@@ -3177,23 +3237,28 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
         scale: _pressed && !reduceAnimations ? 0.985 : 1,
         duration: duration,
         curve: Curves.easeOutCubic,
-        child: AnimatedContainer(
-          key: ValueKey('home-category-tile-${widget.service.key}'),
-          duration: duration,
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            color: AppTheme.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: widget.ringColor, width: 2.5),
-            boxShadow: [
-              BoxShadow(
-                color: widget.ringColor.withValues(alpha: 0.18),
-                blurRadius: _pressed ? 4 : 8,
-                offset: Offset(0, _pressed ? 1 : 3),
+        child: AnimatedBuilder(
+          animation: _borderProgress,
+          builder: (context, child) {
+            final borderColor = _borderColorForProgress(_borderProgress.value);
+            return Container(
+              key: ValueKey('home-category-tile-${widget.service.key}'),
+              decoration: BoxDecoration(
+                color: AppTheme.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: borderColor, width: 2.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: borderColor.withValues(alpha: 0.18),
+                    blurRadius: _pressed ? 4 : 8,
+                    offset: Offset(0, _pressed ? 1 : 3),
+                  ),
+                ],
               ),
-            ],
-          ),
-          padding: const EdgeInsets.all(2),
+              padding: const EdgeInsets.all(2),
+              child: child,
+            );
+          },
           child: Material(
             color: AppTheme.white,
             borderRadius: BorderRadius.circular(9),
@@ -3206,19 +3271,38 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
               onTap: widget.onTap,
               onHighlightChanged: _setPressed,
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Expanded(
-                    child: Image.asset(
-                      key: ValueKey(
-                        'home-category-image-${widget.service.key}',
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+                      child: Image.asset(
+                        key: ValueKey(
+                          'home-category-image-${widget.service.key}',
+                        ),
+                        widget.service.assetPath,
+                        width: double.infinity,
+                        fit: BoxFit.contain,
+                        cacheWidth: widget.cacheWidth,
+                        semanticLabel: widget.service.name,
                       ),
-                      widget.service.assetPath,
-                      width: double.infinity,
-                      fit: BoxFit.contain,
-                      cacheWidth: widget.cacheWidth,
-                      semanticLabel: widget.service.name,
                     ),
                   ),
+                  if (widget.service.partnerType == null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
+                      child: Text(
+                        widget.service.tileLabel,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppTheme.primaryText,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
