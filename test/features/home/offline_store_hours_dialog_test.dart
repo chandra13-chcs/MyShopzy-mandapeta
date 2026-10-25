@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/app/myshopzy_app.dart';
+import 'package:myshopzy/features/home/presentation/home_page.dart';
 
 void main() {
   testWidgets('shows offline dialog over the home screen and closes with X', (
@@ -15,6 +16,13 @@ void main() {
     await tester.pump();
 
     expect(find.text('We are currently offline'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(OfflineBannerDialog),
+        matching: find.bySemanticsLabel('MyShopzy logo'),
+      ),
+      findsNothing,
+    );
     expect(
       find.text(
         'Our store hours are 7:00 AM – 10:00 PM. You can still browse '

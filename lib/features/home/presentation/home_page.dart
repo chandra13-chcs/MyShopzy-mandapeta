@@ -3501,12 +3501,6 @@ class _OfflineBannerDialogState extends State<OfflineBannerDialog> {
                                         ),
                                       ],
                                     ),
-                                    child: Image.asset(
-                                      'assets/category_tiles/logo.png',
-                                      fit: BoxFit.contain,
-                                      alignment: Alignment.center,
-                                      semanticLabel: 'MyShopzy logo',
-                                    ),
                                   ),
                                 ),
                               ),
