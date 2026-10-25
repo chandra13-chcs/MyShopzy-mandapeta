@@ -66,6 +66,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/category_tiles/
+    - assets/categories icons/
     - assets/icons/
     - assets/myshopzy_banners/
 

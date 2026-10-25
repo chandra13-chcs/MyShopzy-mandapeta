@@ -176,4 +176,59 @@ void main() {
     expect(delegate.crossAxisSpacing, 8);
     expect(delegate.mainAxisSpacing, 8);
   });
+
+  testWidgets('categories use their supplied local images', (tester) async {
+    const categoryImages = {
+      'Fresh Vegetables': 'assets/categories icons/freshvegetables.png.jpeg',
+      'Fresh Fruits': 'assets/categories icons/freshfruits.png.jpeg',
+      'Dairy, Bread and Eggs':
+          'assets/categories icons/dairy,breadandeggs.png.jpeg',
+      'Meat and Seafood': 'assets/categories icons/meatandseafood.png.jpeg',
+      'Atta, Rice and Dal': 'assets/categories icons/attaand rice.png.jpeg',
+      'Masalas': 'assets/categories icons/masala.png.jpeg',
+      'Oils and Ghee': 'assets/categories icons/oilandghee.png.jpeg',
+      'Cereals and Breakfast':
+          'assets/categories icons/cerealsand breakfast.png.jpeg',
+      'Cold Drinks and Juices': 'assets/categories icons/colddrinks.png.jpeg',
+      'Ice Creams and Frozen Foods':
+          'assets/categories icons/icrreams and frozenfood.png.jpeg',
+      'Chips and Namkeens':
+          'assets/categories icons/chips and namkeens.png.jpeg',
+      'Chocolates': 'assets/categories icons/chacolates.png.jpeg',
+      'Biscuits and Cakes':
+          'assets/categories icons/buscits and cakes.png.jpeg',
+      'Tea, Coffee and Milk Drinks':
+          'assets/categories icons/tea,cofeeand milkdriks.png.jpeg',
+      'Sauces and Spreads': 'assets/categories icons/saucesand spreds.png.jpeg',
+      'Sweet Corner': 'assets/categories icons/sweets.png.jpeg',
+      'Noodles, Pasta, Vermicelli':
+          'assets/categories icons/noodles,pasteand vermicelli.png.jpeg',
+      'Frozen Food': 'assets/categories icons/frozenfoods.png.jpeg',
+      'Dry Fruits and Seeds Mix':
+          'assets/categories icons/dryfruits and seedsmix.com.jpeg',
+    };
+
+    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
+
+    for (final entry in categoryImages.entries) {
+      final imageBox = find.byKey(ValueKey('category-image-${entry.key}'));
+      await tester.scrollUntilVisible(
+        imageBox,
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final image = tester.widget<Image>(
+        find.descendant(of: imageBox, matching: find.byType(Image)),
+      );
+      expect(
+        image.image,
+        isA<AssetImage>().having(
+          (asset) => asset.assetName,
+          'assetName',
+          entry.value,
+        ),
+      );
+      expect(image.fit, BoxFit.contain);
+    }
+  });
 }

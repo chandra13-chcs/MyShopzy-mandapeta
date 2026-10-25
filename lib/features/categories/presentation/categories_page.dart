@@ -34,23 +34,25 @@ class CategoriesPage extends StatelessWidget {
       'Fresh Vegetables',
       Icons.eco_rounded,
       Color(0xFFE1F2E4),
-      imagePath: 'assets/category_tiles/fruits nd vegetables tile.jpeg',
+      imagePath: 'assets/categories icons/freshvegetables.png.jpeg',
     ),
     _CategoryTile(
       'Fresh Fruits',
       Icons.apple_rounded,
       Color(0xFFFFE8D9),
-      imagePath: 'assets/category_tiles/fruits nd vegetables tile.jpeg',
+      imagePath: 'assets/categories icons/freshfruits.png.jpeg',
     ),
     _CategoryTile(
       'Dairy, Bread and Eggs',
       Icons.breakfast_dining_rounded,
       Color(0xFFF4E8D9),
+      imagePath: 'assets/categories icons/dairy,breadandeggs.png.jpeg',
     ),
     _CategoryTile(
       'Meat and Seafood',
       Icons.set_meal_rounded,
       Color(0xFFFFE4E2),
+      imagePath: 'assets/categories icons/meatandseafood.png.jpeg',
     ),
   ];
 
@@ -59,17 +61,25 @@ class CategoriesPage extends StatelessWidget {
       'Atta, Rice and Dal',
       Icons.rice_bowl_rounded,
       Color(0xFFF0E7D8),
+      imagePath: 'assets/categories icons/attaand rice.png.jpeg',
     ),
     _CategoryTile(
       'Masalas',
       Icons.local_fire_department_rounded,
       Color(0xFFF6EDD4),
+      imagePath: 'assets/categories icons/masala.png.jpeg',
     ),
-    _CategoryTile('Oils and Ghee', Icons.water_drop_rounded, Color(0xFFF6EDD4)),
+    _CategoryTile(
+      'Oils and Ghee',
+      Icons.water_drop_rounded,
+      Color(0xFFF6EDD4),
+      imagePath: 'assets/categories icons/oilandghee.png.jpeg',
+    ),
     _CategoryTile(
       'Cereals and Breakfast',
       Icons.breakfast_dining_rounded,
       Color(0xFFF4E9D3),
+      imagePath: 'assets/categories icons/cerealsand breakfast.png.jpeg',
     ),
   ];
 
@@ -78,45 +88,67 @@ class CategoriesPage extends StatelessWidget {
       'Cold Drinks and Juices',
       Icons.local_drink_rounded,
       Color(0xFFE1EAF1),
+      imagePath: 'assets/categories icons/colddrinks.png.jpeg',
     ),
     _CategoryTile(
       'Ice Creams and Frozen Foods',
       Icons.icecream_rounded,
       Color(0xFFE9E0D8),
+      imagePath: 'assets/categories icons/icrreams and frozenfood.png.jpeg',
     ),
     _CategoryTile(
       'Chips and Namkeens',
       Icons.fastfood_rounded,
       Color(0xFFF4E9D3),
+      imagePath: 'assets/categories icons/chips and namkeens.png.jpeg',
     ),
-    _CategoryTile('Chocolates', Icons.cake_rounded, Color(0xFFEBDDD9)),
+    _CategoryTile(
+      'Chocolates',
+      Icons.cake_rounded,
+      Color(0xFFEBDDD9),
+      imagePath: 'assets/categories icons/chacolates.png.jpeg',
+    ),
     _CategoryTile(
       'Biscuits and Cakes',
       Icons.bakery_dining_rounded,
       Color(0xFFF2E5D5),
-      imagePath: 'assets/category_tiles/bakery tile.jpeg',
+      imagePath: 'assets/categories icons/buscits and cakes.png.jpeg',
     ),
     _CategoryTile(
       'Tea, Coffee and Milk Drinks',
       Icons.coffee_rounded,
       Color(0xFFE9E0D8),
+      imagePath: 'assets/categories icons/tea,cofeeand milkdriks.png.jpeg',
     ),
     _CategoryTile(
       'Sauces and Spreads',
       Icons.lunch_dining_rounded,
       Color(0xFFF3E2DD),
+      imagePath: 'assets/categories icons/saucesand spreds.png.jpeg',
     ),
-    _CategoryTile('Sweet Corner', Icons.cake_rounded, Color(0xFFEBDDD9)),
+    _CategoryTile(
+      'Sweet Corner',
+      Icons.cake_rounded,
+      Color(0xFFEBDDD9),
+      imagePath: 'assets/categories icons/sweets.png.jpeg',
+    ),
     _CategoryTile(
       'Noodles, Pasta, Vermicelli',
       Icons.ramen_dining_rounded,
       Color(0xFFF1E3D5),
+      imagePath: 'assets/categories icons/noodles,pasteand vermicelli.png.jpeg',
     ),
-    _CategoryTile('Frozen Food', Icons.ac_unit_rounded, Color(0xFFE1EAF1)),
+    _CategoryTile(
+      'Frozen Food',
+      Icons.ac_unit_rounded,
+      Color(0xFFE1EAF1),
+      imagePath: 'assets/categories icons/frozenfoods.png.jpeg',
+    ),
     _CategoryTile(
       'Dry Fruits and Seeds Mix',
       Icons.spa_rounded,
       Color(0xFFE2F0E3),
+      imagePath: 'assets/categories icons/dryfruits and seedsmix.com.jpeg',
     ),
   ];
 
