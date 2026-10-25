@@ -11,6 +11,7 @@ import '../../../shared/data/money_formatter.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../cart/data/cart_store.dart';
 import '../../coupons/models/demo_coupon.dart';
+import '../../parcel/data/parcel_location_service.dart';
 import '../../orders/models/order_record.dart';
 import '../../orders/presentation/order_success_page.dart';
 import '../../orders/presentation/orders_page.dart';
@@ -45,6 +46,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   static const _demoDeliveryChargeInPaise = 3000;
   final _cartStore = CartStore.instance;
   final _orderSuccessPlayer = AudioPlayer();
+  final _locationService = ParcelLocationService();
   ApiCartQuote? _backendQuote;
   String? _quoteError;
   bool _quoteLoading = false;
@@ -86,7 +88,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool _currentLocationSuggested = false;
   bool _someoneElseSelected = false;
   String _newAddressType = 'Other';
-  String _selectedPaymentMethod = 'UPI';
+  String _selectedPaymentMethod = 'Cash on Delivery';
   DemoCoupon? _selectedCoupon;
   String? _couponMessage;
   bool _couponMessageIsError = false;
@@ -295,9 +297,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       setState(() {
         _backendQuote = null;
         _quoteLoading = false;
-        _quoteError = address == null
-            ? null
-            : 'This address needs a valid pincode and map coordinates to calculate delivery.';
+        _quoteError = address == null ? null : 'This address needs a valid pincode and map coordinates to calculate delivery.';
       });
       return;
     }
@@ -952,22 +952,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
               _deliveryOptionTile(
                 icon: Icons.my_location_outlined,
                 title: 'Use Current Location',
-                subtitle: 'Use my current location · Demo suggestion only',
+                subtitle:
+                    'Use my current location and verified address details',
                 onTap: () {
-                  setState(() {
-                    _clearBackendQuote();
-                    _currentLocationSuggested = true;
-                    _someoneElseSelected = false;
-                    _confirmedDeliveryAddress = null;
-                  });
                   Navigator.of(sheetContext).pop();
+                  unawaited(_useCurrentLocation(requestPermission: true));
                 },
               ),
               const Padding(
                 padding: EdgeInsets.only(left: 48, bottom: 8),
                 child: Text(
-                  'It will not become the delivery destination until you '
-                  'confirm it.',
+                  'We use your device location and address details to price the order.',
                   style: TextStyle(
                     color: _secondaryText,
                     fontSize: 11,
@@ -1052,6 +1047,44 @@ class _CheckoutPageState extends State<CheckoutPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _useCurrentLocation({bool requestPermission = false}) async {
+    try {
+      final location = await _locationService.detectCurrentLocation(
+        requestPermission: requestPermission,
+      );
+      if (!mounted) return;
+      final address = CheckoutDeliveryAddress(
+        id: 'current-location',
+        addressType: 'Current location',
+        formattedAddress: location.address,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        pincode: location.pincode,
+      );
+      setState(() {
+        _clearBackendQuote();
+        _confirmedDeliveryAddress = address;
+        _currentLocationSuggested = false;
+        _someoneElseSelected = false;
+      });
+      unawaited(_refreshBackendQuote(address));
+    } on ParcelLocationException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+      setState(() {
+        _clearBackendQuote();
+        _currentLocationSuggested = false;
+        _someoneElseSelected = false;
+      });
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Location is unavailable right now. $error')),
+      );
+    }
   }
 
   Widget _deliveryOptionTile({
@@ -1601,10 +1634,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
         children: [
           _paymentOption(
             title: 'UPI',
-            status: 'Available',
+            status: 'Unavailable',
             icon: Icons.account_balance_wallet_outlined,
-            selected: _selectedPaymentMethod == 'UPI',
-            onTap: () => setState(() => _selectedPaymentMethod = 'UPI'),
+            selected: false,
+            enabled: false,
+            onTap: () {},
           ),
           const SizedBox(height: 8),
           _paymentOption(

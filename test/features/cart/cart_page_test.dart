@@ -427,6 +427,14 @@ void _configureBackendCart(
           200,
         );
       }
+      if (request.method == 'GET' && request.url.path.endsWith('/me/dues')) {
+        return http.Response(
+          jsonEncode({
+            'data': {'outstandingMinor': '0', 'entries': []},
+          }),
+          200,
+        );
+      }
       if (request.method == 'POST' &&
           request.url.path.endsWith('/checkout/quote')) {
         return http.Response(

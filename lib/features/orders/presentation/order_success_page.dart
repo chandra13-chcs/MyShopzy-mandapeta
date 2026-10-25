@@ -4,6 +4,7 @@ import '../../../app/main_navigation_shell.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/presentation/motion.dart';
 import '../models/order_record.dart';
+import 'order_details_page.dart';
 import 'order_tracking_page.dart';
 
 class OrderSuccessPage extends StatelessWidget {
@@ -119,6 +120,37 @@ class OrderSuccessPage extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.local_shipping_outlined),
                     label: const Text('Track order'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: FilledButton.tonal(
+                    key: const ValueKey('order-success-view-details'),
+                    onPressed: () => Navigator.of(context).push(
+                      AppPageRoute<void>.builder(
+                        builder: (context) =>
+                            OrderDetailsPage(order: confirmedOrder),
+                      ),
+                    ),
+                    child: const Text('View details'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: OutlinedButton(
+                    key: const ValueKey('order-success-return-home'),
+                    onPressed: () =>
+                        Navigator.of(context).pushAndRemoveUntil<void>(
+                          AppPageRoute<void>.builder(
+                            builder: (context) => const MainNavigationShell(),
+                          ),
+                          (route) => false,
+                        ),
+                    child: const Text('Return home'),
                   ),
                 ),
                 const SizedBox(height: 10),
