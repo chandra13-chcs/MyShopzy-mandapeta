@@ -13,7 +13,9 @@ class WishlistStore extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
-  bool get isBackendMode => CustomerApi.instance.isConfigured;
+  bool get isBackendMode =>
+      CustomerApi.instance.isConfigured &&
+      CustomerApi.instance.hasCustomerSession;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -26,27 +28,6 @@ class WishlistStore extends ChangeNotifier {
   bool contains(ProductDetailsProduct product) {
     final key = _identityOf(product);
     return _products.any((saved) => _identityOf(saved) == key);
-  }
-
-  void toggle(ProductDetailsProduct product) {
-    if (contains(product)) {
-      remove(product);
-      return;
-    }
-    save(product);
-  }
-
-  void save(ProductDetailsProduct product) {
-    if (contains(product)) return;
-    _products.insert(0, product);
-    notifyListeners();
-  }
-
-  void remove(ProductDetailsProduct product) {
-    final key = _identityOf(product);
-    final originalLength = _products.length;
-    _products.removeWhere((saved) => _identityOf(saved) == key);
-    if (_products.length != originalLength) notifyListeners();
   }
 
   void clear() {
@@ -83,10 +64,7 @@ class WishlistStore extends ChangeNotifier {
   }
 
   Future<void> toggleSavedProduct(ProductDetailsProduct product) async {
-    if (!isBackendMode) {
-      toggle(product);
-      return;
-    }
+    _requireCustomerSession();
     if (!product.isBackendProduct) {
       throw const CustomerApiException(
         statusCode: null,
@@ -113,10 +91,7 @@ class WishlistStore extends ChangeNotifier {
   }
 
   Future<void> removeSavedProduct(ProductDetailsProduct product) async {
-    if (!isBackendMode) {
-      remove(product);
-      return;
-    }
+    _requireCustomerSession();
     if (!product.isBackendProduct) {
       throw const CustomerApiException(
         statusCode: null,
@@ -156,5 +131,22 @@ class WishlistStore extends ChangeNotifier {
     if (product.isBackendProduct) return 'backend:${product.id}';
     return '${product.serviceType}:${product.merchantId ?? ''}:'
         '${product.id}';
+  }
+
+  void _requireCustomerSession() {
+    if (!CustomerApi.instance.hasCustomerSession) {
+      throw const CustomerApiException(
+        statusCode: 401,
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Sign in to manage your wishlist.',
+      );
+    }
+    if (!CustomerApi.instance.isConfigured) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'API_NOT_CONFIGURED',
+        message: 'Wishlist service is unavailable.',
+      );
+    }
   }
 }

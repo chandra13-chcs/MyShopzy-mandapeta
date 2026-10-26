@@ -1020,6 +1020,7 @@ class CustomerApi {
 
   Future<void> requestOtp({required String phoneNumber}) async {
     _customerAccessToken = null;
+    clearCartToken();
     final payload = await _request(
       'POST',
       '/auth/otp/request',
@@ -1043,6 +1044,7 @@ class CustomerApi {
     required String otp,
   }) async {
     _customerAccessToken = null;
+    clearCartToken();
     final payload = await _request(
       'POST',
       '/auth/otp/verify',
@@ -1064,6 +1066,7 @@ class CustomerApi {
 
   void clearCustomerSession() {
     _customerAccessToken = null;
+    clearCartToken();
   }
 
   Future<List<ApiShop>> getShops({
@@ -1621,6 +1624,15 @@ class CustomerApi {
     }
   }
 
+  bool _requiresCustomerSession(String path) =>
+      path.startsWith('/me/') ||
+      path == '/carts' ||
+      path == '/cart' ||
+      path.startsWith('/cart/') ||
+      path == '/checkout/quote' ||
+      path == '/orders' ||
+      path.startsWith('/orders/');
+
   Future<Object?> _request(
     String method,
     String path, {
@@ -1628,6 +1640,13 @@ class CustomerApi {
     Object? body,
     bool useCartToken = false,
   }) async {
+    if (_requiresCustomerSession(path) && !hasCustomerSession) {
+      throw const CustomerApiException(
+        statusCode: 401,
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Sign in to access this customer feature.',
+      );
+    }
     if (!isConfigured) {
       throw const CustomerApiException(
         statusCode: null,
@@ -1635,6 +1654,7 @@ class CustomerApi {
         message: 'Backend mode is not configured.',
       );
     }
+
     late final Uri uri;
     try {
       try {

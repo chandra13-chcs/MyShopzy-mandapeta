@@ -14,7 +14,6 @@ import '../../coupons/models/demo_coupon.dart';
 import '../../parcel/data/parcel_location_service.dart';
 import '../../orders/models/order_record.dart';
 import '../../orders/presentation/order_success_page.dart';
-import '../../orders/presentation/orders_page.dart';
 import '../../orders/presentation/order_tracking_page.dart';
 import '../../profile/models/saved_address.dart';
 import '../../profile/data/selected_delivery_address_store.dart';
@@ -75,18 +74,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _newAddressLatitudeController = TextEditingController();
   final _newAddressLongitudeController = TextEditingController();
   final _newAddressLandmarkController = TextEditingController();
-  List<CheckoutDeliveryAddress> _savedAddresses = [
-    for (final address in demoSavedAddresses)
-      CheckoutDeliveryAddress(
-        id: address.id,
-        addressType: address.label,
-        formattedAddress: address.address,
-      ),
-  ];
+  List<CheckoutDeliveryAddress> _savedAddresses = [];
   bool _savedAddressesLoading = false;
   String? _savedAddressesError;
   CheckoutDeliveryAddress? _confirmedDeliveryAddress;
-  bool _currentLocationSuggested = false;
   bool _someoneElseSelected = false;
   String _newAddressType = 'Other';
   String _selectedPaymentMethod = 'Cash on Delivery';
@@ -111,7 +102,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   bool get _isBackendCart =>
-      CustomerApi.instance.isConfigured && _cartStore.hasBackendCart;
+      CustomerApi.instance.isConfigured &&
+      CustomerApi.instance.hasCustomerSession &&
+      _cartStore.hasBackendCart;
 
   bool get _hasPlaceableAddress {
     final address = _confirmedDeliveryAddress?.formattedAddress.trim();
@@ -170,12 +163,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
     }
     _cartStore.addListener(_handleCartChanged);
-    if (CustomerApi.instance.isConfigured) {
-      _savedAddresses = [];
+    if (CustomerApi.instance.hasCustomerSession) {
       _savedAddressesLoading = true;
       Future<void>.delayed(Duration.zero, _loadSavedAddresses);
     }
-    if (CustomerApi.instance.isConfigured) {
+    if (CustomerApi.instance.hasCustomerSession) {
       Future<void>.delayed(Duration.zero, _refreshDues);
     }
     if (_confirmedDeliveryAddress != null && _isBackendCart) {
@@ -223,6 +215,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   Future<void> _refreshDues() async {
+    if (!CustomerApi.instance.hasCustomerSession) return;
     if (!mounted) return;
     setState(() {
       _duesLoading = true;
@@ -389,232 +382,268 @@ class _CheckoutPageState extends State<CheckoutPage> {
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      body: SafeArea(
-        child: AnimatedBuilder(
-          animation: _cartStore,
-          builder: (context, child) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_isBackendCart &&
-                      (_storeClosedByServer ||
-                          _backendQuote?.storeOpen == false)) ...[
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF4E5),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFF2D4A8)),
-                      ),
-                      child: const Text(
-                        _storeClosedMessage,
-                        style: TextStyle(
-                          color: Color(0xFF805000),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                  if (_outstandingMinor > 0) ...[
-                    OutstandingDuesBanner(
-                      amountMinor: _outstandingMinor,
-                      orderId: _blockingDueOrderId,
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (context) => const DuesPage(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                  ] else if (_duesLoading) ...[
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 12),
-                      child: LinearProgressIndicator(minHeight: 2),
-                    ),
-                  ] else if (_duesError != null && _quoteError == null) ...[
-                    Text(
-                      _duesError!,
-                      style: const TextStyle(
-                        color: Color(0xFFA85B5B),
-                        fontSize: 12,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _refreshDues,
-                      child: const Text('Retry dues'),
-                    ),
-                  ],
-                  if (_cartStore.items.isEmpty) ...[
-                    _buildEmptyCartState(context),
-                    const SizedBox(height: 16),
-                  ],
-                  _buildDeliverySection(),
-                  if (_isBackendCart &&
-                      _backendQuote?.isDeliverable == false) ...[
-                    Container(
-                      key: const ValueKey('checkout-delivery-unavailable'),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF4E5),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFFFFD9A8)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              "Sorry! We don't deliver here yet",
+      body: !CustomerApi.instance.hasCustomerSession
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(28),
+                child: Text(
+                  'Sign in to access checkout.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _secondaryText),
+                ),
+              ),
+            )
+          : !_cartStore.hasBackendCart
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(28),
+                child: Text(
+                  'Checkout is unavailable until customer cart ownership is supported.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _secondaryText),
+                ),
+              ),
+            )
+          : SafeArea(
+              child: AnimatedBuilder(
+                animation: _cartStore,
+                builder: (context, child) {
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_isBackendCart &&
+                            (_storeClosedByServer ||
+                                _backendQuote?.storeOpen == false)) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4E5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFFF2D4A8),
+                              ),
+                            ),
+                            child: const Text(
+                              _storeClosedMessage,
                               style: TextStyle(
-                                color: _mainText,
-                                fontSize: 13,
+                                color: Color(0xFF805000),
+                                fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
+                          const SizedBox(height: 14),
+                        ],
+                        if (_outstandingMinor > 0) ...[
+                          OutstandingDuesBanner(
+                            amountMinor: _outstandingMinor,
+                            orderId: _blockingDueOrderId,
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (context) => const DuesPage(),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ] else if (_duesLoading) ...[
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 12),
+                            child: LinearProgressIndicator(minHeight: 2),
+                          ),
+                        ] else if (_duesError != null &&
+                            _quoteError == null) ...[
+                          Text(
+                            _duesError!,
+                            style: const TextStyle(
+                              color: Color(0xFFA85B5B),
+                              fontSize: 12,
+                            ),
+                          ),
                           TextButton(
-                            onPressed: _showDeliveryOptions,
-                            child: const Text('Change Location'),
+                            onPressed: _refreshDues,
+                            child: const Text('Retry dues'),
                           ),
                         ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  const SizedBox(height: 16),
-                  _buildDeliveryInstructionsSection(),
-                  const SizedBox(height: 16),
-                  _buildOrderSummary(),
-                  const SizedBox(height: 16),
-                  _buildCouponSection(),
-                  const SizedBox(height: 16),
-                  _buildPaymentSection(),
-                  const SizedBox(height: 16),
-                  _buildPriceDetails(),
-                  const SizedBox(height: 12),
-                  Text(
-                    _isBackendCart
-                        ? _quoteError ??
-                              (_quoteLoading
-                                  ? 'Refreshing server checkout quote…'
-                                  : _backendQuote?.isDeliverable == false
-                                  ? 'Choose a different delivery location to continue.'
-                                  : _backendQuote?.message ??
-                                        'Select a delivery address to get a server quote.')
-                        : 'Demo checkout · delivery and discounts are illustrative.',
-                    style: TextStyle(
-                      color: _quoteError == null
-                          ? _secondaryText
-                          : const Color(0xFFA85B5B),
-                      fontSize: 11,
-                    ),
-                  ),
-                  if (_isBackendCart && _quoteError != null)
-                    TextButton(
-                      onPressed: _quoteLoading
-                          ? null
-                          : () => unawaited(_refreshBackendQuote()),
-                      child: const Text('Retry quote'),
-                    ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-      bottomNavigationBar: AnimatedBuilder(
-        animation: _cartStore,
-        builder: (context, child) {
-          final hasItems = _cartStore.items.isNotEmpty;
-          final hasConfirmedAddress = _hasPlaceableAddress;
-          final orderOutcomeUnknown =
-              _isBackendCart && CustomerApi.instance.orderOutcomeUnknown;
-          final canPlaceOrder =
-              hasItems &&
-              hasConfirmedAddress &&
-              (!_isBackendCart ||
-                  (_backendQuote != null &&
-                      _backendQuote!.isDeliverable &&
-                      _backendQuote!.totalMinor != null)) &&
-              (!_isBackendCart || _backendQuote?.storeOpen != false) &&
-              _outstandingMinor <= 0 &&
-              !_storeClosedByServer &&
-              (!_isBackendCart || (!_quoteLoading && _quoteError == null)) &&
-              !_placingOrder &&
-              !orderOutcomeUnknown;
-          if (!hasItems) return const SizedBox.shrink();
-          return SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: _border)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!hasConfirmedAddress)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Select or enter a complete delivery address to continue.',
-                        key: ValueKey('checkout-address-validation'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: _secondaryText, fontSize: 12),
-                      ),
-                    ),
-                  if (orderOutcomeUnknown)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        'Order status is unknown. Your cart has been kept. '
-                        'Do not submit again until you have checked with '
-                        'customer support.',
-                        key: ValueKey('checkout-order-outcome-unknown'),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xFFA85B5B),
-                          fontSize: 12,
+                        if (_cartStore.items.isEmpty) ...[
+                          _buildEmptyCartState(context),
+                          const SizedBox(height: 16),
+                        ],
+                        _buildDeliverySection(),
+                        if (_isBackendCart &&
+                            _backendQuote?.isDeliverable == false) ...[
+                          Container(
+                            key: const ValueKey(
+                              'checkout-delivery-unavailable',
+                            ),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4E5),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: const Color(0xFFFFD9A8),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    "Sorry! We don't deliver here yet",
+                                    style: TextStyle(
+                                      color: _mainText,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: _showDeliveryOptions,
+                                  child: const Text('Change Location'),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        const SizedBox(height: 16),
+                        _buildDeliveryInstructionsSection(),
+                        const SizedBox(height: 16),
+                        _buildOrderSummary(),
+                        const SizedBox(height: 16),
+                        _buildCouponSection(),
+                        const SizedBox(height: 16),
+                        _buildPaymentSection(),
+                        const SizedBox(height: 16),
+                        _buildPriceDetails(),
+                        const SizedBox(height: 12),
+                        Text(
+                          _isBackendCart
+                              ? _quoteError ??
+                                    (_quoteLoading
+                                        ? 'Refreshing server checkout quote…'
+                                        : _backendQuote?.isDeliverable == false
+                                        ? 'Choose a different delivery location to continue.'
+                                        : _backendQuote?.message ??
+                                              'Select a delivery address to get a server quote.')
+                              : 'Sign in to get a checkout quote.',
+                          style: TextStyle(
+                            color: _quoteError == null
+                                ? _secondaryText
+                                : const Color(0xFFA85B5B),
+                            fontSize: 11,
+                          ),
                         ),
-                      ),
+                        if (_isBackendCart && _quoteError != null)
+                          TextButton(
+                            onPressed: _quoteLoading
+                                ? null
+                                : () => unawaited(_refreshBackendQuote()),
+                            child: const Text('Retry quote'),
+                          ),
+                      ],
                     ),
-                  SizedBox(
-                    height: 52,
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: canPlaceOrder ? _placeOrder : null,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _green,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor: _border,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: Text(
-                        _placingOrder
-                            ? 'Submitting…'
-                            : orderOutcomeUnknown
-                            ? 'Order Status Unknown'
-                            : 'Place Order',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
-          );
-        },
-      ),
+      bottomNavigationBar: !CustomerApi.instance.hasCustomerSession
+          ? const SizedBox.shrink()
+          : AnimatedBuilder(
+              animation: _cartStore,
+              builder: (context, child) {
+                final hasItems = _cartStore.items.isNotEmpty;
+                final hasConfirmedAddress = _hasPlaceableAddress;
+                final orderOutcomeUnknown =
+                    _isBackendCart && CustomerApi.instance.orderOutcomeUnknown;
+                final canPlaceOrder =
+                    _isBackendCart &&
+                    hasItems &&
+                    hasConfirmedAddress &&
+                    (!_isBackendCart ||
+                        (_backendQuote != null &&
+                            _backendQuote!.isDeliverable &&
+                            _backendQuote!.totalMinor != null)) &&
+                    (!_isBackendCart || _backendQuote?.storeOpen != false) &&
+                    _outstandingMinor <= 0 &&
+                    !_storeClosedByServer &&
+                    (!_isBackendCart ||
+                        (!_quoteLoading && _quoteError == null)) &&
+                    !_placingOrder &&
+                    !orderOutcomeUnknown;
+                if (!hasItems) return const SizedBox.shrink();
+                return SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      border: Border(top: BorderSide(color: _border)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (!hasConfirmedAddress)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Select or enter a complete delivery address to continue.',
+                              key: ValueKey('checkout-address-validation'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _secondaryText,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        if (orderOutcomeUnknown)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Order status is unknown. Your cart has been kept. '
+                              'Do not submit again until you have checked with '
+                              'customer support.',
+                              key: ValueKey('checkout-order-outcome-unknown'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Color(0xFFA85B5B),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        SizedBox(
+                          height: 52,
+                          width: double.infinity,
+                          child: FilledButton(
+                            onPressed: canPlaceOrder ? _placeOrder : null,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _green,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: _border,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: Text(
+                              _placingOrder
+                                  ? 'Submitting…'
+                                  : orderOutcomeUnknown
+                                  ? 'Order Status Unknown'
+                                  : 'Place Order',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 
@@ -770,60 +799,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ],
             ),
           ),
-          if (_currentLocationSuggested) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(13),
-                border: Border.all(color: _border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.my_location_outlined, color: _green, size: 19),
-                      SizedBox(width: 8),
-                      Text(
-                        'Suggested Current Location',
-                        style: TextStyle(
-                          color: _mainText,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.only(left: 27, top: 4),
-                    child: Text(
-                      'Demo suggestion only · no GPS accessed. Confirm it '
-                      'before it becomes the delivery destination.',
-                      style: TextStyle(
-                        color: _secondaryText,
-                        fontSize: 11,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: FilledButton.tonal(
-                      onPressed: _confirmSuggestedCurrentLocation,
-                      style: FilledButton.styleFrom(
-                        foregroundColor: _green,
-                        backgroundColor: _lightGreen,
-                      ),
-                      child: const Text('Confirm this location'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
           if (_someoneElseSelected) ...[
             const SizedBox(height: 12),
             _buildAddressForm(
@@ -1016,9 +991,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               Padding(
                 padding: const EdgeInsets.only(top: 6, bottom: 5),
                 child: Text(
-                  CustomerApi.instance.isConfigured
-                      ? 'Saved Addresses · backend'
-                      : 'Saved Addresses · demo',
+                  'Saved Addresses',
                   style: const TextStyle(
                     color: _mainText,
                     fontSize: 13,
@@ -1074,7 +1047,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   setState(() {
                     _clearBackendQuote();
                     _confirmedDeliveryAddress = null;
-                    _currentLocationSuggested = false;
                     _someoneElseSelected = true;
                   });
                   Navigator.of(sheetContext).pop();
@@ -1108,7 +1080,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
           .showSnackBar(SnackBar(content: Text(error.message)));
       setState(() {
         _clearBackendQuote();
-        _currentLocationSuggested = false;
         _someoneElseSelected = false;
       });
     } on PlatformException catch (error) {
@@ -1960,15 +1931,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
-  void _confirmSuggestedCurrentLocation() {
-    final address = CheckoutDeliveryAddress(
-      id: 'current-location-demo',
-      addressType: 'Current location',
-      formattedAddress: 'Demo suggested location',
-    );
-    _confirmAddress(address);
-  }
-
   void _confirmSomeoneElseAddress() {
     final formattedAddress = _deliveryAddressController.text.trim();
     if (formattedAddress.isEmpty) return;
@@ -1997,9 +1959,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       longitude: double.tryParse(_newAddressLongitudeController.text.trim()),
       landmark: _newAddressLandmarkController.text.trim(),
     );
-    if (!CustomerApi.instance.isConfigured) {
-      _savedAddresses.add(address);
-    }
     _confirmAddress(address);
   }
 
@@ -2008,7 +1967,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       _clearBackendQuote();
       _confirmedDeliveryAddress = address;
       _someoneElseSelected = false;
-      _currentLocationSuggested = false;
     });
     SelectedDeliveryAddressStore.instance.select(
       SavedAddress(
@@ -2030,6 +1988,22 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   Future<void> _placeOrder() async {
+    if (!CustomerApi.instance.hasCustomerSession) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to place an order.')),
+      );
+      return;
+    }
+    if (!CustomerApi.instance.isConfigured || !_cartStore.hasBackendCart) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Checkout is unavailable until customer cart ownership is supported.',
+          ),
+        ),
+      );
+      return;
+    }
     if (_cartStore.items.isEmpty || !_hasPlaceableAddress) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -2059,28 +2033,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
         if (address.latitude != null) 'latitude': address.latitude,
         if (address.longitude != null) 'longitude': address.longitude,
       };
-      final ApiOrderResult? order;
-      if (_isBackendCart) {
-        order = await CustomerApi.instance.placeOrder(deliveryAddress);
-      } else {
-        order = null;
-      }
+      final order = await CustomerApi.instance.placeOrder(deliveryAddress);
       if (!mounted) return;
-      if (order != null) {
-        HapticFeedback.mediumImpact();
-        unawaited(_playOrderSuccessSound());
-      }
+      HapticFeedback.mediumImpact();
+      unawaited(_playOrderSuccessSound());
       final confirmedOrder = OrderRecord(
         storeName: _cartStore.items.first.merchantId ?? 'MyShopzy Store',
         icon: _cartStore.items.first.icon,
-        orderId:
-            order?.orderId ?? 'MSZ-${DateTime.now().millisecondsSinceEpoch}',
+        orderId: order.orderId,
         dateTime: DateTime.now().toLocal().toString(),
         itemSummary: _cartStore.items
             .map((item) => '${item.quantity} ${item.name}')
             .join(', '),
-        totalInPaise: order?.totalMinor ?? _totalInPaise,
-        status: order?.status ?? 'Order Placed',
+        totalInPaise: order.totalMinor,
+        status: order.status,
         statusMessage: 'We have received your order',
         orderTab: OrdersTab.ongoing,
         serviceType: _cartStore.items.first.serviceType,
@@ -2105,14 +2071,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
         deliveryAddressLabel: address.addressType,
         paymentMethod: _selectedPaymentMethod,
         paymentStatus: 'Pending',
-        deliveryChargeInPaise:
-            order?.deliveryFeeMinor ?? _deliveryChargeInPaise,
-        discountInPaise: order?.discountMinor ?? _discountInPaise,
+        deliveryChargeInPaise: order.deliveryFeeMinor,
+        discountInPaise: order.discountMinor,
         trackingStatus: OrderTrackingStatus.orderPlaced,
-        isBackendData: order != null,
-        itemCount: order?.itemCount ?? _cartStore.totalQuantity,
+        isBackendData: true,
+        itemCount: order.itemCount,
       );
-      if (order == null) OrdersPage.addDemoOrder(confirmedOrder);
       _cartStore.clear();
       await Navigator.of(context).pushReplacement<void, void>(
         AppPageRoute<void>.builder(

@@ -40,17 +40,13 @@ class _ProfilePageState extends State<ProfilePage> {
   static const _yellowText = AppTheme.darkGreen;
   static const _logoutBackground = Color(0xFFFFF2F1);
   static const _logoutColor = Color(0xFFA85B5B);
-  static const _demoProfile = ApiCustomerProfile(
-    displayName: 'Your profile',
-    phone: null,
-    email: null,
-  );
-
   ApiCustomerProfile? _profile;
   String? _profileError;
   bool _profileLoading = false;
 
-  bool get _backendMode => CustomerApi.instance.isConfigured;
+  bool get _backendMode =>
+      CustomerApi.instance.isConfigured &&
+      CustomerApi.instance.hasCustomerSession;
 
   @override
   void initState() {
@@ -58,8 +54,6 @@ class _ProfilePageState extends State<ProfilePage> {
     if (_backendMode) {
       _profileLoading = true;
       unawaited(_loadProfile());
-    } else {
-      _profile = _demoProfile;
     }
   }
 
@@ -111,39 +105,50 @@ class _ProfilePageState extends State<ProfilePage> {
       ]),
       builder: (context, child) => Scaffold(
         backgroundColor: _background,
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'My Account',
-                  style: TextStyle(
-                    color: _mainText,
-                    fontSize: 25,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.5,
+        body: !CustomerApi.instance.hasCustomerSession
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Text(
+                    'Sign in to access your account.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: _secondaryText),
                   ),
                 ),
-                const SizedBox(height: 20),
-                _buildProfileCard(context),
-                const SizedBox(height: 25),
-                _buildSectionTitle('QUICK ORDERS'),
-                const SizedBox(height: 10),
-                _buildQuickOrders(context),
-                const SizedBox(height: 25),
-                _buildSectionTitle('ACCOUNT'),
-                const SizedBox(height: 10),
-                _buildMenuCard(context, _accountItems),
-                const SizedBox(height: 25),
-                _buildSectionTitle('MORE'),
-                const SizedBox(height: 10),
-                _buildMoreCard(context),
-              ],
-            ),
-          ),
-        ),
+              )
+            : SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'My Account',
+                        style: TextStyle(
+                          color: _mainText,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      _buildProfileCard(context),
+                      const SizedBox(height: 25),
+                      _buildSectionTitle('QUICK ORDERS'),
+                      const SizedBox(height: 10),
+                      _buildQuickOrders(context),
+                      const SizedBox(height: 25),
+                      _buildSectionTitle('ACCOUNT'),
+                      const SizedBox(height: 10),
+                      _buildMenuCard(context, _accountItems),
+                      const SizedBox(height: 25),
+                      _buildSectionTitle('MORE'),
+                      const SizedBox(height: 10),
+                      _buildMoreCard(context),
+                    ],
+                  ),
+                ),
+              ),
         bottomNavigationBar: widget.onMainTabSelected == null
             ? _buildBottomNavigation(context)
             : null,
@@ -193,7 +198,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ],
                   )
-                : _buildProfileDetails(context, profile ?? _demoProfile),
+                : profile == null
+                ? const Text(
+                    'Profile details are unavailable.',
+                    style: TextStyle(color: _secondaryText),
+                  )
+                : _buildProfileDetails(context, profile),
           ),
         ],
       ),
@@ -208,7 +218,7 @@ class _ProfilePageState extends State<ProfilePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _backendMode ? 'Your account' : 'Profile not connected',
+          'Your account',
           style: const TextStyle(color: _secondaryText, fontSize: 10),
         ),
         const SizedBox(height: 3),
@@ -253,13 +263,7 @@ class _ProfilePageState extends State<ProfilePage> {
             if (!context.mounted || updatedProfile == null) return;
             setState(() => _profile = updatedProfile);
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  _backendMode
-                      ? 'Profile updated successfully.'
-                      : 'Demo profile updated on this device.',
-                ),
-              ),
+              SnackBar(content: Text('Profile updated successfully.')),
             );
           },
           style: OutlinedButton.styleFrom(

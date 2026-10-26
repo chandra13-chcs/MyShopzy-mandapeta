@@ -74,6 +74,20 @@ class CartStore extends ChangeNotifier {
     required IconData icon,
     bool isBackendProduct = false,
   }) {
+    if (!CustomerApi.instance.hasCustomerSession) {
+      throw const CustomerApiException(
+        statusCode: 401,
+        code: 'AUTHENTICATION_REQUIRED',
+        message: 'Sign in to add items to your cart.',
+      );
+    }
+    if (!isBackendProduct || !CustomerApi.instance.isConfigured) {
+      throw const CustomerApiException(
+        statusCode: 503,
+        code: 'CART_OWNERSHIP_UNAVAILABLE',
+        message: 'Cart and checkout are unavailable until customer ownership is supported.',
+      );
+    }
     if (_items.any((item) => item.isBackendProduct != isBackendProduct)) {
       return false;
     }
@@ -153,7 +167,8 @@ class CartStore extends ChangeNotifier {
       throw const CustomerApiException(
         statusCode: null,
         code: 'DEMO_CART_NOT_SYNCED',
-        message: 'Clear demo cart items before using the live catalog.',
+        message:
+            'Clear unsupported local cart items before using the live catalog.',
       );
     }
     if (productVariantId == null || productVariantId.isEmpty) {
@@ -233,8 +248,8 @@ class CartStore extends ChangeNotifier {
     if (_items.any((item) => !item.isBackendProduct)) {
       throw const CustomerApiException(
         statusCode: null,
-        code: 'DEMO_CART_NOT_SYNCED',
-        message: 'Demo cart items are not stored in the backend cart.',
+        code: 'CART_OWNERSHIP_UNAVAILABLE',
+        message: 'Local preview items cannot be used for checkout.',
       );
     }
     final cart = await CustomerApi.instance.getCart();
@@ -248,9 +263,7 @@ class CartStore extends ChangeNotifier {
       ..addAll(
         cart.items.map((apiItem) {
           final existing =
-              existingItems[
-                '${apiItem.shopId}:${apiItem.productId}:${apiItem.variantId}'
-              ];
+              existingItems['${apiItem.shopId}:${apiItem.productId}:${apiItem.variantId}'];
           if (existing != null) {
             return existing
               ..quantity = apiItem.quantity

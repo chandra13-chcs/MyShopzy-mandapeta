@@ -271,7 +271,9 @@ function createDatabase({
         distanceM,
         feeMinor,
       ] = params;
-      if (ownerId !== customerId) return { rows: [], rowCount: 0 };
+      if (ownerId !== customerId && ownerId !== null) {
+        return { rows: [], rowCount: 0 };
+      }
       const parcel = {
         id,
         customer_user_id: ownerId,
@@ -689,6 +691,44 @@ test('creates and reads parcel bookings with validated UI-supported fields', asy
 
   const otherId = await fetch(`${baseUrl}/api/v1/me/parcels/${parcelId}`);
   assert.equal(otherId.status, 404);
+});
+
+test('unauthenticated parcel creation and history requests are rejected', async (t) => {
+  const database = createDatabase();
+  const baseUrl = await startServer(t, database.pool);
+  const payload = {
+    pickupLocation: '12 Green Park Road',
+    dropLocation: '24 Market Street',
+    parcelType: 'Documents',
+    weightKg: 1.25,
+    instructions: 'Call on arrival',
+    pickupLatitude: 16.87,
+    pickupLongitude: 81.93,
+    dropLatitude: 16.88,
+    dropLongitude: 81.94,
+    customerUserId: customerId,
+  };
+  const createResponse = await fetch(
+    `${baseUrl}/api/v1/me/parcels`,
+    jsonRequest('POST', payload),
+  );
+  assert.equal(createResponse.status, 401);
+  assert.equal(
+    (await createResponse.json()).error.code,
+    'AUTHENTICATION_REQUIRED',
+  );
+  assert.equal(
+    database.queries.some((query) =>
+      query.sql.startsWith('INSERT INTO app.parcel_bookings'),
+    ),
+    false,
+  );
+
+  assert.equal((await fetch(`${baseUrl}/api/v1/me/parcels`)).status, 401);
+  assert.equal(
+    (await fetch(`${baseUrl}/api/v1/me/parcels/${parcelId}`)).status,
+    401,
+  );
 });
 
 test('sanitizes database failures for profile, address, order, wishlist, and parcel APIs', async (t) => {

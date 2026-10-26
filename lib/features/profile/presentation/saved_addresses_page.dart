@@ -19,7 +19,7 @@ class SavedAddressesPage extends StatefulWidget {
 }
 
 class _SavedAddressesPageState extends State<SavedAddressesPage> {
-  List<SavedAddress> _addresses = demoSavedAddresses;
+  List<SavedAddress> _addresses = const [];
   bool _loading = false;
   bool _saving = false;
   String? _loadError;
@@ -27,8 +27,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
   @override
   void initState() {
     super.initState();
-    if (CustomerApi.instance.isConfigured) {
-      _addresses = const [];
+    if (CustomerApi.instance.hasCustomerSession) {
       _loading = true;
       Future<void>.delayed(Duration.zero, _loadAddresses);
     }
@@ -76,7 +75,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final backendMode = CustomerApi.instance.isConfigured;
+    final backendMode = CustomerApi.instance.hasCustomerSession;
     return Scaffold(
       backgroundColor: SavedAddressesPage._background,
       appBar: AppBar(
@@ -89,7 +88,21 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
         ),
       ),
       body: SafeArea(
-        child: _loading && _addresses.isEmpty
+        child: !backendMode
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Text(
+                    'Sign in to access saved addresses.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: SavedAddressesPage._secondaryText,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              )
+            : _loading && _addresses.isEmpty
             ? const Center(child: CircularProgressIndicator())
             : _loadError != null && _addresses.isEmpty
             ? _buildLoadError()
@@ -100,9 +113,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
-                        backendMode
-                            ? 'Backend saved addresses'
-                            : 'Demo addresses · changes are local only',
+                        'Your saved addresses',
                         style: const TextStyle(
                           color: SavedAddressesPage._secondaryText,
                           fontSize: 11,
@@ -200,7 +211,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
           ),
           const SizedBox(height: 10),
           Text(
-            '${address.isBackendData ? '' : 'Demo address: '}${address.address}',
+            address.address,
             style: const TextStyle(
               color: SavedAddressesPage._secondaryText,
               fontSize: 14,
@@ -315,25 +326,12 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
   }
 
   Future<void> _addAddress() async {
-    final result = await _showAddressEditor();
-    if (result == null || !mounted) return;
-    if (!CustomerApi.instance.isConfigured) {
-      setState(() {
-        _addresses = [
-          ..._addresses,
-          SavedAddress(
-            id: 'demo-${DateTime.now().microsecondsSinceEpoch}',
-            label: result.label,
-            address: result.address,
-            icon: _addressIcon(result.label),
-            latitude: result.latitude,
-            longitude: result.longitude,
-            pincode: result.pincode,
-          ),
-        ];
-      });
+    if (!CustomerApi.instance.hasCustomerSession) {
+      _showAuthenticationRequired();
       return;
     }
+    final result = await _showAddressEditor();
+    if (result == null || !mounted) return;
     await _runAddressMutation(() async {
       final saved = await CustomerApi.instance.createSavedAddress(
         label: result.label,
@@ -346,28 +344,12 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
   }
 
   Future<void> _editAddress(SavedAddress address) async {
-    final result = await _showAddressEditor(existing: address);
-    if (result == null || !mounted) return;
-    if (!CustomerApi.instance.isConfigured || !address.isBackendData) {
-      setState(() {
-        _addresses = _addresses
-            .map(
-              (item) => item.id == address.id
-                  ? SavedAddress(
-                      id: item.id,
-                      label: result.label,
-                      address: result.address,
-                      icon: _addressIcon(result.label),
-                      latitude: result.latitude,
-                      longitude: result.longitude,
-                      pincode: result.pincode,
-                    )
-                  : item,
-            )
-            .toList(growable: false);
-      });
+    if (!CustomerApi.instance.hasCustomerSession || !address.isBackendData) {
+      _showAuthenticationRequired();
       return;
     }
+    final result = await _showAddressEditor(existing: address);
+    if (result == null || !mounted) return;
     await _runAddressMutation(() async {
       final updated = await CustomerApi.instance.updateSavedAddress(
         address.id,
@@ -393,6 +375,10 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
   };
 
   Future<void> _deleteAddress(SavedAddress address) async {
+    if (!CustomerApi.instance.hasCustomerSession || !address.isBackendData) {
+      _showAuthenticationRequired();
+      return;
+    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -411,14 +397,6 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    if (!CustomerApi.instance.isConfigured || !address.isBackendData) {
-      setState(() {
-        _addresses = _addresses
-            .where((item) => item.id != address.id)
-            .toList(growable: false);
-      });
-      return;
-    }
     await _runAddressMutation(() async {
       await CustomerApi.instance.deleteSavedAddress(address.id);
       if (mounted) {
@@ -429,6 +407,12 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
         });
       }
     });
+  }
+
+  void _showAuthenticationRequired() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sign in to manage saved addresses.')),
+    );
   }
 
   Future<void> _runAddressMutation(Future<void> Function() operation) async {

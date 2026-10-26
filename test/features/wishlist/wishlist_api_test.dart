@@ -42,7 +42,7 @@ void main() {
       return http.Response('', 204);
     });
 
-    wishlist.save(_product(id: 'demo-product', isBackendProduct: false));
+    await _authenticate();
     await tester.pumpWidget(const MaterialApp(home: WishlistPage()));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     listResponse.complete(
@@ -52,7 +52,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Backend wishlist'), findsOneWidget);
+    expect(find.text('Your wishlist'), findsOneWidget);
     expect(find.text('Server Product'), findsOneWidget);
     expect(find.text('Server Shop'), findsOneWidget);
     expect(find.text('Demo Product'), findsNothing);
@@ -78,6 +78,7 @@ void main() {
       }
       return http.Response('', 204);
     });
+    await _authenticate();
     final product = _product(id: _productId, isBackendProduct: true);
 
     await tester.pumpWidget(
@@ -116,6 +117,7 @@ void main() {
         'data': [_wishlistItem()],
       });
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: WishlistPage()));
     await tester.pumpAndSettle();
@@ -139,6 +141,7 @@ void main() {
         },
       }, statusCode: 401),
     );
+    await _authenticate();
     final product = _product(id: _productId, isBackendProduct: true);
 
     await tester.pumpWidget(
@@ -159,22 +162,24 @@ void main() {
   testWidgets('failed remove keeps backend wishlist item visible', (
     tester,
   ) async {
-    CustomerApi.instance = _api(
-      (request) async => _jsonResponse({
+    CustomerApi.instance = _api((request) async {
+      if (request.method == 'GET') {
+        return _jsonResponse({
+          'data': [_wishlistItem()],
+        });
+      }
+      return _jsonResponse({
         'error': {
           'code': 'DATABASE_UNAVAILABLE',
           'message': 'Could not remove wishlist item.',
         },
-      }, statusCode: 503),
-    );
+      }, statusCode: 503);
+    });
+    await _authenticate();
     final product = _product(id: _productId, isBackendProduct: true);
-    wishlist.save(product);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(body: SaveListButton(product: product)),
-      ),
-    );
+    await tester.pumpWidget(const MaterialApp(home: WishlistPage()));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Remove from wishlist'));
     await tester.pumpAndSettle();
 
@@ -185,7 +190,6 @@ void main() {
   testWidgets('wishlist listing shows 401 instead of demo entries', (
     tester,
   ) async {
-    wishlist.save(_product());
     CustomerApi.instance = _api(
       (request) async => _jsonResponse({
         'error': {
@@ -194,6 +198,7 @@ void main() {
         },
       }, statusCode: 401),
     );
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: WishlistPage()));
     await tester.pumpAndSettle();
@@ -211,9 +216,23 @@ void main() {
 CustomerApi _api(Future<http.Response> Function(http.Request) handler) {
   return CustomerApi(
     baseUrl: 'https://shop.example',
-    httpClient: MockClient(handler),
+    httpClient: MockClient((request) async {
+      if (request.url.path == '/api/v1/auth/otp/verify') {
+        return _jsonResponse({
+          'data': {
+            'accessToken': 'test-session',
+            'tokenType': 'Bearer',
+            'expiresIn': 300,
+          },
+        });
+      }
+      return handler(request);
+    }),
   );
 }
+
+Future<void> _authenticate() =>
+    CustomerApi.instance.verifyOtp(phoneNumber: '9876543210', otp: '123456');
 
 http.Response _jsonResponse(Object body, {int statusCode = 200}) {
   return http.Response(jsonEncode(body), statusCode);

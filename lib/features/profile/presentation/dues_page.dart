@@ -25,7 +25,11 @@ class _DuesPageState extends State<DuesPage> {
   @override
   void initState() {
     super.initState();
-    _loadDues();
+    if (CustomerApi.instance.hasCustomerSession) {
+      _loadDues();
+    } else {
+      _loading = false;
+    }
   }
 
   Future<void> _loadDues() async {
@@ -94,9 +98,8 @@ class _DuesPageState extends State<DuesPage> {
       }
     } on CustomerApiException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
     } finally {
       if (mounted) setState(() => _submittingDispute = false);
     }
@@ -116,7 +119,18 @@ class _DuesPageState extends State<DuesPage> {
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      body: _loading && dues == null
+      body: !CustomerApi.instance.hasCustomerSession
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Sign in to access your dues.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppTheme.secondaryText),
+                ),
+              ),
+            )
+          : _loading && dues == null
           ? const Center(child: CircularProgressIndicator())
           : _error != null && dues == null
           ? Center(
@@ -130,7 +144,9 @@ class _DuesPageState extends State<DuesPage> {
                           Text(
                             _error!,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(color: AppTheme.secondaryText),
+                            style: const TextStyle(
+                              color: AppTheme.secondaryText,
+                            ),
                           ),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
@@ -172,10 +188,7 @@ class _DuesPageState extends State<DuesPage> {
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     _offline
-                        ? OfflineErrorState(
-                            onRetry: _loadDues,
-                            compact: true,
-                          )
+                        ? OfflineErrorState(onRetry: _loadDues, compact: true)
                         : Text(
                             _error!,
                             style: const TextStyle(color: Color(0xFFA85B5B)),
@@ -197,8 +210,11 @@ class _DuesPageState extends State<DuesPage> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.account_balance_wallet_outlined,
-              color: AppTheme.primaryGreen, size: 28),
+          const Icon(
+            Icons.account_balance_wallet_outlined,
+            color: AppTheme.primaryGreen,
+            size: 28,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -278,9 +294,7 @@ class _DuesPageState extends State<DuesPage> {
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: _submittingDispute
-                    ? null
-                    : () => _disputeDue(entry),
+                onPressed: _submittingDispute ? null : () => _disputeDue(entry),
                 child: const Text('Dispute'),
               ),
             ),

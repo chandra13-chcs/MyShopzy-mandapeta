@@ -16,12 +16,11 @@ For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
 
-## Customer API mode
+## Backend connection
 
-The app uses the existing demo catalog and cart by default. To use the
-customer APIs, provide the backend origin when starting the app (do not include
-`/api/v1`). The backend listens on port `3000` by default (`PORT` can override
-it):
+Public catalog browsing can use the backend by providing its origin when
+starting the app (do not include `/api/v1`). The backend listens on port `3000`
+by default (`PORT` can override it):
 
 ```sh
 flutter run --dart-define=MYSHOPZY_API_BASE_URL=http://localhost:3000
@@ -54,72 +53,15 @@ health endpoint can succeed while `/health/ready` reports that PostgreSQL is
 not configured or unavailable. Parcel route checks also require the backend-only
 `ROUTING_API_KEY` for Google Routes; the Flutter app must never receive this key.
 
-### Development-only OTP login
+Restaurant and grocery/local-store shops, their categories and products remain
+public catalog reads. If catalog requests fail, the existing demo catalog
+remains visible and is labeled as demo data. Cart, checkout, order placement,
+payments, parcel booking/history, order history, and saved-address features
+require customer authentication and are unavailable while no valid customer
+session is available. The app does not provide customer login or OTP yet.
 
-For local debug login only, the OTP screen can display the configured test OTP
-without adding an endpoint that reveals it. Create an untracked
-`development.local.json` in the project root (it is ignored by Git):
-
-```json
-{
-  "MYSHOPZY_API_BASE_URL": "http://localhost:3000",
-  "MYSHOPZY_DEVELOPMENT_CUSTOMER_OTP": "your-local-six-digit-test-code"
-}
-```
-
-Set the OTP value to match `DEVELOPMENT_CUSTOMER_OTP` in the backend's local
-environment. Do not put `DEVELOPMENT_CUSTOMER_SESSION_SECRET` or other backend
-secrets in this Flutter file. Run the app with:
-
-```sh
-flutter run --dart-define-from-file=development.local.json
-```
-
-The hint is rendered only in debug builds and only for a valid six-digit value;
-release builds never display it. No SMS or WhatsApp message is sent. The
-backend remains responsible for verifying the entered OTP and issuing a
-customer session. Restaurant and grocery/local-store shops, their
-categories and products, cart changes, and checkout quotes then come from the
-backend. If catalog requests fail, the existing demo catalog remains visible
-and is labeled as demo data. The backend catalog does not currently provide
-store ratings, opening hours, delivery estimates, product brands, or reviews;
-the app does not present demo values for those fields as backend facts.
-Restaurant listing search uses the public shop-name search, and restaurant
-menu search uses the public product-name/description search.
-Cart mode creates and lists an anonymous capability-token cart, synchronizes
-item quantity/removal/clear operations, and uses the backend quote (including
-its current line prices) for checkout totals. The token remains in memory only
-for the current app session and is sent only in the cart-token request header;
-orders still require trusted customer authentication and are not reported as
-placed on an authentication error.
-
-### Parcel request API
-
-With a configured API origin and an authenticated customer session, the Parcel
-flow submits a request using `POST /api/v1/me/parcels`; request history and
-details use `GET /api/v1/me/parcels` and
-`GET /api/v1/me/parcels/:parcelId`. These endpoints validate and persist the
-pickup/drop text, parcel type, weight (up to 20 kg), and instructions, and
-scope reads to the authenticated customer. A successful response is a
-`requested` record, not confirmation of an accepted or dispatched delivery.
-
-The customer form supports foreground current-location detection and manual
-entry, and can select existing saved addresses. Coordinates and postal codes
-are retained in app state when the selected location provides them. The
-backend requires map coordinates for both endpoints, so typed address text
-alone cannot be submitted; use a saved address with coordinates or a location
-source that supplies coordinates. The backend independently asks its
-configured road-routing provider for the pickup-to-drop driving distance. The
-shared serviceability endpoint only checks whether each pincode is active;
-that informational check does not validate a parcel route. The parcel API
-does not enforce the displayed 50 km limit.
-
-The existing parcel charge rule is ₹25 for up to 2 km, then ₹10 per additional
-km, prorated by metre; the backend computes and stores it when a request is
-submitted, but the app does not quote it before submission. This is not a
-₹12/km rule. The backend still has no parcel-specific 50 km enforcement,
-cancellation policy, rider assignment/tracking, or parcel delivery-status
-workflow. No migration is required for the existing request API. If a create
-request times out or loses its connection, the app prevents another submit
-during that app session and directs the customer to history; the backend does
-not yet provide cross-session idempotency.
+The backend rejects unauthenticated customer API requests. Cart and checkout
+also fail closed for authenticated requests until cart ownership can be tied to
+the verified customer in the database; cart tokens and device/customer IDs are
+not authentication credentials. No database migration is run as part of this
+work. See [the backend README](myshopzy_backend/README.md) for route behavior.

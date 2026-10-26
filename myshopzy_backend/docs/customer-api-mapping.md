@@ -69,12 +69,10 @@ middleware is configured. Client-supplied user IDs are never used as identity.
 | `POST /me/dues/:entryId/dispute` | `{ "message": "..." }` (1–500 characters) | Appends a dispute note to the customer's own pending or confirmed due; does not change its amount or status |
 | `POST /me/parcels` | Pickup/drop strings and coordinates, UI parcel type, weight `0 < kg <= 20` (up to three decimal places), optional instructions | `app.parcel_bookings`; recomputes road distance and parcel fee server-side, creates a `requested` booking, `201` |
 
-OTP codes expire after five minutes, allow five verification attempts, and have
-a 30-second resend cooldown. Requests are limited to three per phone per 15
-minutes and ten per source IP per hour. Codes, phone numbers, and IP addresses
-are not stored in plaintext in OTP challenge/rate-limit tables. Unknown and
-existing phone numbers follow the same request contract; a customer account
-is only created after code verification.
+Customer OTP authentication is not mounted by the running server. Customer
+APIs fail closed unless the existing customer-session verifier validates a
+signed session. No OTP/login endpoint is available until the final
+authentication phase.
 | `GET /me/parcels` | Optional `limit` (1–100), `offset` | Authenticated customer's booking list |
 | `GET /me/parcels/:parcelId` | UUID path | Owner-scoped booking details; foreign and missing IDs return `404` |
 
@@ -88,22 +86,16 @@ accepted or delivered.
 The additive migration `002_customer_carts.sql` adds
 `app.customer_carts` and `app.customer_cart_items`; migration
 `008_product_variants_and_images.sql` adds `variant_id` and changes cart-line
-identity to `(cart_id, product_id, variant_id)`. Each cart is addressed only by
-a random 256-bit bearer token returned once by cart creation; the database
-stores its SHA-256 hash. This is an anonymous cart capability, not a customer
-identity. A caller must protect the token, and possession grants access to
-that cart.
+identity to `(cart_id, product_id, variant_id)`. The existing schema stores
+only a random token hash and has no customer-owner relation. A token is not
+customer authentication, so cart and checkout endpoints currently return 401
+without a valid customer session and 503 `CART_OWNERSHIP_UNAVAILABLE` with one.
+No schema change or migration is included in this work.
 
 | Endpoint | Request | Response / behavior | PostgreSQL tables |
 |---|---|---|---|
-| `POST /carts` | Empty JSON body or no body | `201` with one-time `data.cartToken` | `app.customer_carts` |
-| `GET /cart` | `X-Cart-Token` header | Cart shop, current variant price, `variantId`, `variantLabel`, quantities, availability, and subtotal | Cart tables, products, product variants, shops, partners |
-| `POST /cart/items` | `X-Cart-Token`; `{ "productId": "<uuid>", "variantId": "<uuid>", "quantity": 1 }` (quantity optional, defaults to 1) | Adds quantity to the product/variant cart line; variant must belong to the product and its shop; server reads variant price and stock | Cart tables and catalog tables |
-| `PATCH /cart/items/:productId/:variantId` | `X-Cart-Token`; `{ "quantity": 1 }` | Sets quantity for that product/variant line; quantity must be 1–99 and within variant stock when tracked | Cart tables and catalog tables |
-| `DELETE /cart/items/:productId/:variantId` | `X-Cart-Token` | `204` after removal of that product/variant line | Cart tables |
-| `DELETE /cart/items` | `X-Cart-Token` | Clears cart contents and releases the cart's single-shop binding | Cart tables |
-| `POST /checkout/quote` | `X-Cart-Token`; delivery address with latitude, longitude, and pincode; no client price/distance fields | Items (including `variantId` and `variantLabel`), currency, subtotal, server-calculated road distance and delivery fee, discount, and total | Cart tables, products, product variants, shops, partners |
-| `POST /orders` | `X-Cart-Token`; `{ "deliveryAddress": { "latitude": number, "longitude": number, "pincode": "533308" } }`; trusted authenticated customer context | `201` with order ID/status and server-calculated totals. Requires the address pincode to be active in `app.serviceable_pincodes`; recomputes road distance/fee and inserts order and immutable item snapshots transactionally. | Customers, users, cart tables, products, product variants, shops, partners, serviceable pincodes, orders, order items |
+| Cart operations | `POST /carts`, `GET /cart`, cart item mutations | Not available until cart records can be tied to the authenticated customer. Cart tokens are never accepted as identity. | Existing cart tables lack customer ownership |
+| Checkout quote and order placement | `POST /checkout/quote`, `POST /orders` | Not available until customer-owned cart support is implemented. Authenticated requests fail closed rather than quote or place an order. | Cart tables, orders, and related catalog data |
 
 Order placement checks that every product, shop, and partner is active/approved,
 that all products belong to the cart's one shop, that each variant's stock is
@@ -154,9 +146,9 @@ geofence coordinates. Customer order cancellation remains unavailable.
 | Meat catalog | `GET /shops/:shopId/categories` and `GET /products?shopId=...` | Products and categories for an identified meat shop. |
 | Vegetables/fruits landing page | `GET /shops?partnerType=grocery` | Produce remains a grocery subtype; product `attributes.produce_type` distinguishes fruit and vegetable. |
 | Produce catalog | `GET /shops?partnerType=grocery`, categories and `GET /products?partnerType=grocery` | Filters `attributes.produce_type` to `fruit` or `vegetable`; products without the attribute are not shown as produce. |
-| Cart and cart access controls | `POST /carts`, `GET /cart`, `POST /cart/items`, `PATCH /cart/items/:productId/:variantId`, `DELETE /cart/items/:productId/:variantId`, `DELETE /cart/items` | Implemented using anonymous bearer cart tokens. Add requests require `{ "productId": "<uuid>", "variantId": "<uuid>", "quantity": 1 }`; cart lines are unique by product and variant and expose `variantId`, `variantLabel`, and variant `priceMinor`. |
-| Checkout quote | `POST /checkout/quote`; trusted customer auth required | Uses server-side variant prices and stock, one-shop validation, and zero delivery/discount pending pricing rules. A confirmed unpaid due returns `409 OUTSTANDING_DUES`. Quote lines include `variantId`, `variantLabel`, `priceMinor`, and `lineTotalMinor`. |
-| Checkout, delivery options, instructions, address entry | `POST /delivery/serviceability`, `POST /orders`; trusted auth middleware required | Order totals and immutable variant snapshots are generated from server-side cart variants. Serviceability is checked before checkout and again at order placement. Placement writes `cod` for now; migration 012 also permits `prepaid`. Delivery-fee rules, coupons, and instruction fields are not modeled. Running-server authentication is development-only. |
+| Cart and cart access controls | Cart routes | Protected; unavailable until customer cart ownership is supported. |
+| Checkout quote | `POST /checkout/quote` | Protected; authenticated calls fail closed while carts have no customer-owner relation. |
+| Checkout, delivery options, instructions, address entry | `POST /delivery/serviceability`, `POST /orders` | Public serviceability can be checked; order placement is protected and unavailable until cart ownership is supported. No payment is completed. |
 | Coupon picker and coupon validation | No endpoint available | Coupons/validation are demo data; no coupon or promotion table exists. |
 | Payment choice | No payment endpoint available | Options are demo UI; no gateway is configured. Orders store `payment_method` as `cod` until a gateway is added. |
 | Failed delivery and dues | Rider delivery-failure endpoint; `GET /me/dues`, `POST /me/dues/:entryId/dispute` | COD customer-fault failures create pending-review dues from the order total. Only admin confirmation makes a due block checkout; payments, waivers, and disputes are append-only ledger events. Prepaid failures create no due. |

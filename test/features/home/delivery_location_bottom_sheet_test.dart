@@ -7,57 +7,52 @@ import 'package:geolocator/geolocator.dart';
 import 'package:myshopzy/features/checkout/presentation/checkout_page.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
 import 'package:myshopzy/features/parcel/data/parcel_location_service.dart';
-import 'package:myshopzy/features/profile/models/saved_address.dart';
 import 'package:myshopzy/features/profile/data/selected_delivery_address_store.dart';
 import 'package:myshopzy/features/profile/presentation/saved_addresses_page.dart';
+import 'package:myshopzy/shared/data/customer_api.dart';
 
 void main() {
-  setUp(() => SelectedDeliveryAddressStore.instance.select(null));
-  tearDown(() => SelectedDeliveryAddressStore.instance.select(null));
-
-  testWidgets('home location selector shows saved demo addresses and actions', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(390, 844));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(_homeApp(_locationService()));
-    await _pumpHome(tester);
-
-    await tester.tap(
-      find.byKey(const ValueKey('home-delivery-address-selector')),
-    );
-    await _pumpHome(tester);
-
-    expect(find.text('Location access is off'), findsOneWidget);
-    expect(
-      find.textContaining('Allow location access to find your delivery area'),
-      findsOneWidget,
-    );
-    expect(find.text('Select Delivery Address'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('saved-delivery-address-home')),
-        matching: find.text('Home'),
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Work'), findsOneWidget);
-    expect(find.text('Other'), findsOneWidget);
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('saved-delivery-address-home')),
-        matching: find.byIcon(Icons.home_outlined),
-      ),
-      findsOneWidget,
-    );
-    for (final address in demoSavedAddresses) {
-      expect(find.text('Demo address: ${address.address}'), findsOneWidget);
-    }
-    expect(find.text('VIEW ALL'), findsOneWidget);
-    expect(find.text('Enter Location Manually'), findsOneWidget);
-    expect(find.byType(ModalBarrier), findsWidgets);
-    expect(tester.takeException(), isNull);
+  setUp(() {
+    SelectedDeliveryAddressStore.instance.select(null);
+    CustomerApi.instance.close();
+    CustomerApi.instance = CustomerApi(baseUrl: '');
   });
+  tearDown(() {
+    SelectedDeliveryAddressStore.instance.select(null);
+    CustomerApi.instance.close();
+    CustomerApi.instance = CustomerApi(baseUrl: '');
+  });
+
+  testWidgets(
+    'home location selector does not expose saved addresses signed out',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_homeApp(_locationService()));
+      await _pumpHome(tester);
+
+      await tester.tap(
+        find.byKey(const ValueKey('home-delivery-address-selector')),
+      );
+      await _pumpHome(tester);
+
+      expect(find.text('Location access is off'), findsOneWidget);
+      expect(
+        find.textContaining('Allow location access to find your delivery area'),
+        findsOneWidget,
+      );
+      expect(find.text('Select Delivery Address'), findsOneWidget);
+      expect(find.text('Sign in to access saved addresses.'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('saved-delivery-address-home')),
+        findsNothing,
+      );
+      expect(find.text('VIEW ALL'), findsOneWidget);
+      expect(find.text('Enter Location Manually'), findsOneWidget);
+      expect(find.byType(ModalBarrier), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('grant action starts the current location request', (
     tester,
@@ -84,30 +79,23 @@ void main() {
     expect(find.text('Market Street, Ravulapalem'), findsOneWidget);
   });
 
-  testWidgets(
-    'selecting an existing address labels it as demo and unverified',
-    (tester) async {
-      await tester.pumpWidget(_homeApp(_locationService()));
-      await _pumpHome(tester);
+  testWidgets('signed-out location selector offers no demo address selection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_homeApp(_locationService()));
+    await _pumpHome(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('home-delivery-address-selector')),
+    );
+    await _pumpHome(tester);
+    expect(
+      find.byKey(const ValueKey('saved-delivery-address-home')),
+      findsNothing,
+    );
+    expect(find.text('Sign in to access saved addresses.'), findsOneWidget);
+  });
 
-      await tester.tap(
-        find.byKey(const ValueKey('home-delivery-address-selector')),
-      );
-      await _pumpHome(tester);
-      await tester.tap(
-        find.byKey(const ValueKey('saved-delivery-address-home')),
-      );
-      await _pumpHome(tester);
-
-      expect(
-        find.text('Home · Demo address: ${demoSavedAddresses.first.address}'),
-        findsOneWidget,
-      );
-      expect(find.text('Delivery area confirmed'), findsNothing);
-    },
-  );
-
-  testWidgets('view all opens the existing saved-address screen', (
+  testWidgets('view all does not open saved addresses without a session', (
     tester,
   ) async {
     await tester.pumpWidget(_homeApp(_locationService()));
@@ -120,8 +108,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('location-view-all')));
     await _pumpHome(tester);
 
-    expect(find.byType(SavedAddressesPage), findsOneWidget);
-    expect(find.text('Saved Addresses'), findsOneWidget);
+    expect(find.byType(SavedAddressesPage), findsNothing);
+    expect(find.text('Sign in to access saved addresses.'), findsOneWidget);
   });
 
   testWidgets('manual entry opens the existing checkout address form', (
@@ -336,7 +324,7 @@ void main() {
     expect(find.textContaining('81.950000'), findsNothing);
   });
 
-  testWidgets('saved selection wins over an in-flight GPS lookup', (
+  testWidgets('no demo saved selection can override an in-flight GPS lookup', (
     tester,
   ) async {
     final geocode = Completer<List<Placemark>>();
@@ -351,16 +339,10 @@ void main() {
       find.byKey(const ValueKey('home-delivery-address-selector')),
     );
     await _pumpHome(tester);
-    await tester.tap(find.byKey(const ValueKey('saved-delivery-address-home')));
-    await _pumpHome(tester);
     geocode.complete(const [Placemark(street: 'Delayed GPS Street')]);
     await _pumpHome(tester);
 
-    expect(
-      find.text('Home · Demo address: ${demoSavedAddresses.first.address}'),
-      findsOneWidget,
-    );
-    expect(find.text('Delayed GPS Street'), findsNothing);
+    expect(find.text('Delayed GPS Street'), findsOneWidget);
   });
 
   testWidgets('manual entry keeps delayed GPS from changing the home label', (

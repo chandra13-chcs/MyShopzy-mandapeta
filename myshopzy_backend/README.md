@@ -1,12 +1,12 @@
 # MyShopzy Backend
 
 CommonJS/Express backend for the MyShopzy Mandapeta delivery platform.
-Customer catalog read APIs are implemented against the initial PostgreSQL
-schema. Customer profile, saved-address, cart, checkout, serviceability, and
-order APIs are backed by PostgreSQL. Order placement and customer-specific
-routes require trusted customer authentication. Customer OTP authentication
-has separate provider-backed and development-only routes. The backend is not
-production-ready.
+Customer catalog read APIs are implemented against PostgreSQL. Catalog reads
+are public; customer account, parcel, order-history, and saved-address APIs
+require a verified customer session. Customer OTP/login routes are not mounted.
+Cart and checkout routes fail closed until carts can be durably owned by the
+verified customer. Admin, partner, and rider endpoints retain their separate
+access controls. The backend is not production-ready.
 
 ## Structure
 
@@ -15,8 +15,10 @@ production-ready.
   catalog reads under `/api/v1`.
 - `GET /api/v1/partner-categories` returns active partner types and counts for
   the customer Home Page.
-- `src/modules/cart-checkout/routes.js` implements anonymous capability-token
-  carts, server-priced checkout quotes, and authenticated order placement.
+- `src/modules/cart-checkout/routes.js` protects cart and checkout endpoints;
+  they remain unavailable until customer cart ownership is supported.
+- `src/modules/customer-account/routes.js` implements authenticated,
+  customer-scoped `/me/*` endpoints, including parcel and address APIs.
 - `src/modules/riders/routes.js` implements rider order offers, order acceptance
   and status updates, and live location pings.
 - `src/server.js` loads environment variables and starts the HTTP server.
@@ -82,22 +84,14 @@ ON CONFLICT (pincode) DO UPDATE
 SET is_active = true, updated_at = now();
 ```
 
-Cart and checkout endpoints:
-
-- `POST /api/v1/carts` creates a cart and returns a random bearer capability
-  token once. Send it in `X-Cart-Token`; only its SHA-256 hash is persisted.
-- `GET /api/v1/cart` retrieves that token's cart.
-- `POST /api/v1/cart/items` adds `{ "productId": "...", "quantity": 1 }`.
-- `PATCH /api/v1/cart/items/:productId` sets a positive quantity.
-- `DELETE /api/v1/cart/items/:productId` removes an item.
-- `DELETE /api/v1/cart/items` clears the cart.
-- `POST /api/v1/checkout/quote` requires a trusted customer session and
-  calculates a quote from current PostgreSQL product prices. It returns
-  `409 OUTSTANDING_DUES` when that customer has a confirmed unpaid due.
-- `POST /api/v1/orders` accepts `{ "deliveryAddress": { ... } }`, creates the
-  order and immutable item snapshots in one transaction, and decrements
-  tracked inventory in that same transaction. It writes `payment_method='cod'`
-  until a payment gateway is integrated; order totals are calculated server-side.
+Cart and checkout endpoints (`/api/v1/carts`, `/api/v1/cart`,
+`/api/v1/cart/items`, `/api/v1/checkout/quote`, and `/api/v1/orders`) require a
+verified customer session. Unauthenticated requests receive `401
+AUTHENTICATION_REQUIRED`. Authenticated requests currently receive `503
+CART_OWNERSHIP_UNAVAILABLE`: the existing cart schema stores only a token hash
+and cannot safely bind a cart to the authenticated customer. The token is not
+proof of identity. Do not enable these routes until customer ownership is
+implemented with approval for a schema change.
 
 Delivery pricing uses integer paise and integer metres. Standard orders use a
 4,000-metre base distance and 4,000-paise base fee; parcel bookings use a
@@ -115,28 +109,20 @@ The Flutter web app's development origin is allowed by default only in
 development mode (`http://127.0.0.1:7357`). Set `CUSTOMER_APP_ORIGINS` to a
 comma-separated list of exact HTTPS origins for deployed customer web apps;
 wildcards are rejected.
-Apply migration `015_server_delivery_pricing.sql` before deploying the new
-checkout or parcel routes. Existing shop coordinates are copied from their
-address JSON when possible; shops without coordinates must be updated before
-they can be quoted or ordered.
-
-Cart tokens are bearer secrets for anonymous carts, not customer identities.
-Anyone with a token can operate that cart; clients must protect it like a
-credential. Configured Flutter catalog products, cart operations, checkout
-quotes, and order placement use these APIs. Order placement is disabled unless
-`createApp` receives a trusted `authenticateCustomer` middleware which sets
-`req.auth.customerUserId` from verified authentication. The running server
-injects the development-only customer authenticator described below. Quote and
-order placement both use that authenticated customer identity; neither accepts
-a customer ID or amount from the request. Outstanding balances and new orders
-are checked in transactions while holding the customer row lock.
+Existing shop coordinates are copied from their address JSON when possible;
+shops without coordinates must be updated before they can be quoted or
+ordered. No database migrations are run as part of this change. Server-side
+pricing uses database state and backend route distance; clients cannot provide
+trusted prices or fees.
 
 The Express JSON body parser rejects request bodies larger than 16 KB. The
 PostgreSQL pool bounds connection wait time to prevent requests and readiness
 checks from hanging indefinitely during database outages.
 
-Authenticated customer API foundations (all return `401` unless a trusted
-`authenticateCustomer` middleware is injected):
+The customer OTP and development-customer authentication routers are not
+mounted. Customer-private routes return `401 AUTHENTICATION_REQUIRED` without
+a verified customer session and derive ownership from that session; they do not
+accept a customer ID from the request. The account routes include:
 
 - `GET /api/v1/me/profile`, `PATCH /api/v1/me/profile`
 - `GET /api/v1/me/addresses`, `POST /api/v1/me/addresses`,
@@ -148,6 +134,10 @@ Authenticated customer API foundations (all return `401` unless a trusted
 - `GET /api/v1/me/dues`, `POST /api/v1/me/dues/:entryId/dispute`
 - `POST /api/v1/me/parcels`, `GET /api/v1/me/parcels`,
   `GET /api/v1/me/parcels/:parcelId`
+
+- `POST /api/v1/me/parcels` creates a parcel booking owned by the authenticated
+  customer. `GET /api/v1/me/parcels` and
+  `GET /api/v1/me/parcels/:parcelId` read only that customer's bookings.
 
 Migrations 002–004 add cart, customer-account, dynamic partner-category, and
 serviceability storage. Migration 012 adds COD/prepaid order payment method,
@@ -308,53 +298,22 @@ database-backed tests using that exact role.
 
 ## Planned security and integrations
 
-Role-based authorization and general request logging are not implemented yet.
-Catalog endpoints validate their query/path inputs
-and return generic errors without leaking PostgreSQL details.
-The PostgreSQL pool uses the validated environment settings. Pool errors and
-readiness responses do not expose database error details or credentials.
-Payment processing, object storage, and production deployment remain
-unconfigured. Customer phone authentication supports provider-backed WhatsApp
-OTP only when backend configuration is complete:
+Customer OTP authentication modules remain in the codebase, but the running
+server does not mount them. Until the final authentication phase supplies a
+valid customer session, private customer operations fail closed. Admin,
+partner, and rider APIs keep their existing independent authentication and
+authorization checks.
 
-- `POST /api/v1/auth/otp/request` accepts `{ "phoneNumber": "+919876543210" }`
-  and returns a neutral `202` response. It does not claim a message was sent;
-  Meta must accept the request and return a message ID before a challenge can
-  be verified.
-- `POST /api/v1/auth/otp/verify` accepts `{ "phoneNumber": "+919876543210",
-  "otp": "123456" }`. A valid code creates a customer if needed and issues a
-  15-minute bearer JWT. New accounts initially use the display name `Customer`.
-- Codes are cryptographically generated, expire after five minutes, and are
-  stored only as keyed hashes. Verification allows five attempts. Phone requests
-  are limited to three per 15 minutes with a 30-second resend cooldown; source
-  IP requests are limited to ten per hour. Rate-limit keys are keyed hashes.
-- Configure `CUSTOMER_OTP_PEPPER`, `CUSTOMER_SESSION_SECRET`,
-  `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`,
-  `WHATSAPP_OTP_TEMPLATE_NAME`, and `WHATSAPP_OTP_TEMPLATE_LANGUAGE` only in
-  backend environment/secret management. Values are never read from Flutter.
-  The configured Meta template must be an approved Authentication template
-  using the copy-code OTP button. Graph API acceptance is not proof of actual
-  device delivery.
-- Migration 007 adds OTP challenge and rate-limit storage. Review and apply
-  migrations as a separate deployment operation; the application does not
-  run migrations on startup.
+Role-based authorization and general request logging are not implemented for
+all planned areas. Catalog endpoints validate query/path inputs and return
+generic errors without leaking PostgreSQL details. The PostgreSQL pool uses
+validated environment settings; pool errors and readiness responses do not
+expose database diagnostics or credentials. Payment processing, object
+storage, and production deployment remain unconfigured. Cart and checkout
+remain unavailable until customer ownership can be enforced.
 
-The local development-only `POST
-/api/v1/auth/development/verify-otp` accepts a six-digit code configured through
-`DEVELOPMENT_CUSTOMER_OTP` and signs a 15-minute customer bearer token using
-`DEVELOPMENT_CUSTOMER_SESSION_SECRET` (at least 32 bytes). No SMS or WhatsApp is
-sent. The code is shared development configuration, not real identity
-verification; only an existing active customer whose phone matches can receive
-a session. The endpoint returns 404 in production, and customer authentication
-is never accepted by the production customer authenticator. Flutter keeps
-customer tokens in memory; they are lost when the app restarts. Do not use this
-mechanism in production or treat it as provider-backed OTP authentication.
 The migrations do not model coupons, refunds, reviews, general support
 ticketing, notifications, or payment verification. Coupon
 eligibility/redemption, notification delivery, support ticketing, payment
 verification/provider references, and review/rating records need separately
-designed schema and integrations before those APIs can be implemented. Order
-creation is available only when a trusted authentication middleware is
-injected; production customer APIs accept only the production OTP session
-issuer and secret, while development tokens are accepted only outside
-production. Signing keys are distinct.
+designed schema and integrations before those APIs can be implemented.

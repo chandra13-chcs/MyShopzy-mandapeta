@@ -44,44 +44,55 @@ class _WishlistPageState extends State<WishlistPage> {
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      body: AnimatedBuilder(
-        animation: wishlist,
-        builder: (context, child) {
-          final products = wishlist.products;
-          if (wishlist.isBackendMode && wishlist.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (wishlist.isBackendMode && wishlist.error != null) {
-            return _buildErrorState(wishlist);
-          }
-          if (products.isEmpty) return _buildEmptyState(wishlist.isBackendMode);
-          return Column(
-            children: [
-              _sourceLabel(wishlist.isBackendMode),
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                  itemCount: products.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 12),
-                  itemBuilder: (context, index) =>
-                      _WishlistProductCard(product: products[index]),
+      body: !CustomerApi.instance.hasCustomerSession
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(28),
+                child: Text(
+                  'Sign in to access your wishlist.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _secondaryText),
                 ),
               ),
-            ],
-          );
-        },
-      ),
+            )
+          : AnimatedBuilder(
+              animation: wishlist,
+              builder: (context, child) {
+                final products = wishlist.products;
+                if (wishlist.isBackendMode && wishlist.isLoading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (wishlist.isBackendMode && wishlist.error != null) {
+                  return _buildErrorState(wishlist);
+                }
+                if (products.isEmpty) return _buildEmptyState();
+                return Column(
+                  children: [
+                    _sourceLabel(),
+                    Expanded(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                        itemCount: products.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 12),
+                        itemBuilder: (context, index) =>
+                            _WishlistProductCard(product: products[index]),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
     );
   }
 
-  Widget _sourceLabel(bool backendMode) {
+  Widget _sourceLabel() {
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
         child: Text(
-          backendMode ? 'Backend wishlist' : 'Demo wishlist · saved on device',
+          'Your wishlist',
           style: const TextStyle(color: _secondaryText, fontSize: 11),
         ),
       ),
@@ -117,7 +128,7 @@ class _WishlistPageState extends State<WishlistPage> {
     );
   }
 
-  Widget _buildEmptyState(bool backendMode) {
+  Widget _buildEmptyState() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -125,9 +136,7 @@ class _WishlistPageState extends State<WishlistPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              backendMode
-                  ? 'Backend wishlist'
-                  : 'Demo wishlist · saved on device',
+              'Your wishlist',
               style: const TextStyle(color: _secondaryText, fontSize: 11),
             ),
             const SizedBox(height: 14),

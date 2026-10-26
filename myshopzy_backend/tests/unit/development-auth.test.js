@@ -215,32 +215,8 @@ test('production mode rejects development OTP and fails closed on protected rout
   }
 });
 
-test('running server wires development session auth into customer API routes', async () => {
+test('running server does not expose customer login and fails closed on private APIs', async () => {
   const processObject = new EventEmitter();
-  const profile = {
-    id: customerId,
-    display_name: 'Existing Customer',
-    email: null,
-    phone: '+919876543210',
-    created_at: '2026-10-01T00:00:00.000Z',
-  };
-  class PoolMock extends EventEmitter {
-    async query(sql, params = []) {
-      if (sql.includes('regexp_replace(u.phone')) {
-        return { rows: [{ id: customerId }], rowCount: 1 };
-      }
-      if (sql.includes('FROM app.customers AS c')) {
-        return { rows: [{ user_id: params[0] }], rowCount: 1 };
-      }
-      if (sql.includes('SELECT u.id, u.display_name')) {
-        return { rows: [profile], rowCount: 1 };
-      }
-      assert.fail(`Unexpected server-wiring SQL: ${sql}`);
-    }
-
-    async end() {}
-  }
-
   const { server, shutdown } = startServer({
     config: {
       port: 0,
@@ -252,10 +228,7 @@ test('running server wires development session auth into customer API routes', a
         user: 'test',
         password: 'test-only',
       },
-      developmentCustomerOtp: '245810',
-      developmentCustomerSessionSecret: config.developmentCustomerSessionSecret,
     },
-    PoolClass: PoolMock,
     processObject,
     logger: { log() {}, error() {} },
   });
@@ -267,14 +240,32 @@ test('running server wires development session auth into customer API routes', a
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ phoneNumber: '9876543210', otp: '245810' }),
     });
-    assert.equal(login.status, 200);
-    const { accessToken } = (await login.json()).data;
-
-    const profileResponse = await fetch(`${url}/api/v1/me/profile`, {
-      headers: { authorization: `Bearer ${accessToken}` },
-    });
-    assert.equal(profileResponse.status, 200);
-    assert.equal((await profileResponse.json()).data.id, customerId);
+    assert.equal(login.status, 404);
+    for (const [method, path] of [
+      ['GET', '/api/v1/me/profile'],
+      ['GET', '/api/v1/me/orders'],
+      ['GET', '/api/v1/me/parcels'],
+      ['GET', '/api/v1/me/addresses'],
+      ['POST', '/api/v1/carts'],
+      ['POST', '/api/v1/checkout/quote'],
+      ['POST', '/api/v1/orders'],
+    ]) {
+      const response = await fetch(`${url}${path}`, {
+        method,
+        ...(method === 'POST'
+          ? {
+              headers: { 'content-type': 'application/json' },
+              body: '{}',
+            }
+          : {}),
+      });
+      assert.equal(response.status, 401, path);
+      assert.equal(
+        (await response.json()).error.code,
+        'AUTHENTICATION_REQUIRED',
+        path,
+      );
+    }
   } finally {
     shutdown();
     await once(server, 'close');

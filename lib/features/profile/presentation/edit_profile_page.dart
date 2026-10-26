@@ -32,7 +32,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool _loading = false;
   bool _saving = false;
 
-  bool get _backendMode => CustomerApi.instance.isConfigured;
+  bool get _backendMode =>
+      CustomerApi.instance.isConfigured &&
+      CustomerApi.instance.hasCustomerSession;
 
   @override
   void initState() {
@@ -42,14 +44,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     } else if (_backendMode) {
       _loading = true;
       unawaited(_loadProfile());
-    } else {
-      _applyProfile(
-        const ApiCustomerProfile(
-          displayName: 'Chandra Shekar',
-          phone: '+91 89XXX XXX45',
-          email: null,
-        ),
-      );
     }
   }
 
@@ -95,12 +89,26 @@ class _EditProfilePageState extends State<EditProfilePage> {
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      body: _loading
+      body: !CustomerApi.instance.hasCustomerSession
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(28),
+                child: Text(
+                  'Sign in to edit your profile.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppTheme.secondaryText),
+                ),
+              ),
+            )
+          : _loading
           ? const Center(child: CircularProgressIndicator())
           : _loadError != null
           ? _buildLoadError()
           : _buildForm(),
-      bottomNavigationBar: _loading || _loadError != null
+      bottomNavigationBar:
+          !CustomerApi.instance.hasCustomerSession ||
+              _loading ||
+              _loadError != null
           ? null
           : SafeArea(
               top: false,
@@ -174,10 +182,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
           padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
           child: Column(
             children: [
-              Text(
-                _backendMode
-                    ? 'Backend profile'
-                    : 'Demo profile · on this device',
+              const Text(
+                'Your account profile',
                 key: const ValueKey('profile-data-source'),
                 style: const TextStyle(color: _secondaryText, fontSize: 11),
               ),
@@ -304,17 +310,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final name = _fullNameController.text.trim();
     final phone = _mobileNumberController.text.trim();
     final email = _emailController.text.trim();
-    if (!_backendMode) {
-      Navigator.of(context).pop(
-        ApiCustomerProfile(
-          displayName: name,
-          phone: phone.isEmpty ? null : phone,
-          email: email.isEmpty ? null : email,
-        ),
-      );
-      return;
-    }
-
     setState(() => _saving = true);
     try {
       final updated = await CustomerApi.instance.updateProfile(

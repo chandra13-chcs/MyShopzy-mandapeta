@@ -179,6 +179,15 @@ test('fails closed for order placement outside database delivery pincodes', asyn
         return {
           async query(sql, params) {
             queries.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
+            if (sql.includes('SELECT user_id FROM app.customers')) {
+              return { rows: [{ user_id: params[0] }], rowCount: 1 };
+            }
+            if (sql.includes('outstanding_minor')) {
+              return {
+                rows: [{ outstanding_minor: '0' }],
+                rowCount: 1,
+              };
+            }
             return { rows: [], rowCount: 0 };
           },
           release() {},
@@ -196,6 +205,8 @@ test('fails closed for order placement outside database delivery pincodes', asyn
       deliveryAddress: {
         formattedAddress: 'An unserviceable location',
         pincode: '533309',
+        latitude: 16.87,
+        longitude: 81.93,
       },
     }),
   });
@@ -206,8 +217,8 @@ test('fails closed for order placement outside database delivery pincodes', asyn
       message: 'Sorry, we do not deliver to this location.',
     },
   });
-  assert.equal(queries.length, 3);
-  assert.match(queries[1].sql, /app\.serviceable_pincodes/);
-  assert.deepEqual(queries[1].params, ['533309']);
+  assert.equal(queries.length, 5);
+  assert.match(queries[3].sql, /app\.serviceable_pincodes/);
+  assert.deepEqual(queries[3].params, ['533309']);
   assert.equal(queries.some((query) => query.sql.startsWith('INSERT INTO app.orders')), false);
 });

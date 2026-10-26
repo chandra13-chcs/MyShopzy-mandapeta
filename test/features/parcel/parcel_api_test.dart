@@ -24,48 +24,35 @@ void main() {
   });
 
   test(
-    'CustomerApi submits valid booking and reads history and details',
+    'CustomerApi rejects parcel operations without a customer session',
     () async {
       final requests = <http.Request>[];
-      final api = _api((request) async {
-        requests.add(request);
-        if (request.method == 'POST') {
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: MockClient((request) async {
+          requests.add(request);
           return _jsonResponse({'data': _bookingJson()}, statusCode: 201);
-        }
-        if (request.url.path == '/api/v1/me/parcels') {
-          return _jsonResponse({
-            'data': [_bookingJson()],
-            'pagination': {'limit': 20, 'offset': 0},
-          });
-        }
-        return _jsonResponse({'data': _bookingJson(appendUpdatedAt: true)});
-      });
+        }),
+      );
       addTearDown(api.close);
 
-      final created = await api.createParcelBooking(_validRequest);
-      final history = await api.getParcelBookings();
-      final details = await api.getParcelBookingDetails(_bookingId);
-
-      expect(created.id, _bookingId);
-      expect(created.weightKg, 1.25);
-      expect(created.instructions, '');
-      expect(history.single.status, 'requested');
-      expect(details.updatedAt, '2026-10-11T06:00:00.000Z');
-      expect(requests.map((request) => request.method), ['POST', 'GET', 'GET']);
-      expect(requests[0].url.path, '/api/v1/me/parcels');
-      expect(jsonDecode(requests[0].body), {
-        'pickupLocation': 'Pickup Road',
-        'dropLocation': 'Drop Street',
-        'parcelType': 'Documents',
-        'weightKg': 1.25,
-        'instructions': '',
-        'pickupLatitude': 16.87,
-        'pickupLongitude': 81.93,
-        'dropLatitude': 16.88,
-        'dropLongitude': 81.94,
-      });
-      expect(requests[1].url.queryParameters, {'limit': '20', 'offset': '0'});
-      expect(requests[2].url.path, '/api/v1/me/parcels/$_bookingId');
+      for (final operation in [
+        () => api.createParcelBooking(_validRequest),
+        () => api.getParcelBookings(),
+        () => api.getParcelBookingDetails(_bookingId),
+      ]) {
+        await expectLater(
+          operation(),
+          throwsA(
+            isA<CustomerApiException>().having(
+              (error) => error.code,
+              'code',
+              'AUTHENTICATION_REQUIRED',
+            ),
+          ),
+        );
+      }
+      expect(requests, isEmpty);
     },
   );
 
@@ -148,12 +135,16 @@ void main() {
       baseUrl: 'https://shop.example',
       timeout: const Duration(milliseconds: 1),
       httpClient: MockClient((request) async {
+        if (request.url.path == '/api/v1/auth/otp/verify') {
+          return _sessionResponse();
+        }
         requestCount++;
         await Future<void>.delayed(const Duration(milliseconds: 20));
         return _jsonResponse({'data': _bookingJson()}, statusCode: 201);
       }),
     );
     addTearDown(api.close);
+    await api.verifyOtp(phoneNumber: '9876543210', otp: '123456');
 
     await expectLater(
       api.createParcelBooking(_validRequest),
@@ -187,6 +178,7 @@ void main() {
       requestSent = true;
       return _jsonResponse({'data': _bookingJson()}, statusCode: 201);
     });
+    await _authenticate();
 
     await _pumpParcelPage(tester);
     expect(
@@ -242,6 +234,7 @@ void main() {
       if (request.method == 'POST') return postResponse.future;
       return _jsonResponse({'data': _bookingJson(appendUpdatedAt: true)});
     });
+    await _authenticate();
 
     await _pumpParcelPage(tester);
     await _chooseSavedAddress(tester, 'parcel-pickup-saved-address');
@@ -270,10 +263,9 @@ void main() {
     expect(find.text('Parcel Request Details'), findsOneWidget);
     expect(find.text(_bookingId), findsOneWidget);
     final parcelRequests = requests
-        .where((request) => request.url.path.startsWith('/api/v1/me/parcels'))
+        .where((request) => request.url.path == '/api/v1/me/parcels')
         .toList();
-    expect(parcelRequests.map((request) => request.method), ['POST', 'GET']);
-    expect(parcelRequests.last.url.path, '/api/v1/me/parcels/$_bookingId');
+    expect(parcelRequests.map((request) => request.method), ['POST']);
     expect(
       jsonDecode(parcelRequests.first.body),
       containsPair('pickupLatitude', 16.87),
@@ -292,6 +284,7 @@ void main() {
       requestCount++;
       return _jsonResponse({'data': _bookingJson()}, statusCode: 201);
     });
+    await _authenticate();
 
     await _pumpParcelPage(tester);
     await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
@@ -301,9 +294,27 @@ void main() {
     await tester.tap(find.text('Submit Parcel Request'));
     await tester.pump();
 
-    expect(find.textContaining('verify the road route'), findsOneWidget);
+    expect(
+      find.textContaining('Choose pickup and drop locations with coordinates'),
+      findsOneWidget,
+    );
     expect(requestCount, 0);
     expect(find.text('Parcel Request Details'), findsNothing);
+  });
+
+  testWidgets('parcel booking is unavailable without a customer session', (
+    tester,
+  ) async {
+    final requests = <http.Request>[];
+    CustomerApi.instance = _api((request) async {
+      requests.add(request);
+      return _jsonResponse({'data': _bookingJson()}, statusCode: 201);
+    });
+
+    await _pumpParcelPage(tester);
+    expect(find.text('Sign in to book a parcel.'), findsOneWidget);
+    expect(find.text('Continue'), findsNothing);
+    expect(requests, isEmpty);
   });
 
   testWidgets('saved pickup and drop addresses feed postal coverage checks', (
@@ -338,6 +349,7 @@ void main() {
       }
       return _jsonResponse({'data': _bookingJson()});
     });
+    await _authenticate();
 
     await _pumpParcelPage(tester);
     await _chooseSavedAddress(tester, 'parcel-pickup-saved-address');
@@ -372,6 +384,7 @@ void main() {
   ) async {
     final historyResponse = Completer<http.Response>();
     CustomerApi.instance = _api((request) => historyResponse.future);
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: ParcelHistoryPage()));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -402,6 +415,7 @@ void main() {
           'pagination': {'limit': 20, 'offset': int.parse(offset ?? '0')},
         });
       });
+      await _authenticate();
 
       await tester.pumpWidget(const MaterialApp(home: ParcelHistoryPage()));
       await tester.pump(const Duration(milliseconds: 500));
@@ -445,6 +459,7 @@ void main() {
         },
       }, statusCode: 401);
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: ParcelHistoryPage()));
     await tester.pump(const Duration(milliseconds: 500));
@@ -485,6 +500,7 @@ void main() {
         },
       }, statusCode: 401);
     });
+    await _authenticate();
 
     await _pumpParcelPage(tester);
     await _chooseSavedAddress(tester, 'parcel-pickup-saved-address');
@@ -501,24 +517,12 @@ void main() {
     expect(find.text('Parcel Request Details'), findsNothing);
   });
 
-  testWidgets('unconfigured parcel mode is labeled and does not fake success', (
+  testWidgets('unconfigured parcel feature stays blocked without a session', (
     tester,
   ) async {
     await _pumpParcelPage(tester);
-    expect(find.textContaining('Backend not configured'), findsOneWidget);
-
-    await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
-    await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
-    await _enterParcelText(tester, 'Enter parcel weight', '1');
-    await _tapContinue(tester);
-    await tester.tap(find.text('Submit Parcel Request'));
-    await tester.pump(const Duration(milliseconds: 500));
-
-    expect(
-      find.textContaining('parcel request was not submitted'),
-      findsOneWidget,
-    );
-    expect(find.text('Parcel Request Details'), findsNothing);
+    expect(find.text('Sign in to book a parcel.'), findsOneWidget);
+    expect(find.text('Enter pickup location'), findsNothing);
   });
 }
 
@@ -609,9 +613,25 @@ http.Response _savedAddressResponse() => _jsonResponse({
 CustomerApi _api(Future<http.Response> Function(http.Request) handler) {
   return CustomerApi(
     baseUrl: 'https://shop.example',
-    httpClient: MockClient(handler),
+    httpClient: MockClient((request) async {
+      if (request.url.path == '/api/v1/auth/otp/verify') {
+        return _sessionResponse();
+      }
+      return handler(request);
+    }),
   );
 }
+
+http.Response _sessionResponse() => _jsonResponse({
+  'data': {
+    'accessToken': 'test-session',
+    'tokenType': 'Bearer',
+    'expiresIn': 300,
+  },
+});
+
+Future<void> _authenticate() =>
+    CustomerApi.instance.verifyOtp(phoneNumber: '9876543210', otp: '123456');
 
 http.Response _jsonResponse(Object body, {int statusCode = 200}) {
   return http.Response(jsonEncode(body), statusCode);

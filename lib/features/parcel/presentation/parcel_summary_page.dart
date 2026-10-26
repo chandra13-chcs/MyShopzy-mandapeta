@@ -71,37 +71,44 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _page,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(context),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: _buildErrorNotice(_error!),
+      body: !CustomerApi.instance.hasCustomerSession
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(28),
+                child: Text(
+                  'Sign in to book a parcel.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppTheme.secondaryText),
+                ),
               ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 17, 16, 20),
+            )
+          : SafeArea(
+              child: Column(
                 children: [
-                  _buildRouteSection(),
-                  const SizedBox(height: 14),
-                  _buildParcelDetails(),
-                  const SizedBox(height: 14),
-                  _buildDeliveryDetails(),
-                  const SizedBox(height: 14),
-                  _buildFareAndServiceability(),
-                  if (!CustomerApi.instance.isConfigured) ...[
-                    const SizedBox(height: 12),
-                    _buildDemoNotice(),
-                  ],
+                  _buildHeader(context),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                      child: _buildErrorNotice(_error!),
+                    ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 17, 16, 20),
+                      children: [
+                        _buildRouteSection(),
+                        const SizedBox(height: 14),
+                        _buildParcelDetails(),
+                        const SizedBox(height: 14),
+                        _buildDeliveryDetails(),
+                        const SizedBox(height: 14),
+                        _buildFareAndServiceability(),
+                      ],
+                    ),
+                  ),
+                  _buildBottomAction(context),
                 ],
               ),
             ),
-            _buildBottomAction(context),
-          ],
-        ),
-      ),
     );
   }
 
@@ -220,7 +227,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
           onPressed: _submitting
               ? null
               : _outcomeUnknown
-              ? _openParcelHistory
+              ? null
               : _submitParcelRequest,
           style: FilledButton.styleFrom(
             backgroundColor: _green,
@@ -244,25 +251,10 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
                 )
               : Text(
                   _outcomeUnknown
-                      ? 'Check parcel history'
+                      ? 'Request status unknown'
                       : 'Submit Parcel Request',
                 ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDemoNotice() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7E5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEED9A8)),
-      ),
-      child: const Text(
-        'Backend not configured · this parcel request cannot be submitted. Set MYSHOPZY_API_BASE_URL to a reachable backend origin and restart the app.',
-        style: TextStyle(color: _ink, fontSize: 12, height: 1.4),
       ),
     );
   }
@@ -285,7 +277,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
 
   Widget _buildFareAndServiceability() {
     final coverageText = !_hasLocationData
-        ? 'Postal-area coverage could not be checked. Add locations with saved coordinates and postal codes to check the existing delivery coverage list.'
+        ? 'Postal-area coverage was not checked because postal codes are unavailable. The backend still verifies the road route when you submit.'
         : _checkingServiceability
         ? 'Checking whether both postal areas are listed for delivery...'
         : _postalCoverageMessage ??
@@ -359,7 +351,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
         if (_outcomeUnknown) ...[
           const SizedBox(height: 10),
           _buildErrorNotice(
-            'The request may have been received, but the response was not confirmed. Check parcel history before trying again.',
+            'The request may have been received, but the response was not confirmed. Check parcel history before retrying, or contact support if the request is not listed.',
           ),
         ],
       ],
@@ -404,23 +396,21 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
     }
   }
 
-  Future<void> _openParcelHistory() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (context) => const ParcelHistoryPage()),
-    );
-  }
-
   Future<void> _submitParcelRequest() async {
     final api = CustomerApi.instance;
+    if (!api.hasCustomerSession) {
+      setState(() => _error = 'Sign in to book a parcel.');
+      return;
+    }
     if (!api.isConfigured) {
       setState(() {
-        _error = 'Demo mode: parcel request was not submitted. Set MYSHOPZY_API_BASE_URL to a reachable backend origin and restart the app.';
+        _error = 'Parcel booking is unavailable because the service is not configured.';
       });
       return;
     }
     if (!_hasRouteCoordinates) {
       setState(() {
-        _error = 'Map locations are required for both pickup and drop to verify the road route. Choose saved addresses with coordinates before submitting.';
+        _error = 'Choose pickup and drop locations with coordinates before submitting.';
       });
       return;
     }
@@ -446,7 +436,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
       if (!mounted) return;
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (context) => ParcelBookingDetailsPage(bookingId: booking.id),
+          builder: (context) => ParcelBookingDetailsPage(booking: booking),
         ),
       );
     } on CustomerApiException catch (error) {

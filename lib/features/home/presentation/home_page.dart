@@ -947,7 +947,7 @@ class _HomeDuesBannerState extends State<_HomeDuesBanner> {
   @override
   void initState() {
     super.initState();
-    if (CustomerApi.instance.isConfigured) {
+    if (CustomerApi.instance.hasCustomerSession) {
       _loadDues();
     }
   }
@@ -1305,9 +1305,6 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
     if (selectedAddress == null) return 'Choose your location';
     if (selectedAddress.id == 'current-location') {
       return selectedAddress.address;
-    }
-    if (demoSavedAddresses.any((address) => address.id == selectedAddress.id)) {
-      return '${selectedAddress.label} · Demo address: ${selectedAddress.address}';
     }
     return '${selectedAddress.label} · ${selectedAddress.address}';
   }

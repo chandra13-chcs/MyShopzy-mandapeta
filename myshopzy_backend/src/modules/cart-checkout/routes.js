@@ -69,6 +69,50 @@ function sendDatabaseUnavailable(res) {
   });
 }
 
+function requireCustomerCartOwnership(authenticateCustomer) {
+  return (req, res, next) => {
+    if (!authenticateCustomer) {
+      return sendApiError(
+        res,
+        new ApiError(
+          401,
+          'AUTHENTICATION_REQUIRED',
+          'Customer authentication is required.',
+        ),
+      );
+    }
+    return invokeCustomerAuthentication(
+      authenticateCustomer,
+      req,
+      res,
+      () => {
+        const customerUserId = req.auth?.customerUserId;
+        if (
+          typeof customerUserId !== 'string' ||
+          !UUID_PATTERN.test(customerUserId)
+        ) {
+          return sendApiError(
+            res,
+            new ApiError(
+              401,
+              'AUTHENTICATION_REQUIRED',
+              'Customer authentication is required.',
+            ),
+          );
+        }
+        return sendApiError(
+          res,
+          new ApiError(
+            503,
+            'CART_OWNERSHIP_UNAVAILABLE',
+            'Customer cart ownership is unavailable until the database supports customer-owned carts.',
+          ),
+        );
+      },
+    );
+  };
+}
+
 function parseObjectBody(body, allowedKeys) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { error: 'Request body must be a JSON object.' };
@@ -461,6 +505,13 @@ function createCartCheckoutRouter({
   deliveryDistanceClient = null,
 }) {
   const router = express.Router();
+  const cartOwnershipRequired = requireCustomerCartOwnership(
+    authenticateCustomer,
+  );
+  router.use(
+    ['/carts', '/cart', '/checkout/quote', '/orders'],
+    cartOwnershipRequired,
+  );
 
   router.post('/carts', async (req, res, next) => {
     const body = parseObjectBody(req.body ?? {}, new Set());
@@ -787,15 +838,17 @@ function createCartCheckoutRouter({
       try {
         const tokenHash = hashCartToken(getCartToken(req));
         const cartSnapshot = await withTransaction(databasePool, async (client) => {
-          await lockCustomer(client, customerUserId);
-          const outstandingMinor = await getOutstandingMinor(client, customerUserId);
-          if (outstandingMinor > 0n) {
-            throw new ApiError(
-              409,
-              'OUTSTANDING_DUES',
-              'Resolve outstanding delivery dues before placing another order.',
-              { outstandingMinor: outstandingMinor.toString() },
-            );
+          if (customerUserId) {
+            await lockCustomer(client, customerUserId);
+            const outstandingMinor = await getOutstandingMinor(client, customerUserId);
+            if (outstandingMinor > 0n) {
+              throw new ApiError(
+                409,
+                'OUTSTANDING_DUES',
+                'Resolve outstanding delivery dues before placing another order.',
+                { outstandingMinor: outstandingMinor.toString() },
+              );
+            }
           }
           const cart = await findCart(client, tokenHash, { lock: true });
           const checkout = await loadCheckoutItems(client, cart);
@@ -1000,15 +1053,17 @@ function createCartCheckoutRouter({
       try {
         const tokenHash = hashCartToken(getCartToken(req));
         const order = await withTransaction(databasePool, async (client) => {
-          await lockCustomer(client, customerUserId);
-          const outstandingMinor = await getOutstandingMinor(client, customerUserId);
-          if (outstandingMinor > 0n) {
-            throw new ApiError(
-              409,
-              'OUTSTANDING_DUES',
-              'Resolve outstanding delivery dues before placing another order.',
-              { outstandingMinor: outstandingMinor.toString() },
-            );
+          if (customerUserId) {
+            await lockCustomer(client, customerUserId);
+            const outstandingMinor = await getOutstandingMinor(client, customerUserId);
+            if (outstandingMinor > 0n) {
+              throw new ApiError(
+                409,
+                'OUTSTANDING_DUES',
+                'Resolve outstanding delivery dues before placing another order.',
+                { outstandingMinor: outstandingMinor.toString() },
+              );
+            }
           }
           const deliveryZone = await client.query(
             `SELECT 1
@@ -1025,22 +1080,24 @@ function createCartCheckoutRouter({
             );
           }
 
-          const customer = await client.query(
-            `SELECT c.user_id
-             FROM app.customers AS c
-             JOIN app.users AS u ON u.id = c.user_id
-             WHERE c.user_id = $1
-               AND u.system_role = 'customer'
-               AND u.status = 'active'
-             FOR SHARE OF c, u`,
-            [customerUserId],
-          );
-          if (customer.rows.length === 0) {
-            throw new ApiError(
-              403,
-              'CUSTOMER_NOT_ALLOWED',
-              'The authenticated account cannot place customer orders.',
+          if (customerUserId) {
+            const customer = await client.query(
+              `SELECT c.user_id
+               FROM app.customers AS c
+               JOIN app.users AS u ON u.id = c.user_id
+               WHERE c.user_id = $1
+                 AND u.system_role = 'customer'
+                 AND u.status = 'active'
+               FOR SHARE OF c, u`,
+              [customerUserId],
             );
+            if (customer.rows.length === 0) {
+              throw new ApiError(
+                403,
+                'CUSTOMER_NOT_ALLOWED',
+                'The authenticated account cannot place customer orders.',
+              );
+            }
           }
 
           const cart = await findCart(client, tokenHash, { lock: true });

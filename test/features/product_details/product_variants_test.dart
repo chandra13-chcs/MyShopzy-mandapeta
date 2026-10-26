@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/features/cart/data/cart_store.dart';
-import 'package:myshopzy/features/cart/presentation/cart_page.dart';
 import 'package:myshopzy/features/local_stores/models/local_store.dart';
 import 'package:myshopzy/features/local_stores/presentation/local_store_catalog_page.dart';
 import 'package:myshopzy/features/product_details/data/product_availability_store.dart';
@@ -11,6 +10,7 @@ import 'package:myshopzy/features/search/data/search_index.dart';
 import 'package:myshopzy/features/search/models/search_result.dart';
 import 'package:myshopzy/features/wishlist/data/wishlist_store.dart';
 import 'package:myshopzy/features/wishlist/presentation/wishlist_page.dart';
+import 'package:myshopzy/shared/data/customer_api.dart';
 
 void main() {
   final cart = CartStore.instance;
@@ -43,30 +43,14 @@ void main() {
   });
 
   testWidgets('wishlist requires an explicit variant choice', (tester) async {
-    final result = SearchIndex.search('Ashirvad Atta')
-        .firstWhere((result) => result.type == SearchResultType.storeProduct);
-    final product = SearchIndex.productFor(result);
-    WishlistStore.instance.save(
-      ProductDetailsProduct(
-        id: product.id,
-        serviceType: product.serviceType,
-        merchantId: product.merchantId,
-        name: product.name,
-        icon: product.icon,
-        available: product.available,
-        variants: product.variants,
-      ),
-    );
-
     await tester.pumpWidget(const MaterialApp(home: WishlistPage()));
-    await tester.tap(find.text('Select Options'));
-    await tester.pumpAndSettle();
 
-    expect(find.byType(ProductDetailsPage), findsOneWidget);
+    expect(find.text('Sign in to access your wishlist.'), findsOneWidget);
+    expect(find.byType(ProductDetailsPage), findsNothing);
     expect(cart.items, isEmpty);
   });
 
-  testWidgets('listing variant selection adds and synchronizes cart quantity', (
+  testWidgets('catalog variants cannot create a cart while signed out', (
     tester,
   ) async {
     await tester.pumpWidget(MaterialApp(home: _catalogPage()));
@@ -83,25 +67,10 @@ void main() {
     final addButton = find.text('ADD').last;
     await tester.ensureVisible(addButton);
     await tester.tap(addButton);
-    await tester.pump();
-
-    expect(cart.items, hasLength(1));
-    expect(cart.items.single.productVariantId, '5-kg');
-    expect(cart.items.single.variantLabel, '5 KG');
-    expect(cart.items.single.priceInPaise, 31000);
-
-    final increaseButton = find.byTooltip('Increase quantity').last;
-    await tester.ensureVisible(increaseButton);
-    await tester.tap(increaseButton);
     await tester.pumpAndSettle();
 
-    expect(cart.items.single.quantity, 2);
-    expect(cart.totalQuantity, 2);
-
-    await tester.pumpWidget(const MaterialApp(home: CartPage()));
-    expect(find.text('5 KG'), findsOneWidget);
-    expect(find.text('Ashirvad Atta'), findsOneWidget);
-    expect(find.text('2'), findsOneWidget);
+    expect(cart.items, isEmpty);
+    expect(find.text('Sign in to add items to your cart.'), findsOneWidget);
   });
 
   testWidgets('Product Details keeps variant pricing and visible wishlist', (
@@ -114,7 +83,9 @@ void main() {
     expect(find.text('₹70'), findsOneWidget);
     final saveButton = find.byTooltip('Add to wishlist');
     expect(saveButton, findsOneWidget);
-    final saveIcon = tester.widget<Icon>(find.byIcon(Icons.bookmark_border_rounded));
+    final saveIcon = tester.widget<Icon>(
+      find.byIcon(Icons.bookmark_border_rounded),
+    );
     expect(saveIcon.color, Colors.white);
 
     final fiveKg = find.widgetWithText(ChoiceChip, '5 KG');
@@ -137,69 +108,28 @@ void main() {
     expect(cart.items, isEmpty);
   });
 
-  testWidgets('cart displays the selected variant label', (tester) async {
-    cart.addItem(
-      productId: 'slgs-ashirvad-atta',
-      serviceType: 'local_store',
-      merchantId: 'sri-lakshmi-general-store',
-      productVariantId: '5-kg',
-      variantLabel: '5 KG',
-      name: 'Ashirvad Atta',
-      description: 'Whole wheat flour',
-      priceInPaise: 31000,
-      icon: Icons.inventory_2_rounded,
-    );
-
-    await tester.pumpWidget(const MaterialApp(home: CartPage()));
-
-    expect(find.text('Ashirvad Atta'), findsOneWidget);
-    expect(find.text('5 KG'), findsOneWidget);
-  });
-
-  test('different sizes have separate cart lines and same sizes merge', () {
-    bool addVariant(String variantId, String label, int price) {
-      return cart.addItem(
+  test('unauthenticated cart mutation is rejected', () {
+    expect(
+      () => cart.addItem(
         productId: 'slgs-ashirvad-atta',
         serviceType: 'local_store',
         merchantId: 'sri-lakshmi-general-store',
-        productVariantId: variantId,
-        variantLabel: label,
+        productVariantId: '5-kg',
+        variantLabel: '5 KG',
         name: 'Ashirvad Atta',
         description: 'Whole wheat flour',
-        priceInPaise: price,
-        icon: Icons.inventory_2_rounded,
-      );
-    }
-
-    expect(addVariant('1-kg', '1 KG', 7000), isTrue);
-    expect(addVariant('1-kg', '1 KG', 7000), isTrue);
-    expect(addVariant('5-kg', '5 KG', 31000), isTrue);
-
-    expect(cart.items, hasLength(2));
-    expect(
-      cart.quantityFor(
-        productId: 'slgs-ashirvad-atta',
-        serviceType: 'local_store',
-        merchantId: 'sri-lakshmi-general-store',
-        productVariantId: '1-kg',
-      ),
-      2,
-    );
-    expect(cart.subtotalInPaise, 45000);
-    expect(
-      cart.addItem(
-        productId: 'other-store-item',
-        serviceType: 'local_store',
-        merchantId: 'venkateswara-stores',
-        productVariantId: '1-kg',
-        variantLabel: '1 KG',
-        name: 'Atta',
-        description: '',
-        priceInPaise: 7000,
+        priceInPaise: 31000,
         icon: Icons.inventory_2_rounded,
       ),
-      isFalse,
+      throwsA(
+        isA<CustomerApiException>().having(
+          (error) => error.statusCode,
+          'statusCode',
+          401,
+        ),
+      ),
     );
+    expect(cart.items, isEmpty);
   });
 
   test(

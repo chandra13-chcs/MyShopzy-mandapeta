@@ -27,8 +27,6 @@ function createApp({
   partnerPortalOrigins = ['http://localhost:5173'],
   customerAppOrigins = ['http://127.0.0.1:7357'],
   now = () => new Date(),
-  customerOtpAuthRouter = null,
-  developmentCustomerAuthRouter = null,
   nodeEnv = 'development',
   logger = console,
 } = {}) {
@@ -73,12 +71,6 @@ function createApp({
     return next();
   });
 
-  if (customerOtpAuthRouter) {
-    app.use('/api/v1', customerOtpAuthRouter);
-  }
-  if (developmentCustomerAuthRouter) {
-    app.use('/api/v1', developmentCustomerAuthRouter);
-  }
   app.use(
     '/api/v1',
     createDeliveryServiceabilityRouter({ databasePool }),

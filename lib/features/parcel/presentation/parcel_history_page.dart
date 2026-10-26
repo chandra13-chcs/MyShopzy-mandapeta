@@ -22,7 +22,9 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
   String? _error;
   String? _paginationError;
 
-  bool get _backendMode => CustomerApi.instance.isConfigured;
+  bool get _backendMode =>
+      CustomerApi.instance.isConfigured &&
+      CustomerApi.instance.hasCustomerSession;
 
   @override
   void initState() {
@@ -91,12 +93,24 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
   }
 
   Widget _buildBody() {
+    if (!CustomerApi.instance.hasCustomerSession) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(28),
+          child: Text(
+            'Sign in to access your parcel history.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.secondaryText, height: 1.4),
+          ),
+        ),
+      );
+    }
     if (!_backendMode) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(28),
           child: Text(
-            'Demo mode · parcel history is unavailable until the backend is configured.',
+            'Parcel history is currently unavailable.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppTheme.secondaryText, height: 1.4),
           ),
@@ -271,9 +285,11 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
 }
 
 class ParcelBookingDetailsPage extends StatefulWidget {
-  const ParcelBookingDetailsPage({required this.bookingId, super.key});
+  const ParcelBookingDetailsPage({this.bookingId, this.booking, super.key})
+    : assert(bookingId != null || booking != null);
 
-  final String bookingId;
+  final String? bookingId;
+  final ApiParcelBooking? booking;
 
   @override
   State<ParcelBookingDetailsPage> createState() =>
@@ -288,7 +304,12 @@ class _ParcelBookingDetailsPageState extends State<ParcelBookingDetailsPage> {
   @override
   void initState() {
     super.initState();
-    if (CustomerApi.instance.isConfigured) unawaited(_loadDetails());
+    _booking = widget.booking;
+    if (widget.booking == null &&
+        CustomerApi.instance.isConfigured &&
+        CustomerApi.instance.hasCustomerSession) {
+      unawaited(_loadDetails());
+    }
   }
 
   Future<void> _loadDetails() async {
@@ -298,7 +319,7 @@ class _ParcelBookingDetailsPageState extends State<ParcelBookingDetailsPage> {
     });
     try {
       final booking = await CustomerApi.instance.getParcelBookingDetails(
-        widget.bookingId,
+        widget.bookingId!,
       );
       if (mounted) setState(() => _booking = booking);
     } on CustomerApiException catch (error) {
@@ -355,10 +376,19 @@ class _ParcelBookingDetailsPageState extends State<ParcelBookingDetailsPage> {
       );
     }
     final booking = _booking;
+    if (!CustomerApi.instance.hasCustomerSession) {
+      return const Center(
+        child: Text(
+          'Sign in to access parcel details.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppTheme.secondaryText),
+        ),
+      );
+    }
     if (booking == null) {
       return const Center(
         child: Text(
-          'Demo mode · parcel details are unavailable until the backend is configured.',
+          'Parcel details are unavailable.',
           textAlign: TextAlign.center,
           style: TextStyle(color: AppTheme.secondaryText),
         ),

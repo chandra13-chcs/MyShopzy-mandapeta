@@ -48,16 +48,16 @@ class _CartPageState extends State<CartPage> {
   @override
   void initState() {
     super.initState();
-    if (CustomerApi.instance.isConfigured) {
+    if (CustomerApi.instance.hasCustomerSession) {
       Future<void>.delayed(Duration.zero, _refreshDues);
     }
-    if (CustomerApi.instance.isConfigured &&
-        !_cartStore.items.any((item) => !item.isBackendProduct)) {
+    if (CustomerApi.instance.hasCustomerSession) {
       Future<void>.delayed(Duration.zero, _refreshBackendCart);
     }
   }
 
   Future<void> _refreshDues() async {
+    if (!CustomerApi.instance.hasCustomerSession) return;
     try {
       final dues = await CustomerApi.instance.getDues();
       if (!mounted) return;
@@ -107,7 +107,10 @@ class _CartPageState extends State<CartPage> {
           }
         });
       }
-      if (error.code == 'OUTSTANDING_DUES') await _refreshDues();
+      if (error.code == 'OUTSTANDING_DUES' &&
+          CustomerApi.instance.hasCustomerSession) {
+        await _refreshDues();
+      }
     } finally {
       if (mounted) setState(() => _loadingBackendCart = false);
     }
@@ -126,31 +129,47 @@ class _CartPageState extends State<CartPage> {
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      body: AnimatedBuilder(
-        animation: _cartStore,
-        builder: (context, child) {
-          final items = _cartStore.items;
-          if (items.isNotEmpty) return _buildCartContents(items);
-          if (_loadingBackendCart) {
-            return const AnimatedContentSwitcher(
-              child: KeyedSubtree(
-                key: ValueKey('cart-loading'),
-                child: Center(child: SkeletonBox(height: 190, radius: 20)),
+      body: !CustomerApi.instance.hasCustomerSession
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(28),
+                child: Text(
+                  'Sign in to access your cart.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _secondaryText),
+                ),
               ),
-            );
-          }
-          if (_cartLoadError != null) {
-            return _buildCartLoadError();
-          }
-          return _buildEmptyState(context);
-        },
-      ),
-      bottomNavigationBar: AnimatedBuilder(
-        animation: _cartStore,
-        builder: (context, child) => _cartStore.items.isEmpty
-            ? const SizedBox.shrink()
-            : _buildCheckoutAction(context),
-      ),
+            )
+          : AnimatedBuilder(
+              animation: _cartStore,
+              builder: (context, child) {
+                final items = _cartStore.items;
+                if (items.isNotEmpty) return _buildCartContents(items);
+                if (_loadingBackendCart) {
+                  return const AnimatedContentSwitcher(
+                    child: KeyedSubtree(
+                      key: ValueKey('cart-loading'),
+                      child: Center(
+                        child: SkeletonBox(height: 190, radius: 20),
+                      ),
+                    ),
+                  );
+                }
+                if (_cartLoadError != null) {
+                  return _buildCartLoadError();
+                }
+                return _buildEmptyState(context);
+              },
+            ),
+      bottomNavigationBar: !CustomerApi.instance.hasCustomerSession
+          ? const SizedBox.shrink()
+          : AnimatedBuilder(
+              animation: _cartStore,
+              builder: (context, child) =>
+                  _cartStore.items.isEmpty || !_cartStore.hasBackendCart
+                  ? const SizedBox.shrink()
+                  : _buildCheckoutAction(context),
+            ),
     );
   }
 
@@ -248,7 +267,7 @@ class _CartPageState extends State<CartPage> {
                   child: Text(
                     items.every((item) => item.isBackendProduct)
                         ? 'Backend cart · Prices are refreshed during checkout'
-                        : 'Demo cart · Items and prices are for preview only',
+                        : 'Local preview items cannot be used for checkout.',
                     style: const TextStyle(color: _green, fontSize: 12),
                   ),
                 ),

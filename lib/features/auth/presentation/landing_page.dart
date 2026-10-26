@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'login_page.dart';
+import '../../../app/main_navigation_shell.dart';
 
 class _C {
   static const green = Color(0xFF016034);
@@ -112,13 +112,13 @@ class _LandingPageState extends State<LandingPage>
                         width: double.infinity,
                         height: 56,
                         child: ElevatedButton(
-                          onPressed: () => Navigator.of(context).push(
-                            authPageRoute<void>(
-                              context: context,
-                              page: const LoginPage(),
-                              transition: AuthPageTransition.fadeSlideUp,
-                            ),
-                          ),
+                          onPressed: () => Navigator.of(context)
+                              .pushReplacement(
+                                MaterialPageRoute<void>(
+                                  builder: (context) =>
+                                      const MainNavigationShell(),
+                                ),
+                              ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _C.green,
                             foregroundColor: Colors.white,
@@ -129,7 +129,7 @@ class _LandingPageState extends State<LandingPage>
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          child: const Text('Login'),
+                          child: const Text('Browse catalog'),
                         ),
                       ),
                       const SizedBox(height: 14),

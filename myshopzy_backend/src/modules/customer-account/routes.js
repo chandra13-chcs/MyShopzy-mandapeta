@@ -1055,12 +1055,15 @@ function createCustomerAccountRouter({
            drop_latitude, drop_longitude, delivery_distance_m,
            delivery_fee_minor, delivery_fee_kind
          )
-         SELECT $1, c.user_id, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'parcel'
-         FROM app.customers AS c
-         JOIN app.users AS u ON u.id = c.user_id
-         WHERE c.user_id = $2
-           AND u.system_role = 'customer'
-           AND u.status = 'active'
+         SELECT $1, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'parcel'
+         WHERE EXISTS (
+           SELECT 1
+           FROM app.customers AS c
+           JOIN app.users AS u ON u.id = c.user_id
+           WHERE c.user_id = $2::uuid
+             AND u.system_role = 'customer'
+             AND u.status = 'active'
+         )
          RETURNING id, pickup_location, drop_location, parcel_type,
                    weight_grams, instructions, status, created_at,
                    pickup_latitude, pickup_longitude, drop_latitude,

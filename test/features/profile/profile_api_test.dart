@@ -32,10 +32,11 @@ void main() {
       }
       return patchResponse.future;
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
     await tester.pumpAndSettle();
-    expect(find.text('Backend profile'), findsOneWidget);
+    expect(find.text('Your account'), findsOneWidget);
     expect(find.text('API Customer'), findsOneWidget);
     expect(find.text('+15551234567'), findsOneWidget);
     expect(find.text('Chandra Shekar'), findsNothing);
@@ -100,6 +101,7 @@ void main() {
       if (getCount == 1) return firstResponse.future;
       return _jsonResponse(_profileJson());
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -130,6 +132,7 @@ void main() {
         },
       }, statusCode: 401),
     );
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
     await tester.pumpAndSettle();
@@ -143,25 +146,12 @@ void main() {
     expect(find.text('Retry profile'), findsOneWidget);
   });
 
-  testWidgets('keeps demo profile editable and labels it as demo', (
+  testWidgets('does not expose profile editing without a customer session', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
-    expect(find.text('Demo profile · on this device'), findsOneWidget);
-    expect(find.text('Chandra Shekar'), findsOneWidget);
-
-    await tester.tap(find.text('Edit Profile'));
-    await tester.pumpAndSettle();
-    expect(find.text('Demo profile · on this device'), findsOneWidget);
-    await tester.enterText(
-      find.byKey(const ValueKey('profile-name-field')),
-      'Demo Customer',
-    );
-    await tester.tap(find.byKey(const ValueKey('save-profile-button')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Demo Customer'), findsOneWidget);
-    expect(find.text('Demo profile updated on this device.'), findsOneWidget);
+    expect(find.text('Sign in to access your account.'), findsOneWidget);
+    expect(find.text('Edit Profile'), findsNothing);
   });
 
   testWidgets(
@@ -178,6 +168,7 @@ void main() {
           },
         }, statusCode: 409);
       });
+      await _authenticate();
 
       await tester.pumpWidget(const MaterialApp(home: ProfilePage()));
       await tester.pumpAndSettle();
@@ -221,6 +212,7 @@ void main() {
       }
       return _jsonResponse(_profileJson());
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: EditProfilePage()));
     await tester.pumpAndSettle();
@@ -240,9 +232,23 @@ void main() {
 CustomerApi _api(Future<http.Response> Function(http.Request) handler) {
   return CustomerApi(
     baseUrl: 'https://shop.example',
-    httpClient: MockClient(handler),
+    httpClient: MockClient((request) async {
+      if (request.url.path == '/api/v1/auth/otp/verify') {
+        return _jsonResponse({
+          'data': {
+            'accessToken': 'test-session',
+            'tokenType': 'Bearer',
+            'expiresIn': 300,
+          },
+        });
+      }
+      return handler(request);
+    }),
   );
 }
+
+Future<void> _authenticate() =>
+    CustomerApi.instance.verifyOtp(phoneNumber: '9876543210', otp: '123456');
 
 http.Response _jsonResponse(Object body, {int statusCode = 200}) {
   return http.Response(jsonEncode(body), statusCode);

@@ -15,6 +15,25 @@ void main() {
     CustomerApi.instance = CustomerApi(baseUrl: '');
   });
 
+  testWidgets('requires authentication before showing saved addresses', (
+    tester,
+  ) async {
+    var requestCount = 0;
+    CustomerApi.instance = CustomerApi(
+      baseUrl: 'https://shop.example',
+      httpClient: MockClient((request) async {
+        requestCount++;
+        return _jsonResponse({'data': <Object>[]});
+      }),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: SavedAddressesPage()));
+
+    expect(find.text('Sign in to access saved addresses.'), findsOneWidget);
+    expect(find.text('12 Green Park Road, Ravulapalem'), findsNothing);
+    expect(requestCount, 0);
+  });
+
   testWidgets(
     'loads backend addresses and shows an empty state when none exist',
     (tester) async {
@@ -24,16 +43,17 @@ void main() {
         expect(request.url.path, '/api/v1/me/addresses');
         return response.future;
       });
+      await _authenticate();
 
       await tester.pumpWidget(const MaterialApp(home: SavedAddressesPage()));
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
-       response.complete(_jsonResponse({'data': <Object>[]}));
+      response.complete(_jsonResponse({'data': <Object>[]}));
       await _pumpFor(tester);
 
-      expect(find.text('Backend saved addresses'), findsOneWidget);
+      expect(find.text('Your saved addresses'), findsOneWidget);
       expect(find.text('No saved addresses yet.'), findsOneWidget);
-      expect(find.text('Demo address:'), findsNothing);
+      expect(find.textContaining('Ravulapalem'), findsNothing);
     },
   );
 
@@ -84,6 +104,7 @@ void main() {
       }
       return http.Response('', 204);
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: SavedAddressesPage()));
     await _pumpFor(tester);
@@ -165,6 +186,7 @@ void main() {
         }
         return http.Response('', 204);
       });
+      await _authenticate();
 
       await tester.pumpWidget(const MaterialApp(home: SavedAddressesPage()));
       await _pumpFor(tester);
@@ -211,15 +233,13 @@ void main() {
         },
       }, statusCode: 401);
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: SavedAddressesPage()));
     await _pumpFor(tester);
 
     expect(find.text('Customer authentication is required.'), findsOneWidget);
-    expect(
-      find.text('Demo address: 12 Green Park Road, Ravulapalem'),
-      findsNothing,
-    );
+    expect(find.text('12 Green Park Road, Ravulapalem'), findsNothing);
     expect(find.text('Add New Address'), findsNothing);
 
     await tester.tap(find.text('Retry'));
@@ -229,7 +249,7 @@ void main() {
   });
 
   testWidgets(
-    'checkout uses saved-address API and does not show demo addresses on 401',
+    'checkout stays unavailable without customer-owned cart support',
     (tester) async {
       CustomerApi.instance = _api((request) async {
         if (request.url.path == '/api/v1/me/addresses') {
@@ -251,16 +271,20 @@ void main() {
           },
         });
       });
+      await _authenticate();
 
       await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
       await _pumpFor(tester);
-      await tester.tap(find.text('Change').first);
-      await tester.pumpAndSettle();
 
-      expect(find.text('Saved Addresses · backend'), findsOneWidget);
-      expect(find.text('Customer authentication is required.'), findsOneWidget);
+      expect(
+        find.text(
+          'Checkout is unavailable until customer cart ownership is supported.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Saved Addresses'), findsNothing);
       expect(find.text('Home'), findsNothing);
-      expect(find.text('No saved addresses.'), findsNothing);
+      expect(find.text('Customer authentication is required.'), findsNothing);
     },
   );
 }
@@ -268,9 +292,23 @@ void main() {
 CustomerApi _api(Future<http.Response> Function(http.Request) handler) {
   return CustomerApi(
     baseUrl: 'https://shop.example',
-    httpClient: MockClient(handler),
+    httpClient: MockClient((request) async {
+      if (request.url.path == '/api/v1/auth/otp/verify') {
+        return _jsonResponse({
+          'data': {
+            'accessToken': 'test-session',
+            'tokenType': 'Bearer',
+            'expiresIn': 300,
+          },
+        });
+      }
+      return handler(request);
+    }),
   );
 }
+
+Future<void> _authenticate() =>
+    CustomerApi.instance.verifyOtp(phoneNumber: '9876543210', otp: '123456');
 
 Map<String, Object?> _address({
   required String id,

@@ -76,45 +76,52 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _page,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(context),
-            Expanded(
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
-                  children: [
-                    const PromotionalBanner(
-                      assetPath: 'assets/myshopzy_banners/parellu.jpeg',
-                      imageKey: ValueKey('parcel-page-promotion-banner'),
-                      semanticLabel: 'Parcel delivery promotion banner',
-                    ),
-                    const SizedBox(height: 16),
-                    if (!CustomerApi.instance.isConfigured) ...[
-                      _buildDemoModeNotice(),
-                      const SizedBox(height: 14),
-                    ],
-                    _buildLocationFields(),
-                    const SizedBox(height: 22),
-                    _buildSectionTitle('Parcel details'),
-                    const SizedBox(height: 11),
-                    _buildParcelTypeOptions(),
-                    const SizedBox(height: 18),
-                    _buildWeightField(),
-                    const SizedBox(height: 17),
-                    _buildInstructionsField(),
-                    const SizedBox(height: 18),
-                    _buildDeliveryInformation(),
-                  ],
+      body: !CustomerApi.instance.hasCustomerSession
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(28),
+                child: Text(
+                  'Sign in to book a parcel.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _muted),
                 ),
               ),
+            )
+          : SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(context),
+                  Expanded(
+                    child: Form(
+                      key: _formKey,
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
+                        children: [
+                          const PromotionalBanner(
+                            assetPath: 'assets/myshopzy_banners/parellu.jpeg',
+                            imageKey: ValueKey('parcel-page-promotion-banner'),
+                            semanticLabel: 'Parcel delivery promotion banner',
+                          ),
+                          const SizedBox(height: 16),
+                          _buildLocationFields(),
+                          const SizedBox(height: 22),
+                          _buildSectionTitle('Parcel details'),
+                          const SizedBox(height: 11),
+                          _buildParcelTypeOptions(),
+                          const SizedBox(height: 18),
+                          _buildWeightField(),
+                          const SizedBox(height: 17),
+                          _buildInstructionsField(),
+                          const SizedBox(height: 18),
+                          _buildDeliveryInformation(),
+                        ],
+                      ),
+                    ),
+                  ),
+                  _buildBottomAction(context),
+                ],
+              ),
             ),
-            _buildBottomAction(context),
-          ],
-        ),
-      ),
     );
   }
 
@@ -179,24 +186,6 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildDemoModeNotice() {
-    return Container(
-      key: const ValueKey('parcel-demo-mode'),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7E5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEED9A8)),
-      ),
-      child: Text(
-        CustomerApi.instance.isConfigured
-            ? 'Parcel requests require an authenticated customer session. The backend will be checked when you submit.'
-            : 'Backend not configured · parcel requests cannot be submitted. Set MYSHOPZY_API_BASE_URL to a reachable backend origin when starting the app.',
-        style: TextStyle(color: _ink, fontSize: 12, height: 1.35),
-      ),
-    );
-  }
-
   Widget _buildLocationFields() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,25 +235,26 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-              TextButton.icon(
-                key: const ValueKey('parcel-pickup-saved-address'),
-                onPressed: _loadingSavedAddresses
-                    ? null
-                    : () => _chooseSavedAddress(pickup: true),
-                icon: const Icon(Icons.bookmark_outline_rounded, size: 17),
-                label: const Text('Choose saved pickup address'),
-                style: TextButton.styleFrom(
-                  foregroundColor: _green,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 5,
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+              if (CustomerApi.instance.hasCustomerSession)
+                TextButton.icon(
+                  key: const ValueKey('parcel-pickup-saved-address'),
+                  onPressed: _loadingSavedAddresses
+                      ? null
+                      : () => _chooseSavedAddress(pickup: true),
+                  icon: const Icon(Icons.bookmark_outline_rounded, size: 17),
+                  label: const Text('Choose saved pickup address'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _green,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
               if (_pickupLocationMessage != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 8, bottom: 4),
@@ -323,25 +313,26 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
             _dropPincode = null;
           },
         ),
-        Padding(
-          padding: const EdgeInsets.only(left: 28, top: 4),
-          child: TextButton.icon(
-            key: const ValueKey('parcel-drop-saved-address'),
-            onPressed: _loadingSavedAddresses
-                ? null
-                : () => _chooseSavedAddress(pickup: false),
-            icon: const Icon(Icons.bookmark_outline_rounded, size: 17),
-            label: const Text('Choose saved drop address'),
-            style: TextButton.styleFrom(
-              foregroundColor: _green,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              textStyle: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+        if (CustomerApi.instance.hasCustomerSession)
+          Padding(
+            padding: const EdgeInsets.only(left: 28, top: 4),
+            child: TextButton.icon(
+              key: const ValueKey('parcel-drop-saved-address'),
+              onPressed: _loadingSavedAddresses
+                  ? null
+                  : () => _chooseSavedAddress(pickup: false),
+              icon: const Icon(Icons.bookmark_outline_rounded, size: 17),
+              label: const Text('Choose saved drop address'),
+              style: TextButton.styleFrom(
+                foregroundColor: _green,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -660,6 +651,12 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
 
   Future<void> _chooseSavedAddress({required bool pickup}) async {
     if (_loadingSavedAddresses) return;
+    if (!CustomerApi.instance.hasCustomerSession) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to access saved addresses.')),
+      );
+      return;
+    }
     setState(() => _loadingSavedAddresses = true);
     try {
       final addresses = await CustomerApi.instance.getSavedAddresses();

@@ -2,12 +2,8 @@ const { createApp } = require('./app');
 const { createDatabasePool } = require('./config/database');
 const { loadConfig } = require('./config/env');
 const {
-  createDevelopmentCustomerAuth,
-} = require('./modules/customer-auth/development-auth');
-const {
   createCustomerAuthenticator,
 } = require('./modules/customer-auth/customer-session');
-const { createCustomerOtpAuth } = require('./modules/customer-auth/otp-auth');
 const {
   createAuth0AdminAuthenticator,
 } = require('./modules/admin-read/auth0-authentication');
@@ -15,9 +11,6 @@ const {
   createPartnerAuthenticator,
 } = require('./modules/partner-types/auth0-authentication');
 const { mockRiderAuth } = require('./middleware/mock-rider-auth');
-const {
-  createGoogleRoutesClient,
-} = require('./modules/delivery-serviceability/google-routes');
 const { createDistanceClient } = require('./modules/delivery-fee/distance');
 
 function shutdownServer(server, pool) {
@@ -52,24 +45,12 @@ function startServer({
     ...(PoolClass ? { PoolClass } : {}),
     onError: () => logger.error('Unexpected PostgreSQL pool error.'),
   });
-  const developmentCustomerAuth = createDevelopmentCustomerAuth({
-    databasePool: pool,
-    deliveryRoutingClient: createGoogleRoutesClient({
-      apiKey: config.googleMapsApiKey,
-    }),
-    config,
-  });
   if (config.nodeEnv === 'production' && config.routingProvider === 'fake') {
     throw new Error('ROUTING_PROVIDER=fake cannot be used in production.');
   }
   const deliveryDistanceClient = createDistanceClient({
     provider: config.routingProvider,
     apiKey: config.routingApiKey,
-  });
-  const customerOtpAuthRouter = createCustomerOtpAuth({
-    databasePool: pool,
-    config,
-    logger,
   });
   const authenticateAdmin = config.auth0Admin && config.superAdminOrigin && pool
     ? createAuth0AdminAuthenticator({
@@ -101,8 +82,6 @@ function startServer({
     superAdminOrigin: authenticateAdmin ? config.superAdminOrigin : null,
     partnerPortalOrigins: config.partnerPortalOrigins,
     customerAppOrigins: config.customerAppOrigins,
-    customerOtpAuthRouter,
-    developmentCustomerAuthRouter: developmentCustomerAuth.router,
   });
   const server = app.listen(config.port, () => {
     logger.log(`MyShopzy backend listening on port ${config.port}`);

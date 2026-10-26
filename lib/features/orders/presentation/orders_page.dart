@@ -21,14 +21,6 @@ class OrdersPage extends StatefulWidget {
   static ValueNotifier<int> get ongoingOrderCount =>
       _OrdersPageState.ongoingOrderCount;
 
-  static void updateDemoOrderTab(String orderId, OrdersTab tab) =>
-      _OrdersPageState.updateDemoOrderTab(orderId, tab);
-
-  static void refreshOrderCounts() => _OrdersPageState.refreshOrderCounts();
-
-  static void addDemoOrder(OrderRecord order) =>
-      _OrdersPageState.addDemoOrder(order);
-
   @override
   State<OrdersPage> createState() => _OrdersPageState();
 }
@@ -42,162 +34,7 @@ class _OrdersPageState extends State<OrdersPage> {
   static const _cancelledStatus = Color(0xFF914747);
   static const _border = Color(0xFFE7EAE8);
 
-  static final List<OrderRecord> _demoOrders = [
-    OrderRecord(
-      storeName: 'Green Bowl Kitchen',
-      icon: Icons.restaurant_outlined,
-      orderId: 'MSZ-DEMO-1042',
-      dateTime: 'Today, 7:20 PM',
-      itemSummary: '2 items · Veggie Bowl, Fresh Lime Soda',
-      totalInPaise: 34800,
-      status: 'On the way',
-      statusMessage: 'Your demo order is on its way',
-      orderTab: OrdersTab.ongoing,
-      serviceType: 'Restaurants',
-      items: const [
-        OrderLineItem(
-          name: 'Veggie Bowl',
-          description: 'Demo itemized price',
-          quantity: 1,
-          unitPriceInPaise: 25000,
-          icon: Icons.restaurant_rounded,
-        ),
-        OrderLineItem(
-          name: 'Fresh Lime Soda',
-          description: 'Demo itemized price',
-          quantity: 1,
-          unitPriceInPaise: 6800,
-          icon: Icons.local_drink_rounded,
-        ),
-      ],
-      deliveryAddress: 'Home · 12 Green Park Road, Ravulapalem · demo address',
-      paymentMethod: 'UPI',
-      paymentStatus: 'Demo · not processed',
-      deliveryChargeInPaise: 3000,
-      discountInPaise: 0,
-      trackingStatus: OrderTrackingStatus.onTheWay,
-      deliveryOtp: '4821',
-    ),
-    OrderRecord(
-      storeName: 'Sunrise Dairy & Grocery',
-      icon: Icons.storefront_outlined,
-      orderId: 'MSZ-DEMO-1043',
-      dateTime: 'Today, 7:35 PM',
-      itemSummary: '2 items · Milk, Brown Bread',
-      totalInPaise: 17500,
-      status: 'Order Placed',
-      statusMessage: 'We have received your demo order',
-      orderTab: OrdersTab.ongoing,
-      serviceType: 'Local Store',
-      items: const [
-        OrderLineItem(
-          name: 'Farm Fresh Milk',
-          quantity: 1,
-          unitPriceInPaise: 9000,
-          icon: Icons.local_drink_rounded,
-        ),
-        OrderLineItem(
-          name: 'Brown Bread',
-          quantity: 1,
-          unitPriceInPaise: 5500,
-          icon: Icons.bakery_dining_rounded,
-        ),
-      ],
-      deliveryAddress: 'Home · 12 Green Park Road, Ravulapalem · demo address',
-      paymentMethod: 'UPI',
-      paymentStatus: 'Demo · not processed',
-      deliveryChargeInPaise: 3000,
-      discountInPaise: 0,
-      trackingStatus: OrderTrackingStatus.orderPlaced,
-    ),
-    OrderRecord(
-      storeName: 'The Daily Bakery',
-      icon: Icons.bakery_dining_outlined,
-      orderId: 'MSZ-DEMO-0981',
-      dateTime: 'Yesterday, 10:15 AM',
-      itemSummary: '3 items · Sourdough, Croissant, Muffin',
-      totalInPaise: 42500,
-      status: 'Delivered',
-      statusMessage: 'Demo order completed successfully',
-      orderTab: OrdersTab.delivered,
-      serviceType: 'Bakery',
-      items: const [
-        OrderLineItem(
-          name: 'Sourdough',
-          description: 'Demo itemized price',
-          quantity: 1,
-          unitPriceInPaise: 15000,
-          icon: Icons.bakery_dining_rounded,
-          productId: 'sourdough',
-          serviceType: 'bakery',
-          merchantId: 'sri-sai-bakery',
-        ),
-        OrderLineItem(
-          name: 'Croissant',
-          description: 'Demo itemized price',
-          quantity: 1,
-          unitPriceInPaise: 12000,
-          icon: Icons.bakery_dining_rounded,
-          productId: 'croissant',
-          serviceType: 'bakery',
-          merchantId: 'sri-sai-bakery',
-        ),
-        OrderLineItem(
-          name: 'Muffin',
-          description: 'Demo itemized price',
-          quantity: 1,
-          unitPriceInPaise: 12500,
-          icon: Icons.bakery_dining_rounded,
-          productId: 'muffin',
-          serviceType: 'bakery',
-          merchantId: 'sri-sai-bakery',
-        ),
-      ],
-      deliveryAddress: 'Home · 12 Green Park Road, Ravulapalem · demo address',
-      paymentMethod: 'UPI',
-      paymentStatus: 'Demo · not processed',
-      deliveryChargeInPaise: 3000,
-      discountInPaise: 0,
-      trackingStatus: OrderTrackingStatus.delivered,
-    ),
-    OrderRecord(
-      storeName: 'Market Fresh Store',
-      icon: Icons.storefront_outlined,
-      orderId: 'MSZ-DEMO-0876',
-      dateTime: '12 Sep 2026, 5:40 PM',
-      itemSummary: '2 items · Apples, Bananas',
-      totalInPaise: 21000,
-      status: 'Cancelled',
-      statusMessage: 'This demo order was cancelled',
-      orderTab: OrdersTab.cancelled,
-      serviceType: 'Local Store',
-      items: const [
-        OrderLineItem(
-          name: 'Apples',
-          description: 'Demo itemized price',
-          quantity: 1,
-          unitPriceInPaise: 10000,
-          icon: Icons.apple_rounded,
-        ),
-        OrderLineItem(
-          name: 'Bananas',
-          description: 'Demo itemized price',
-          quantity: 1,
-          unitPriceInPaise: 8000,
-          icon: Icons.eco_rounded,
-        ),
-      ],
-      deliveryAddress: 'Home · 12 Green Park Road, Ravulapalem · demo address',
-      paymentMethod: 'UPI',
-      paymentStatus: 'Demo · not processed',
-      deliveryChargeInPaise: 3000,
-      discountInPaise: 0,
-    ),
-  ];
-
-  static final ValueNotifier<int> ongoingOrderCount = ValueNotifier<int>(
-    _countOrdersForTab(OrdersTab.ongoing),
-  );
+  static final ValueNotifier<int> ongoingOrderCount = ValueNotifier<int>(0);
 
   static const _tabs = ['Ongoing', 'Delivered', 'Cancelled'];
 
@@ -206,7 +43,9 @@ class _OrdersPageState extends State<OrdersPage> {
   String? _ordersError;
   bool _ordersOfflineError = false;
 
-  bool get _backendMode => CustomerApi.instance.isConfigured;
+  bool get _backendMode =>
+      CustomerApi.instance.isConfigured &&
+      CustomerApi.instance.hasCustomerSession;
 
   @override
   void initState() {
@@ -225,6 +64,9 @@ class _OrdersPageState extends State<OrdersPage> {
       if (mounted) {
         setState(() {
           _backendOrders = orders.map(_toOrderRecord).toList(growable: false);
+          ongoingOrderCount.value = _backendOrders
+              .where((order) => order.orderTab == OrdersTab.ongoing)
+              .length;
         });
       }
     } on CustomerApiException catch (error) {
@@ -278,45 +120,6 @@ class _OrdersPageState extends State<OrdersPage> {
   List<OrderRecord> _backendOrdersForTab(OrdersTab tab) =>
       _backendOrders.where((order) => order.orderTab == tab).toList();
 
-  static int _countOrdersForTab(OrdersTab tab) =>
-      _demoOrders.where((order) => order.orderTab == tab).length;
-
-  static List<OrderRecord> _ordersForTab(OrdersTab tab) =>
-      _demoOrders.where((order) => order.orderTab == tab).toList();
-
-  static void updateDemoOrderTab(String orderId, OrdersTab tab) {
-    final order = _demoOrders.firstWhere(
-      (demoOrder) => demoOrder.orderId == orderId,
-    );
-    order.orderTab = tab;
-    switch (tab) {
-      case OrdersTab.ongoing:
-        order.status = 'On the way';
-        order.statusMessage = 'Your demo order is on its way';
-        order.trackingStatus = OrderTrackingStatus.onTheWay;
-        order.cancellationReason = null;
-      case OrdersTab.delivered:
-        order.status = 'Delivered';
-        order.statusMessage = 'Demo order completed successfully';
-        order.trackingStatus = OrderTrackingStatus.delivered;
-        order.cancellationReason = null;
-      case OrdersTab.cancelled:
-        order.status = 'Cancelled';
-        order.statusMessage = 'This demo order was cancelled';
-        order.trackingStatus = null;
-    }
-    refreshOrderCounts();
-  }
-
-  static void refreshOrderCounts() {
-    ongoingOrderCount.value = _countOrdersForTab(OrdersTab.ongoing);
-  }
-
-  static void addDemoOrder(OrderRecord order) {
-    _demoOrders.insert(0, order);
-    refreshOrderCounts();
-  }
-
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -348,33 +151,18 @@ class _OrdersPageState extends State<OrdersPage> {
             ],
           ),
         ),
-        body: _backendMode
-            ? _buildBackendOrderBody(context)
-            : ValueListenableBuilder<int>(
-                valueListenable: ongoingOrderCount,
-                builder: (context, count, child) => Column(
-                  children: [
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
-                        child: Text(
-                          'Demo order history · sample data',
-                          style: TextStyle(color: _secondaryText, fontSize: 11),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          for (final tab in OrdersTab.values)
-                            _buildOrderList(context, _ordersForTab(tab)),
-                        ],
-                      ),
-                    ),
-                  ],
+        body: !CustomerApi.instance.hasCustomerSession
+            ? const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Text(
+                    'Sign in to access your order history.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: _secondaryText, height: 1.4),
+                  ),
                 ),
-              ),
+              )
+            : _buildBackendOrderBody(context),
       ),
     );
   }
@@ -630,28 +418,17 @@ class _OrdersPageState extends State<OrdersPage> {
     BuildContext context,
     OrderRecord order,
   ) async {
-    if (order.isBackendData) {
-      final cancelled = await Navigator.of(context).push<bool>(
-        AppPageRoute<bool>.builder(
-          builder: (context) => BackendOrderDetailsPage(order: order),
-        ),
-      );
-      if (cancelled == true && context.mounted) {
-        await _loadOrders();
-        if (context.mounted) {
-          DefaultTabController.of(context).animateTo(OrdersTab.cancelled.index);
-        }
-      }
-      return;
-    }
     final cancelled = await Navigator.of(context).push<bool>(
       AppPageRoute<bool>.builder(
-        builder: (context) => OrderDetailsPage(order: order),
+        builder: (context) => BackendOrderDetailsPage(order: order),
       ),
     );
-    if (cancelled != true || !context.mounted) return;
-    refreshOrderCounts();
-    DefaultTabController.of(context).animateTo(OrdersTab.cancelled.index);
+    if (cancelled == true && context.mounted) {
+      await _loadOrders();
+      if (context.mounted) {
+        DefaultTabController.of(context).animateTo(OrdersTab.cancelled.index);
+      }
+    }
   }
 }
 

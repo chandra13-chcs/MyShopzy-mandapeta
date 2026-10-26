@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/data/customer_api.dart';
 import '../../parcel/data/parcel_location_service.dart';
 import '../../profile/models/saved_address.dart';
 
@@ -36,6 +37,9 @@ class _DeliveryLocationBottomSheetState
   bool? _locationServicesEnabled;
   LocationPermission? _permission;
   String? _locationError;
+  List<SavedAddress> _savedAddresses = const [];
+  bool _loadingSavedAddresses = false;
+  String? _savedAddressesError;
 
   late final ParcelLocationService _locationService =
       widget.locationService ?? ParcelLocationService();
@@ -45,6 +49,40 @@ class _DeliveryLocationBottomSheetState
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshLocationStatus());
+    if (CustomerApi.instance.hasCustomerSession) {
+      unawaited(_loadSavedAddresses());
+    }
+  }
+
+  Future<void> _loadSavedAddresses() async {
+    setState(() {
+      _loadingSavedAddresses = true;
+      _savedAddressesError = null;
+    });
+    try {
+      final addresses = await CustomerApi.instance.getSavedAddresses();
+      if (!mounted) return;
+      setState(() {
+        _savedAddresses = addresses
+            .map(
+              (address) => SavedAddress(
+                id: address.id,
+                label: address.label,
+                address: address.formattedAddress,
+                icon: Icons.location_on_outlined,
+                isBackendData: true,
+                latitude: address.latitude,
+                longitude: address.longitude,
+                pincode: address.pincode,
+              ),
+            )
+            .toList(growable: false);
+      });
+    } on CustomerApiException catch (error) {
+      if (mounted) setState(() => _savedAddressesError = error.message);
+    } finally {
+      if (mounted) setState(() => _loadingSavedAddresses = false);
+    }
   }
 
   @override
@@ -308,7 +346,9 @@ class _DeliveryLocationBottomSheetState
                   ),
                   TextButton(
                     key: const ValueKey('location-view-all'),
-                    onPressed: widget.onViewAll,
+                    onPressed: CustomerApi.instance.hasCustomerSession
+                        ? widget.onViewAll
+                        : null,
                     style: TextButton.styleFrom(
                       foregroundColor: AppTheme.primaryGreen,
                       minimumSize: const Size(64, 44),
@@ -326,8 +366,26 @@ class _DeliveryLocationBottomSheetState
                 ],
               ),
               const SizedBox(height: 7),
-              for (var index = 0; index < demoSavedAddresses.length; index++)
-                _buildAddressRow(context, demoSavedAddresses[index], index),
+              if (_loadingSavedAddresses)
+                const LinearProgressIndicator()
+              else if (!CustomerApi.instance.hasCustomerSession)
+                const Text(
+                  'Sign in to access saved addresses.',
+                  style: TextStyle(color: AppTheme.secondaryText),
+                )
+              else if (_savedAddressesError != null)
+                Text(
+                  _savedAddressesError!,
+                  style: const TextStyle(color: AppTheme.secondaryText),
+                )
+              else if (_savedAddresses.isEmpty)
+                const Text(
+                  'No saved addresses yet.',
+                  style: TextStyle(color: AppTheme.secondaryText),
+                )
+              else
+                for (var index = 0; index < _savedAddresses.length; index++)
+                  _buildAddressRow(context, _savedAddresses[index], index),
               const SizedBox(height: 12),
               const Divider(height: 1, color: _divider),
               const SizedBox(height: 8),
@@ -366,7 +424,7 @@ class _DeliveryLocationBottomSheetState
         if (index > 0) const Divider(height: 1, color: _divider),
         Semantics(
           button: true,
-          label: '${address.label}, Demo address: ${address.address}',
+          label: '${address.label}: ${address.address}',
           child: InkWell(
             key: ValueKey('saved-delivery-address-${address.id}'),
             onTap: () => Navigator.of(context).pop(address),
@@ -403,7 +461,7 @@ class _DeliveryLocationBottomSheetState
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          'Demo address: ${address.address}',
+                          address.address,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

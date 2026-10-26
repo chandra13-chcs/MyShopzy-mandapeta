@@ -128,7 +128,6 @@ void main() {
       expect(find.text('Cancelled'), findsOneWidget);
       expect(find.text('Cancellation Reason'), findsOneWidget);
 
-      OrdersPage.updateDemoOrderTab('MSZ-DEMO-1043', OrdersTab.ongoing);
     },
   );
 }

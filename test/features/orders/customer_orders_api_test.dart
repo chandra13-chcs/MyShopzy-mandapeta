@@ -32,6 +32,7 @@ void main() {
       expect(request.url.path, '/api/v1/me/orders/$_orderId');
       return _jsonResponse(_orderDetailJson());
     });
+    await _authenticate();
 
     await tester.pumpWidget(
       MaterialApp(home: BackendOrderDetailsPage(order: _backendOrderRecord())),
@@ -53,6 +54,7 @@ void main() {
       }
       return _jsonResponse(_orderDetailJson());
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
     expect(find.byKey(const ValueKey('orders-loading')), findsOneWidget);
@@ -97,6 +99,7 @@ void main() {
         'pagination': {'limit': 20, 'offset': 0},
       }),
     );
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
     await tester.pumpAndSettle();
@@ -127,6 +130,7 @@ void main() {
         'pagination': {'limit': 20, 'offset': 0},
       });
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
     await tester.pumpAndSettle();
@@ -153,6 +157,7 @@ void main() {
         },
       }, statusCode: 401),
     );
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
     await tester.pumpAndSettle();
@@ -182,6 +187,7 @@ void main() {
         },
       }, statusCode: 401);
     });
+    await _authenticate();
 
     await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
     await tester.pumpAndSettle();
@@ -214,6 +220,7 @@ void main() {
         },
       });
     });
+    await _authenticate();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -265,6 +272,7 @@ void main() {
         ),
       ),
     );
+    await _authenticate();
 
     await tester.pumpWidget(
       MaterialApp(home: BackendOrderDetailsPage(order: _backendOrderRecord())),
@@ -279,9 +287,23 @@ void main() {
 CustomerApi _api(Future<http.Response> Function(http.Request) handler) {
   return CustomerApi(
     baseUrl: 'https://shop.example',
-    httpClient: MockClient(handler),
+    httpClient: MockClient((request) async {
+      if (request.url.path == '/api/v1/auth/otp/verify') {
+        return _jsonResponse({
+          'data': {
+            'accessToken': 'test-session',
+            'tokenType': 'Bearer',
+            'expiresIn': 300,
+          },
+        });
+      }
+      return handler(request);
+    }),
   );
 }
+
+Future<void> _authenticate() =>
+    CustomerApi.instance.verifyOtp(phoneNumber: '9876543210', otp: '123456');
 
 http.Response _jsonResponse(Object body, {int statusCode = 200}) {
   return http.Response(jsonEncode(body), statusCode);
