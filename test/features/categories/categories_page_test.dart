@@ -83,8 +83,13 @@ void main() {
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Frozen Food'));
-    await tester.tap(find.text('Frozen Food'));
+    final frozenFoodCard = find.ancestor(
+      of: find.text('Frozen Food'),
+      matching: find.byType(GestureDetector),
+    );
+    await tester.ensureVisible(frozenFoodCard.first);
+    await tester.pumpAndSettle();
+    await tester.tapAt(tester.getCenter(frozenFoodCard.first));
     await tester.pumpAndSettle();
 
     expect(find.byType(LocalStoresPage), findsOneWidget);
@@ -139,8 +144,8 @@ void main() {
     final grid = tester.widget<SliverGrid>(find.byType(SliverGrid).first);
     final gridDelegate =
         grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
-    expect(gridDelegate.crossAxisCount, 4);
-    expect(gridDelegate.childAspectRatio, 0.8);
+    expect(gridDelegate.crossAxisCount, 3);
+    expect(gridDelegate.childAspectRatio, 0.85);
     expect(tester.takeException(), isNull);
   });
 
@@ -151,30 +156,16 @@ void main() {
 
     final imageFinder = find.byType(Image).first;
     final image = tester.widget<Image>(imageFinder);
-    expect(image.fit, BoxFit.cover);
+    expect(image.fit, BoxFit.contain);
+    expect(image.filterQuality, FilterQuality.high);
 
     final imageContainerFinder = find.byKey(
       const ValueKey('category-image-Fresh Vegetables'),
     );
-    final imageContainer = tester.widget<SizedBox>(imageContainerFinder);
+    final imageContainer = tester.widget<Padding>(imageContainerFinder);
     final imageSize = tester.getSize(imageContainerFinder);
-    expect(imageContainer.height, 70);
-    expect(imageContainer.width, double.infinity);
-    expect(imageSize.height, 70);
-    expect(
-      find.descendant(
-        of: imageContainerFinder,
-        matching: find.byType(ClipRRect),
-      ),
-      findsOneWidget,
-    );
-    final clippedImage = tester.widget<ClipRRect>(
-      find.descendant(
-        of: imageContainerFinder,
-        matching: find.byType(ClipRRect),
-      ),
-    );
-    expect(clippedImage.borderRadius, BorderRadius.circular(12));
+    expect(imageContainer.padding, const EdgeInsets.all(10));
+    expect(imageSize.height, greaterThan(70));
 
     final categoryCardFinder = find.byKey(
       const ValueKey('category-card-Fresh Vegetables'),
@@ -182,7 +173,7 @@ void main() {
     final categoryCard = tester.widget<AnimatedContainer>(categoryCardFinder);
     final cardDecoration = categoryCard.decoration! as BoxDecoration;
     expect(cardDecoration.color, const Color(0xFFE1F2E4));
-    expect(cardDecoration.borderRadius, BorderRadius.circular(16));
+    expect(cardDecoration.borderRadius, BorderRadius.circular(18));
     expect(cardDecoration.border, isNull);
     expect(cardDecoration.boxShadow, hasLength(1));
     expect(cardDecoration.boxShadow!.single.blurRadius, 8);
@@ -197,17 +188,17 @@ void main() {
       TextAlign.center,
     );
     final label = tester.widget<Text>(find.text('Fresh Vegetables'));
-    expect(label.maxLines, 2);
+    expect(label.maxLines, 1);
     expect(label.overflow, TextOverflow.ellipsis);
-    expect(label.style!.fontSize, 11);
+    expect(label.style!.fontSize, 12);
     expect(label.style!.fontWeight, FontWeight.w600);
-    expect(label.style!.color, const Color.fromRGBO(0, 0, 0, 0.8));
+    expect(label.style!.color, Colors.black87);
 
     final grid = tester.widget<SliverGrid>(find.byType(SliverGrid).first);
     final delegate =
         grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
-    expect(delegate.crossAxisSpacing, 8);
-    expect(delegate.mainAxisSpacing, 8);
+    expect(delegate.crossAxisSpacing, 12);
+    expect(delegate.mainAxisSpacing, 12);
   });
 
   testWidgets('category card animates its fill and scale while pressed', (
@@ -295,7 +286,8 @@ void main() {
           entry.value,
         ),
       );
-      expect(image.fit, BoxFit.cover);
+      expect(image.fit, BoxFit.contain);
+      expect(image.filterQuality, FilterQuality.high);
     }
   });
 }

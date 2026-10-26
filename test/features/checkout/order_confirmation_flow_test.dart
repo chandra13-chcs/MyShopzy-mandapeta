@@ -9,6 +9,8 @@ import 'package:myshopzy/features/cart/data/cart_store.dart';
 import 'package:myshopzy/features/checkout/presentation/checkout_page.dart';
 import 'package:myshopzy/features/checkout/presentation/delivery_unavailable_page.dart';
 import 'package:myshopzy/features/orders/presentation/order_success_page.dart';
+import 'package:myshopzy/features/profile/data/selected_delivery_address_store.dart';
+import 'package:myshopzy/features/profile/models/saved_address.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
 
 void main() {
@@ -18,12 +20,14 @@ void main() {
     CustomerApi.instance.close();
     CustomerApi.instance = CustomerApi(baseUrl: '');
     cart.clear();
+    SelectedDeliveryAddressStore.instance.select(null);
   });
 
   tearDown(() {
     CustomerApi.instance.close();
     CustomerApi.instance = CustomerApi(baseUrl: '');
     cart.clear();
+    SelectedDeliveryAddressStore.instance.select(null);
   });
 
   testWidgets('demo Place Order confirms once and clears the cart', (
@@ -84,6 +88,7 @@ void main() {
       }
       return _backendSetupResponse(request);
     });
+
     _addBackendCartItem();
 
     await _openBackendCheckout(tester);
@@ -139,6 +144,78 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'Home-selected address and coordinates reach checkout quote and order',
+    (tester) async {
+      final requests = <http.Request>[];
+      _configureBackend((request) async {
+        requests.add(request);
+        if (request.url.path.endsWith('/orders')) {
+          return _response({
+            'data': {
+              'orderId': 'selected-location-order',
+              'status': 'placed',
+              'currency': 'INR',
+              'itemSubtotalMinor': '25000',
+              'deliveryFeeMinor': '0',
+              'discountMinor': '0',
+              'totalMinor': '25000',
+              'items': 1,
+            },
+          }, statusCode: 201);
+        }
+        if (request.url.path.endsWith('/me/orders/selected-location-order')) {
+          return _backendOrderDetailResponse();
+        }
+        return _backendSetupResponse(request);
+      });
+      _addBackendCartItem();
+      SelectedDeliveryAddressStore.instance.select(
+        const SavedAddress(
+          id: 'current-location',
+          label: 'Current location',
+          address: 'Market Street, Ravulapalem',
+          icon: Icons.my_location_rounded,
+          latitude: 16.87,
+          longitude: 81.95,
+          pincode: '533308',
+        ),
+      );
+
+      await _openBackendCheckout(tester);
+      expect(find.text('Market Street, Ravulapalem'), findsOneWidget);
+
+      final placeOrder = find.widgetWithText(FilledButton, 'Place Order');
+      await tester.ensureVisible(placeOrder);
+      await tester.tap(placeOrder);
+      await tester.pumpAndSettle();
+
+      final quoteRequest = requests.singleWhere(
+        (request) => request.url.path.endsWith('/checkout/quote'),
+      );
+      final orderRequest = requests.singleWhere(
+        (request) => request.url.path.endsWith('/orders'),
+      );
+      expect(jsonDecode(quoteRequest.body), {
+        'deliveryAddress': {
+          'formattedAddress': 'Market Street, Ravulapalem',
+          'pincode': '533308',
+          'latitude': 16.87,
+          'longitude': 81.95,
+        },
+      });
+      expect(jsonDecode(orderRequest.body), {
+        'deliveryAddress': {
+          'label': 'Current location',
+          'formattedAddress': 'Market Street, Ravulapalem',
+          'pincode': '533308',
+          'latitude': 16.87,
+          'longitude': 81.95,
+        },
+      });
+    },
+  );
 
   testWidgets(
     'unserviceable addresses stop checkout and allow changing location',

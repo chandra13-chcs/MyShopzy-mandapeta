@@ -57,12 +57,15 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
   }
 
   bool get _hasLocationData =>
+      _hasRouteCoordinates &&
+      widget.pickupPincode != null &&
+      widget.dropPincode != null;
+
+  bool get _hasRouteCoordinates =>
       widget.pickupLatitude != null &&
       widget.pickupLongitude != null &&
-      widget.pickupPincode != null &&
       widget.dropLatitude != null &&
-      widget.dropLongitude != null &&
-      widget.dropPincode != null;
+      widget.dropLongitude != null;
 
   @override
   Widget build(BuildContext context) {
@@ -304,7 +307,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
               SizedBox(width: 9),
               Expanded(
                 child: Text(
-                  'No parcel fare rules are configured, so no price or estimate is available. Submitting creates a request record only.',
+                  'The backend calculates the charge from the road route when you submit. Its current rule is ₹25 for the first 2 km, then ₹10 per additional km (pro-rated); no price is quoted here.',
                   style: TextStyle(
                     color: _ink,
                     fontSize: 12,
@@ -334,13 +337,22 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'This checks postal-area coverage only. It does not confirm parcel route serviceability or the 50 km limit.',
+                'This checks postal-area coverage only. Submission separately checks the road route for pricing, but the API does not enforce the 50 km limit.',
                 style: TextStyle(
                   color: Color(0xFF727A74),
                   fontSize: 11,
                   height: 1.35,
                 ),
               ),
+              if (!_hasRouteCoordinates) ...[
+                const SizedBox(height: 10),
+                Container(
+                  key: const ValueKey('parcel-coordinates-required'),
+                  child: _buildErrorNotice(
+                    'Map locations are required for both pickup and drop. Choose saved addresses with coordinates; pickup can also use current location. Typed address text alone cannot be routed.',
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -406,6 +418,12 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
       });
       return;
     }
+    if (!_hasRouteCoordinates) {
+      setState(() {
+        _error = 'Map locations are required for both pickup and drop to verify the road route. Choose saved addresses with coordinates before submitting.';
+      });
+      return;
+    }
 
     setState(() {
       _submitting = true;
@@ -419,6 +437,10 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
           parcelType: widget.parcelType,
           weightKg: double.tryParse(widget.weight) ?? double.nan,
           instructions: widget.instructions,
+          pickupLatitude: widget.pickupLatitude,
+          pickupLongitude: widget.pickupLongitude,
+          dropLatitude: widget.dropLatitude,
+          dropLongitude: widget.dropLongitude,
         ),
       );
       if (!mounted) return;

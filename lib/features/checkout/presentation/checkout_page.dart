@@ -17,6 +17,7 @@ import '../../orders/presentation/order_success_page.dart';
 import '../../orders/presentation/orders_page.dart';
 import '../../orders/presentation/order_tracking_page.dart';
 import '../../profile/models/saved_address.dart';
+import '../../profile/data/selected_delivery_address_store.dart';
 import '../../profile/presentation/dues_page.dart';
 import '../../profile/presentation/outstanding_dues_banner.dart';
 
@@ -112,6 +113,13 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool get _isBackendCart =>
       CustomerApi.instance.isConfigured && _cartStore.hasBackendCart;
 
+  bool get _hasPlaceableAddress {
+    final address = _confirmedDeliveryAddress?.formattedAddress.trim();
+    return address != null &&
+        address.isNotEmpty &&
+        address.toLowerCase() != 'choose your location';
+  }
+
   int get _subtotalInPaise => _isBackendCart && _backendQuote != null
       ? _backendQuote!.itemSubtotalMinor
       : _isBackendCart
@@ -142,6 +150,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
   @override
   void initState() {
     super.initState();
+    final selectedAddress =
+        SelectedDeliveryAddressStore.instance.selectedAddress;
+    if (selectedAddress != null &&
+        selectedAddress.address.trim().isNotEmpty &&
+        selectedAddress.address.toLowerCase().trim() !=
+            'choose your location') {
+      _confirmedDeliveryAddress = CheckoutDeliveryAddress(
+        id: selectedAddress.id,
+        addressType: selectedAddress.label,
+        formattedAddress: selectedAddress.address,
+        latitude: selectedAddress.latitude,
+        longitude: selectedAddress.longitude,
+        pincode: selectedAddress.pincode,
+        receiverName: selectedAddress.receiverName,
+        receiverMobile: selectedAddress.receiverMobile,
+        landmark: selectedAddress.landmark,
+        isBackendData: selectedAddress.isBackendData,
+      );
+    }
     _cartStore.addListener(_handleCartChanged);
     if (CustomerApi.instance.isConfigured) {
       _savedAddresses = [];
@@ -150,6 +177,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
     if (CustomerApi.instance.isConfigured) {
       Future<void>.delayed(Duration.zero, _refreshDues);
+    }
+    if (_confirmedDeliveryAddress != null && _isBackendCart) {
+      Future<void>.delayed(
+        Duration.zero,
+        () => _refreshBackendQuote(_confirmedDeliveryAddress),
+      );
     }
     if (widget.openNewAddressOnLoad) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -500,7 +533,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         animation: _cartStore,
         builder: (context, child) {
           final hasItems = _cartStore.items.isNotEmpty;
-          final hasConfirmedAddress = _confirmedDeliveryAddress != null;
+          final hasConfirmedAddress = _hasPlaceableAddress;
           final orderOutcomeUnknown =
               _isBackendCart && CustomerApi.instance.orderOutcomeUnknown;
           final canPlaceOrder =
@@ -532,7 +565,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     const Padding(
                       padding: EdgeInsets.only(bottom: 8),
                       child: Text(
-                        'Select and confirm a delivery location to continue.',
+                        'Select or enter a complete delivery address to continue.',
                         key: ValueKey('checkout-address-validation'),
                         textAlign: TextAlign.center,
                         style: TextStyle(color: _secondaryText, fontSize: 12),
@@ -704,6 +737,17 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                 height: 1.4,
                               ),
                             ),
+                            if (!_hasPlaceableAddress) ...[
+                              const SizedBox(height: 4),
+                              const Text(
+                                'GPS did not resolve a postal address. Enter one to continue.',
+                                style: TextStyle(
+                                  color: _secondaryText,
+                                  fontSize: 11,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
                             if (_confirmedDeliveryAddress!.receiverName !=
                                 null) ...[
                               const SizedBox(height: 4),
@@ -952,8 +996,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               _deliveryOptionTile(
                 icon: Icons.my_location_outlined,
                 title: 'Use Current Location',
-                subtitle:
-                    'Use my current location and verified address details',
+                subtitle: 'Use your current location; enter an address if one is not resolved',
                 onTap: () {
                   Navigator.of(sheetContext).pop();
                   unawaited(_useCurrentLocation(requestPermission: true));
@@ -1019,13 +1062,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   title: address.addressType,
                   subtitle: address.formattedAddress,
                   onTap: () {
-                    setState(() {
-                      _confirmedDeliveryAddress = address;
-                      _currentLocationSuggested = false;
-                      _someoneElseSelected = false;
-                    });
+                    _confirmAddress(address);
                     Navigator.of(sheetContext).pop();
-                    unawaited(_refreshBackendQuote(address));
                   },
                 ),
               _deliveryOptionTile(
@@ -1063,13 +1101,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
         longitude: location.longitude,
         pincode: location.pincode,
       );
-      setState(() {
-        _clearBackendQuote();
-        _confirmedDeliveryAddress = address;
-        _currentLocationSuggested = false;
-        _someoneElseSelected = false;
-      });
-      unawaited(_refreshBackendQuote(address));
+      _confirmAddress(address);
     } on ParcelLocationException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -1940,8 +1972,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
   void _confirmSomeoneElseAddress() {
     final formattedAddress = _deliveryAddressController.text.trim();
     if (formattedAddress.isEmpty) return;
-    setState(() {
-      _confirmedDeliveryAddress = CheckoutDeliveryAddress(
+    _confirmAddress(
+      CheckoutDeliveryAddress(
         id: 'someone-else',
         addressType: 'Someone else',
         formattedAddress: formattedAddress,
@@ -1951,10 +1983,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
         latitude: double.tryParse(_receiverLatitudeController.text.trim()),
         longitude: double.tryParse(_receiverLongitudeController.text.trim()),
         landmark: _landmarkController.text.trim(),
-      );
-      _someoneElseSelected = false;
-    });
-    unawaited(_refreshBackendQuote(_confirmedDeliveryAddress!));
+      ),
+    );
   }
 
   void _saveNewAddress() {
@@ -1967,31 +1997,45 @@ class _CheckoutPageState extends State<CheckoutPage> {
       longitude: double.tryParse(_newAddressLongitudeController.text.trim()),
       landmark: _newAddressLandmarkController.text.trim(),
     );
-    setState(() {
-      if (!CustomerApi.instance.isConfigured) {
-        _savedAddresses.add(address);
-      }
-      _confirmedDeliveryAddress = address;
-      _someoneElseSelected = false;
-    });
-    widget.onAddressSelected?.call(address);
-    unawaited(_refreshBackendQuote(address));
+    if (!CustomerApi.instance.isConfigured) {
+      _savedAddresses.add(address);
+    }
+    _confirmAddress(address);
   }
 
   void _confirmAddress(CheckoutDeliveryAddress address) {
     setState(() {
+      _clearBackendQuote();
       _confirmedDeliveryAddress = address;
       _someoneElseSelected = false;
+      _currentLocationSuggested = false;
     });
+    SelectedDeliveryAddressStore.instance.select(
+      SavedAddress(
+        id: address.id,
+        label: address.addressType,
+        address: address.formattedAddress,
+        icon: _addressIcon(address.addressType),
+        isBackendData: address.isBackendData,
+        latitude: address.latitude,
+        longitude: address.longitude,
+        pincode: address.pincode,
+        receiverName: address.receiverName,
+        receiverMobile: address.receiverMobile,
+        landmark: address.landmark,
+      ),
+    );
     widget.onAddressSelected?.call(address);
     unawaited(_refreshBackendQuote(address));
   }
 
   Future<void> _placeOrder() async {
-    if (_cartStore.items.isEmpty || _confirmedDeliveryAddress == null) {
+    if (_cartStore.items.isEmpty || !_hasPlaceableAddress) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Choose a delivery address and add items to continue.'),
+          content: Text(
+            'Select or enter a complete delivery address and add items to continue.',
+          ),
         ),
       );
       return;

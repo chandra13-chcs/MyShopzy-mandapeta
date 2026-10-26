@@ -2,12 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/features/cart/data/cart_store.dart';
 import 'package:myshopzy/features/checkout/presentation/checkout_page.dart';
+import 'package:myshopzy/features/profile/data/selected_delivery_address_store.dart';
+import 'package:myshopzy/features/profile/models/saved_address.dart';
 
 void main() {
   final cart = CartStore.instance;
 
-  setUp(cart.clear);
-  tearDown(cart.clear);
+  setUp(() {
+    cart.clear();
+    SelectedDeliveryAddressStore.instance.select(null);
+  });
+  tearDown(() {
+    cart.clear();
+    SelectedDeliveryAddressStore.instance.select(null);
+  });
 
   testWidgets('checkout shows an actionable empty-cart state', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
@@ -41,7 +49,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('Select and confirm a delivery location to continue.'),
+      find.text('Select or enter a complete delivery address to continue.'),
       findsOneWidget,
     );
     final button = tester.widget<FilledButton>(
@@ -53,6 +61,45 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Your cart is empty'), findsOneWidget);
     expect(find.text('Place Order'), findsNothing);
+  });
+
+  testWidgets('GPS-only fallback is not accepted as a delivery address', (
+    tester,
+  ) async {
+    cart.addItem(
+      productId: 'gps-only-checkout-item',
+      serviceType: 'local_store',
+      merchantId: 'gps-only-checkout-store',
+      name: 'GPS-only item',
+      description: '',
+      priceInPaise: 15400,
+      icon: Icons.shopping_bag_outlined,
+    );
+    SelectedDeliveryAddressStore.instance.select(
+      const SavedAddress(
+        id: 'current-location',
+        label: 'Current location',
+        address: 'Choose your location',
+        icon: Icons.my_location_rounded,
+        latitude: 16.87,
+        longitude: 81.93,
+      ),
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+
+    expect(
+      find.byKey(const ValueKey('checkout-address-validation')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Place Order'),
+          )
+          .onPressed,
+      isNull,
+    );
   });
 
   testWidgets('checkout shows the selected variant and its line total', (

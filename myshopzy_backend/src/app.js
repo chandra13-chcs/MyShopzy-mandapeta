@@ -25,6 +25,7 @@ function createApp({
   authenticatePartner = null,
   superAdminOrigin = null,
   partnerPortalOrigins = ['http://localhost:5173'],
+  customerAppOrigins = ['http://127.0.0.1:7357'],
   now = () => new Date(),
   customerOtpAuthRouter = null,
   developmentCustomerAuthRouter = null,
@@ -56,6 +57,20 @@ function createApp({
     res.status(ready ? 200 : 503).json({
       status: ready ? 'ready' : 'not_ready',
     });
+  });
+
+  app.use('/api/v1', (req, res, next) => {
+    const origin = req.get('origin');
+    if (!origin || !customerAppOrigins.includes(origin)) return next();
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+    res.set(
+      'Access-Control-Allow-Headers',
+      'Authorization, Content-Type, X-Cart-Token, X-Request-ID',
+    );
+    res.vary('Origin');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    return next();
   });
 
   if (customerOtpAuthRouter) {

@@ -12,7 +12,8 @@
 				"--web-hostname",
 				"127.0.0.1",
 				"--web-port",
-				"7357"
+				"7357",
+				"--dart-define=MYSHOPZY_API_BASE_URL=http://localhost:3000"
 			],
 			"isBackground": true,
 			"problemMatcher": []

@@ -32,7 +32,7 @@ class CategoriesPage extends StatelessWidget {
     _CategoryTile(
       'Fresh Fruits',
       Icons.apple_rounded,
-      Color(0xFFFFE8D9),
+      Color(0xFFFBE4EC),
       imagePath: 'assets/categories icons/freshfruits.png.jpeg',
     ),
     _CategoryTile(
@@ -44,7 +44,7 @@ class CategoriesPage extends StatelessWidget {
     _CategoryTile(
       'Meat and Seafood',
       Icons.set_meal_rounded,
-      Color(0xFFFFE4E2),
+      Color(0xFFEDE5FA),
       imagePath: 'assets/categories icons/meatandseafood.png.jpeg',
     ),
   ];
@@ -265,10 +265,10 @@ class CategoriesPage extends StatelessWidget {
                 );
               }, childCount: categories.length),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                childAspectRatio: 0.8,
+                crossAxisCount: 3,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 0.85,
               ),
             ),
           ),
@@ -424,7 +424,7 @@ class _GridCategoryState extends State<_GridCategory> {
             color: _isPressed
                 ? Color.lerp(widget.category.color, Colors.black, 0.035)
                 : widget.category.color,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: null,
             boxShadow: [
               BoxShadow(
@@ -436,22 +436,19 @@ class _GridCategoryState extends State<_GridCategory> {
           ),
           child: Column(
             children: [
-              _CategoryImage(category: widget.category),
+              Expanded(child: _CategoryImage(category: widget.category)),
               const SizedBox(height: 6),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
-                  child: Text(
-                    widget.category.name,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color.fromRGBO(0, 0, 0, 0.8),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      height: 1.2,
-                    ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Text(
+                  widget.category.name,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -470,24 +467,23 @@ class _CategoryImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return Padding(
       key: ValueKey('category-image-${category.name}'),
-      height: 70,
-      width: double.infinity,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+      padding: const EdgeInsets.all(10),
+      child: SizedBox.expand(
         child: category.imagePath == null
-            ? ColoredBox(
-                color: category.color,
-                child: Center(
-                  child: Icon(
-                    category.icon,
-                    color: const Color(0xFF34453A),
-                    size: 30,
-                  ),
+            ? Center(
+                child: Icon(
+                  category.icon,
+                  color: const Color(0xFF34453A),
+                  size: 30,
                 ),
               )
-            : Image.asset(category.imagePath!, fit: BoxFit.cover),
+            : Image.asset(
+                category.imagePath!,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+              ),
       ),
     );
   }

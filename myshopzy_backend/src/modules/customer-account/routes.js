@@ -122,7 +122,7 @@ function customerIdFromRequest(req) {
   return customerUserId;
 }
 
-function requireCustomerAuthentication(authenticateCustomer) {
+function requireCustomerAuthentication(databasePool, authenticateCustomer) {
   return (req, res, next) => {
     if (!authenticateCustomer) {
       return res.status(401).json({
@@ -173,7 +173,10 @@ function createCustomerAccountRouter({
   deliveryDistanceClient = null,
 }) {
   const router = express.Router();
-  const customerAuth = requireCustomerAuthentication(authenticateCustomer);
+  const customerAuth = requireCustomerAuthentication(
+    databasePool,
+    authenticateCustomer,
+  );
 
   router.use('/me', customerAuth);
   router.use('/me', (req, res, next) => {

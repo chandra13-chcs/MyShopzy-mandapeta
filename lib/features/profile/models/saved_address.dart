@@ -10,6 +10,9 @@ class SavedAddress {
     this.latitude,
     this.longitude,
     this.pincode,
+    this.receiverName,
+    this.receiverMobile,
+    this.landmark,
   });
 
   final String id;
@@ -20,6 +23,9 @@ class SavedAddress {
   final double? latitude;
   final double? longitude;
   final String? pincode;
+  final String? receiverName;
+  final String? receiverMobile;
+  final String? landmark;
 }
 
 const demoSavedAddresses = [

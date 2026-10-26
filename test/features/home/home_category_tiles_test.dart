@@ -94,12 +94,21 @@ void main() {
       'Parcel': 'parcel',
       'Groceries': 'local_stores',
     };
+    const categoryColors = {
+      'Restaurants': Color(0xFFE1F2E4),
+      'Bakery': Color(0xFFFFE8D9),
+      'Meat': Color(0xFFEDE5FA),
+      'Fruits': Color(0xFFFBE4EC),
+      'Parcel': Color(0xFFFFF1D5),
+      'Groceries': Color(0xFFE2EFF9),
+    };
     for (final entry in categoryAssets.entries) {
       final imageFinder = find.byWidgetPredicate(
         (widget) => widget is Image && widget.semanticLabel == entry.key,
       );
       final image = tester.widget<Image>(imageFinder);
       expect(image.fit, BoxFit.contain);
+      expect(image.filterQuality, FilterQuality.high);
       expect(
         image.image,
         isA<ResizeImage>().having(
@@ -129,32 +138,22 @@ void main() {
         find.byKey(ValueKey('home-category-tile-${categoryKeys[entry.key]}')),
       );
       final tileDecoration = tileContainer.decoration! as BoxDecoration;
-      expect(tileDecoration.borderRadius, BorderRadius.circular(22));
+      expect(tileDecoration.color, categoryColors[entry.key]);
+      expect(tileDecoration.borderRadius, BorderRadius.circular(20));
       expect(tileDecoration.border, isNull);
       expect(tileDecoration.boxShadow, hasLength(1));
-      expect(tileDecoration.boxShadow!.single.blurRadius, 16);
-      expect(tileDecoration.boxShadow!.single.offset, const Offset(0, 6));
-      final glassContainer = tester.widget<AnimatedContainer>(
-        find.byKey(ValueKey('home-category-glass-${categoryKeys[entry.key]}')),
-      );
-      final glassDecoration = glassContainer.decoration! as BoxDecoration;
-      expect(glassDecoration.borderRadius, BorderRadius.circular(22));
-      expect(glassDecoration.color, Colors.white.withValues(alpha: 0.65));
-      expect(glassDecoration.border!.top.width, 1.2);
+      expect(tileDecoration.boxShadow!.single.blurRadius, 10);
+      expect(tileDecoration.boxShadow!.single.offset, const Offset(0, 4));
       expect(
-        glassDecoration.border!.top.color,
-        Colors.white.withValues(alpha: 0.5),
-      );
-      expect(
-        find.descendant(of: tile, matching: find.byType(BackdropFilter)),
-        findsOneWidget,
+        tileDecoration.boxShadow!.single.color,
+        Colors.black.withValues(alpha: 0.04),
       );
       expect(find.text(entry.key), findsOneWidget);
       final label = tester.widget<Text>(find.text(entry.key));
-      expect(label.style!.fontSize, 13);
+      expect(label.style!.fontSize, 12);
       expect(label.style!.fontWeight, FontWeight.w600);
       expect(label.style!.color, Colors.black87);
-      expect(tileBounds.width / tileBounds.height, closeTo(1.15, 0.02));
+      expect(tileBounds.width / tileBounds.height, closeTo(0.85, 0.02));
     }
     for (final subtitle in [
       'Hot & tasty',
@@ -179,6 +178,11 @@ void main() {
           .crossAxisCount,
       3,
     );
+    final gridDelegate =
+        categoryGrid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    expect(gridDelegate.childAspectRatio, 0.85);
+    expect(gridDelegate.crossAxisSpacing, 12);
+    expect(gridDelegate.mainAxisSpacing, 12);
     final orderedCategoryRects = categoryAssets.keys
         .map(
           (name) => tester.getRect(
@@ -239,7 +243,7 @@ void main() {
     }
   });
 
-  testWidgets('Home category tiles use frosted glass and press feedback', (
+  testWidgets('Home category tiles use pastel fills and press feedback', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -249,9 +253,6 @@ void main() {
     );
     await pumpHomeTransitions(tester);
 
-    final glassFinder = find.byKey(
-      const ValueKey('home-category-glass-restaurants'),
-    );
     final gestureFinder = find.byKey(
       const ValueKey('home-category-restaurants'),
     );
@@ -262,24 +263,17 @@ void main() {
     final gesture = await tester.startGesture(tester.getCenter(gestureFinder));
     await tester.pump(const Duration(milliseconds: 80));
 
-    expect(tester.widget<AnimatedScale>(scaleFinder).scale, 0.95);
-    final pressedDecoration =
-        tester.widget<AnimatedContainer>(glassFinder).decoration!
-            as BoxDecoration;
-    expect(pressedDecoration.color, Colors.white.withValues(alpha: 0.76));
-    expect(
-      pressedDecoration.border!.top.color,
-      Colors.white.withValues(alpha: 0.8),
+    expect(tester.widget<AnimatedScale>(scaleFinder).scale, 0.94);
+    final opacityFinder = find.byKey(
+      const ValueKey('home-category-opacity-restaurants'),
     );
+    expect(tester.widget<AnimatedOpacity>(opacityFinder).opacity, 0.85);
 
     await gesture.cancel();
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(tester.widget<AnimatedScale>(scaleFinder).scale, 1);
-    final releasedDecoration =
-        tester.widget<AnimatedContainer>(glassFinder).decoration!
-            as BoxDecoration;
-    expect(releasedDecoration.color, Colors.white.withValues(alpha: 0.65));
+    expect(tester.widget<AnimatedOpacity>(opacityFinder).opacity, 1);
   });
 
   testWidgets('home black header contains location and search only', (
@@ -578,6 +572,11 @@ void main() {
           .crossAxisCount,
       3,
     );
+    final gridDelegate =
+        categoryGrid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    expect(gridDelegate.childAspectRatio, 0.85);
+    expect(gridDelegate.crossAxisSpacing, 12);
+    expect(gridDelegate.mainAxisSpacing, 12);
     expect(tester.takeException(), isNull);
   });
 

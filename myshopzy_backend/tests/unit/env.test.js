@@ -22,7 +22,21 @@ test('uses development defaults and permits health-only configuration', () => {
     auth0Partner: null,
     superAdminOrigin: null,
     partnerPortalOrigins: ['http://localhost:5173'],
+    customerAppOrigins: ['http://127.0.0.1:7357'],
   });
+});
+
+test('configures explicit customer web origins and rejects wildcard CORS', () => {
+  const config = loadConfig({
+    NODE_ENV: 'production',
+    CUSTOMER_APP_ORIGINS: 'https://shop.example.test',
+  });
+  assert.deepEqual(config.customerAppOrigins, ['https://shop.example.test']);
+  assert.throws(
+    () => loadConfig({ CUSTOMER_APP_ORIGINS: '*' }),
+    /CUSTOMER_APP_ORIGINS must contain HTTPS origins or HTTP localhost origins/,
+  );
+  assert.deepEqual(loadConfig({ NODE_ENV: 'production' }).customerAppOrigins, []);
 });
 
 test('loads support contact settings and validates the escalation window', () => {
@@ -40,48 +54,46 @@ test('loads support contact settings and validates the escalation window', () =>
   }
 });
 
-  test('parses complete backend-only customer OTP provider settings', () => {
-    const config = loadConfig({
-      CUSTOMER_OTP_PEPPER: 'otp-pepper-with-at-least-thirty-two-bytes',
-      CUSTOMER_SESSION_SECRET: 'customer-session-secret-of-at-least-thirty-two',
-      WHATSAPP_ACCESS_TOKEN: 'backend-test-access-token',
-      WHATSAPP_PHONE_NUMBER_ID: '1029384756',
-      WHATSAPP_OTP_TEMPLATE_NAME: 'authentication_code',
-      WHATSAPP_OTP_TEMPLATE_LANGUAGE: 'en_US',
-    });
-
-    assert.equal(config.customerOtpPepper, 'otp-pepper-with-at-least-thirty-two-bytes');
-    assert.equal(
-      config.customerSessionSecret,
-      'customer-session-secret-of-at-least-thirty-two',
-    );
-    assert.deepEqual(config.whatsapp, {
-      accessToken: 'backend-test-access-token',
-      phoneNumberId: '1029384756',
-      templateName: 'authentication_code',
-      templateLanguage: 'en_US',
-      graphApiVersion: 'v25.0',
-    });
+test('parses complete backend-only customer OTP provider settings', () => {
+  const config = loadConfig({
+    CUSTOMER_OTP_PEPPER: 'otp-pepper-with-at-least-thirty-two-bytes',
+    CUSTOMER_SESSION_SECRET: 'customer-session-secret-of-at-least-thirty-two',
+    WHATSAPP_ACCESS_TOKEN: 'backend-test-access-token',
+    WHATSAPP_PHONE_NUMBER_ID: '1029384756',
+    WHATSAPP_OTP_TEMPLATE_NAME: 'authentication_code',
+    WHATSAPP_OTP_TEMPLATE_LANGUAGE: 'en_US',
   });
-
-  test('rejects incomplete and weak customer OTP configuration', () => {
-    assert.throws(
-      () => loadConfig({ WHATSAPP_ACCESS_TOKEN: 'backend-test-access-token' }),
-      /Customer OTP authentication configuration is incomplete/,
-    );
-    assert.throws(
-      () =>
-        loadConfig({
-          CUSTOMER_OTP_PEPPER: 'too-short',
-          CUSTOMER_SESSION_SECRET: 'customer-session-secret-of-at-least-thirty-two',
-          WHATSAPP_ACCESS_TOKEN: 'backend-test-access-token',
-          WHATSAPP_PHONE_NUMBER_ID: '1029384756',
-          WHATSAPP_OTP_TEMPLATE_NAME: 'authentication_code',
-          WHATSAPP_OTP_TEMPLATE_LANGUAGE: 'en_US',
-        }),
-      /must be at least 32 bytes/,
-    );
+  assert.equal(config.customerOtpPepper, 'otp-pepper-with-at-least-thirty-two-bytes');
+  assert.equal(
+    config.customerSessionSecret,
+    'customer-session-secret-of-at-least-thirty-two',
+  );
+  assert.deepEqual(config.whatsapp, {
+    accessToken: 'backend-test-access-token',
+    phoneNumberId: '1029384756',
+    templateName: 'authentication_code',
+    templateLanguage: 'en_US',
+    graphApiVersion: 'v25.0',
   });
+});
+
+test('rejects incomplete and weak customer OTP configuration', () => {
+  assert.throws(
+    () => loadConfig({ WHATSAPP_ACCESS_TOKEN: 'backend-test-access-token' }),
+    /Customer OTP authentication configuration is incomplete/,
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        CUSTOMER_OTP_PEPPER: 'too-short',
+        CUSTOMER_SESSION_SECRET: 'customer-session-secret-of-at-least-thirty-two',
+        WHATSAPP_ACCESS_TOKEN: 'backend-test-access-token',
+        WHATSAPP_PHONE_NUMBER_ID: '1029384756',
+        WHATSAPP_OTP_TEMPLATE_NAME: 'authentication_code',
+        WHATSAPP_OTP_TEMPLATE_LANGUAGE: 'en_US',
+      }),
+    /must be at least 32 bytes/,
+  );
 });
 
 test('parses a complete PostgreSQL configuration without changing values', () => {

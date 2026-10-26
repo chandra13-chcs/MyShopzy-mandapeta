@@ -100,6 +100,7 @@ function startServer({
     nodeEnv: config.nodeEnv,
     superAdminOrigin: authenticateAdmin ? config.superAdminOrigin : null,
     partnerPortalOrigins: config.partnerPortalOrigins,
+    customerAppOrigins: config.customerAppOrigins,
     customerOtpAuthRouter,
     developmentCustomerAuthRouter: developmentCustomerAuth.router,
   });

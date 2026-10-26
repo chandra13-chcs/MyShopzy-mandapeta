@@ -59,6 +59,10 @@ void main() {
         'parcelType': 'Documents',
         'weightKg': 1.25,
         'instructions': '',
+        'pickupLatitude': 16.87,
+        'pickupLongitude': 81.93,
+        'dropLatitude': 16.88,
+        'dropLongitude': 81.94,
       });
       expect(requests[1].url.queryParameters, {'limit': '20', 'offset': '0'});
       expect(requests[2].url.path, '/api/v1/me/parcels/$_bookingId');
@@ -79,18 +83,30 @@ void main() {
         dropLocation: 'Drop',
         parcelType: 'Documents',
         weightKg: 1,
+        pickupLatitude: 16.87,
+        pickupLongitude: 81.93,
+        dropLatitude: 16.88,
+        dropLongitude: 81.94,
       ),
       const ApiParcelBookingRequest(
         pickupLocation: 'Pickup',
         dropLocation: 'Drop',
         parcelType: 'Documents',
         weightKg: 20.001,
+        pickupLatitude: 16.87,
+        pickupLongitude: 81.93,
+        dropLatitude: 16.88,
+        dropLongitude: 81.94,
       ),
       const ApiParcelBookingRequest(
         pickupLocation: 'Pickup',
         dropLocation: 'Drop',
         parcelType: 'Documents',
         weightKg: 1.0001,
+        pickupLatitude: 16.87,
+        pickupLongitude: 81.93,
+        dropLatitude: 16.88,
+        dropLongitude: 81.94,
       ),
     ]) {
       await expectLater(
@@ -104,6 +120,25 @@ void main() {
         ),
       );
     }
+    expect(requestSent, isFalse);
+
+    await expectLater(
+      api.createParcelBooking(
+        const ApiParcelBookingRequest(
+          pickupLocation: 'Pickup',
+          dropLocation: 'Drop',
+          parcelType: 'Documents',
+          weightKg: 1,
+        ),
+      ),
+      throwsA(
+        isA<CustomerApiException>().having(
+          (error) => error.code,
+          'code',
+          'INVALID_REQUEST',
+        ),
+      ),
+    );
     expect(requestSent, isFalse);
   });
 
@@ -193,13 +228,24 @@ void main() {
     final postResponse = Completer<http.Response>();
     CustomerApi.instance = _api((request) async {
       requests.add(request);
+      if (request.url.path == '/api/v1/me/addresses') {
+        return _savedAddressResponse();
+      }
+      if (request.url.path == '/api/v1/delivery/serviceability') {
+        return _jsonResponse({
+          'data': {
+            'isDeliverable': true,
+            'message': 'Delivery is available at this location.',
+          },
+        });
+      }
       if (request.method == 'POST') return postResponse.future;
       return _jsonResponse({'data': _bookingJson(appendUpdatedAt: true)});
     });
 
     await _pumpParcelPage(tester);
-    await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
-    await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
+    await _chooseSavedAddress(tester, 'parcel-pickup-saved-address');
+    await _chooseSavedAddress(tester, 'parcel-drop-saved-address');
     await _enterParcelText(tester, 'Enter parcel weight', '1.25');
     await _tapContinue(tester);
 
@@ -223,8 +269,41 @@ void main() {
 
     expect(find.text('Parcel Request Details'), findsOneWidget);
     expect(find.text(_bookingId), findsOneWidget);
-    expect(requests.map((request) => request.method), ['POST', 'GET']);
-    expect(requests.last.url.path, '/api/v1/me/parcels/$_bookingId');
+    final parcelRequests = requests
+        .where((request) => request.url.path.startsWith('/api/v1/me/parcels'))
+        .toList();
+    expect(parcelRequests.map((request) => request.method), ['POST', 'GET']);
+    expect(parcelRequests.last.url.path, '/api/v1/me/parcels/$_bookingId');
+    expect(
+      jsonDecode(parcelRequests.first.body),
+      containsPair('pickupLatitude', 16.87),
+    );
+    expect(
+      jsonDecode(parcelRequests.first.body),
+      containsPair('dropLongitude', 81.93),
+    );
+  });
+
+  testWidgets('manual text without map locations cannot submit a parcel', (
+    tester,
+  ) async {
+    var requestCount = 0;
+    CustomerApi.instance = _api((request) async {
+      requestCount++;
+      return _jsonResponse({'data': _bookingJson()}, statusCode: 201);
+    });
+
+    await _pumpParcelPage(tester);
+    await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
+    await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
+    await _enterParcelText(tester, 'Enter parcel weight', '1');
+    await _tapContinue(tester);
+    await tester.tap(find.text('Submit Parcel Request'));
+    await tester.pump();
+
+    expect(find.textContaining('verify the road route'), findsOneWidget);
+    expect(requestCount, 0);
+    expect(find.text('Parcel Request Details'), findsNothing);
   });
 
   testWidgets('saved pickup and drop addresses feed postal coverage checks', (
@@ -283,7 +362,7 @@ void main() {
       'pincode': '533308',
     });
     expect(
-      find.textContaining('does not confirm parcel route serviceability'),
+      find.textContaining('Submission separately checks the road route'),
       findsOneWidget,
     );
   });
@@ -387,18 +466,29 @@ void main() {
   testWidgets('submission shows 401 and never reports a submitted request', (
     tester,
   ) async {
-    CustomerApi.instance = _api(
-      (request) async => _jsonResponse({
+    CustomerApi.instance = _api((request) async {
+      if (request.url.path == '/api/v1/me/addresses') {
+        return _savedAddressResponse();
+      }
+      if (request.url.path == '/api/v1/delivery/serviceability') {
+        return _jsonResponse({
+          'data': {
+            'isDeliverable': true,
+            'message': 'Delivery is available at this location.',
+          },
+        });
+      }
+      return _jsonResponse({
         'error': {
           'code': 'AUTHENTICATION_REQUIRED',
           'message': 'Customer authentication is required to submit a parcel.',
         },
-      }, statusCode: 401),
-    );
+      }, statusCode: 401);
+    });
 
     await _pumpParcelPage(tester);
-    await _enterParcelText(tester, 'Enter pickup location', 'Pickup Road');
-    await _enterParcelText(tester, 'Enter drop location', 'Drop Street');
+    await _chooseSavedAddress(tester, 'parcel-pickup-saved-address');
+    await _chooseSavedAddress(tester, 'parcel-drop-saved-address');
     await _enterParcelText(tester, 'Enter parcel weight', '1');
     await _tapContinue(tester);
     await tester.tap(find.text('Submit Parcel Request'));
@@ -495,7 +585,26 @@ const _validRequest = ApiParcelBookingRequest(
   dropLocation: 'Drop Street',
   parcelType: 'Documents',
   weightKg: 1.25,
+  pickupLatitude: 16.87,
+  pickupLongitude: 81.93,
+  dropLatitude: 16.88,
+  dropLongitude: 81.94,
 );
+
+http.Response _savedAddressResponse() => _jsonResponse({
+  'data': [
+    {
+      'id': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      'label': 'Home',
+      'address_snapshot': {
+        'formattedAddress': '10 Main Road, Sample City',
+        'latitude': 16.87,
+        'longitude': 81.93,
+        'pincode': '533308',
+      },
+    },
+  ],
+});
 
 CustomerApi _api(Future<http.Response> Function(http.Request) handler) {
   return CustomerApi(

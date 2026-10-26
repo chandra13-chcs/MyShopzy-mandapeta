@@ -851,6 +851,10 @@ class ApiParcelBookingRequest {
     required this.dropLocation,
     required this.parcelType,
     required this.weightKg,
+    this.pickupLatitude,
+    this.pickupLongitude,
+    this.dropLatitude,
+    this.dropLongitude,
     this.instructions = '',
   });
 
@@ -866,6 +870,10 @@ class ApiParcelBookingRequest {
   final String dropLocation;
   final String parcelType;
   final double weightKg;
+  final double? pickupLatitude;
+  final double? pickupLongitude;
+  final double? dropLatitude;
+  final double? dropLongitude;
   final String instructions;
 
   String? get validationError {
@@ -884,6 +892,30 @@ class ApiParcelBookingRequest {
     }
     if ((weightKg * 1000 - (weightKg * 1000).round()).abs() > 1e-7) {
       return 'Weight can have up to 3 decimal places.';
+    }
+    if (pickupLatitude == null ||
+        pickupLongitude == null ||
+        dropLatitude == null ||
+        dropLongitude == null) {
+      return 'Choose pickup and drop addresses with map locations before submitting.';
+    }
+    final pickupLatitudeValue = pickupLatitude!;
+    final pickupLongitudeValue = pickupLongitude!;
+    final dropLatitudeValue = dropLatitude!;
+    final dropLongitudeValue = dropLongitude!;
+    if (!pickupLatitudeValue.isFinite ||
+        pickupLatitudeValue < -90 ||
+        pickupLatitudeValue > 90 ||
+        !pickupLongitudeValue.isFinite ||
+        pickupLongitudeValue < -180 ||
+        pickupLongitudeValue > 180 ||
+        !dropLatitudeValue.isFinite ||
+        dropLatitudeValue < -90 ||
+        dropLatitudeValue > 90 ||
+        !dropLongitudeValue.isFinite ||
+        dropLongitudeValue < -180 ||
+        dropLongitudeValue > 180) {
+      return 'Pickup and drop map locations must be valid coordinates.';
     }
     if (instructions.length > 1000) {
       return 'Instructions must be 1000 characters or fewer.';
@@ -1514,6 +1546,10 @@ class CustomerApi {
           'parcelType': request.parcelType,
           'weightKg': request.weightKg,
           'instructions': request.instructions.trim(),
+          'pickupLatitude': request.pickupLatitude,
+          'pickupLongitude': request.pickupLongitude,
+          'dropLatitude': request.dropLatitude,
+          'dropLongitude': request.dropLongitude,
         },
       );
       try {

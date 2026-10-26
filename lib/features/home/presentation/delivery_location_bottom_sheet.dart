@@ -61,9 +61,7 @@ class _DeliveryLocationBottomSheetState
     }
   }
 
-  Future<void> _refreshLocationStatus({
-    bool fetchWhenAvailable = false,
-  }) async {
+  Future<void> _refreshLocationStatus({bool fetchWhenAvailable = false}) async {
     try {
       final serviceEnabled = await _locationService.isLocationServiceEnabled();
       final permission = await _locationService.checkPermission();
@@ -144,8 +142,7 @@ class _DeliveryLocationBottomSheetState
         _isOpeningSettings = false;
         if (mounted) {
           setState(
-            () => _locationError =
-                'Could not open device location settings. Choose your location manually.',
+            () => _locationError = 'Could not open device location settings. Choose your location manually.',
           );
         }
         debugPrint('Unable to open device location settings: $error');
@@ -190,6 +187,7 @@ class _DeliveryLocationBottomSheetState
           icon: Icons.my_location_rounded,
           latitude: location.latitude,
           longitude: location.longitude,
+          pincode: location.pincode,
         ),
       );
     } on ParcelLocationException catch (error) {
@@ -270,8 +268,7 @@ class _DeliveryLocationBottomSheetState
                     TextButton(
                       key: const ValueKey('location-permission-grant'),
                       onPressed:
-                          _isLoadingLocation ||
-                              _locationActionLabel.isEmpty
+                          _isLoadingLocation || _locationActionLabel.isEmpty
                           ? null
                           : _handleLocationAction,
                       style: TextButton.styleFrom(

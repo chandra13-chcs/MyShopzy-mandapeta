@@ -111,6 +111,10 @@ distance/fee fallback is used.
 Configure routing on the backend only with `ROUTING_PROVIDER=google` and
 `ROUTING_API_KEY=<server-side Google Routes API key>`. The `fake` provider is
 available for tests and local development only; production startup rejects it.
+The Flutter web app's development origin is allowed by default only in
+development mode (`http://127.0.0.1:7357`). Set `CUSTOMER_APP_ORIGINS` to a
+comma-separated list of exact HTTPS origins for deployed customer web apps;
+wildcards are rejected.
 Apply migration `015_server_delivery_pricing.sql` before deploying the new
 checkout or parcel routes. Existing shop coordinates are copied from their
 address JSON when possible; shops without coordinates must be updated before

@@ -68,6 +68,25 @@ test('returns the PostgreSQL pincode serviceability contract', async (t) => {
   assert.deepEqual(queriedPincodes, ['533308', '533309']);
 });
 
+test('allows preflight requests from the configured local customer web app', async (t) => {
+  const baseUrl = await startServer(t);
+  const response = await fetch(`${baseUrl}/api/v1/me/parcels`, {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'http://127.0.0.1:7357',
+      'access-control-request-method': 'POST',
+      'access-control-request-headers': 'authorization,content-type',
+    },
+  });
+  assert.equal(response.status, 204);
+  assert.equal(
+    response.headers.get('access-control-allow-origin'),
+    'http://127.0.0.1:7357',
+  );
+  assert.match(response.headers.get('access-control-allow-methods'), /POST/);
+  assert.match(response.headers.get('access-control-allow-headers'), /Authorization/);
+});
+
 test('rejects malformed serviceability requests before database access', async (t) => {
   const baseUrl = await startServer(t, {
     databasePool: {

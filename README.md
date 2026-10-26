@@ -35,6 +35,10 @@ Use an origin reachable from the target:
 - Physical Android over Wi-Fi: use a development backend origin reachable
   from the device over HTTPS. The app rejects non-loopback HTTP URLs.
 
+The VS Code task **Run MyShopzy in Chrome** supplies the local web development
+origin (`http://localhost:3000`). Start the backend separately as described
+below; this task does not start or configure the backend.
+
 Check backend liveness at `/health`; `/health/ready` additionally checks
 PostgreSQL readiness. Start the backend from the repository root with:
 
@@ -47,7 +51,8 @@ npm run dev
 Copy `myshopzy_backend/.env.example` to an untracked `.env` and set local
 PostgreSQL values before expecting database-backed parcel APIs to work. The
 health endpoint can succeed while `/health/ready` reports that PostgreSQL is
-not configured or unavailable.
+not configured or unavailable. Parcel route checks also require the backend-only
+`ROUTING_API_KEY` for Google Routes; the Flutter app must never receive this key.
 
 ### Development-only OTP login
 
@@ -101,15 +106,20 @@ scope reads to the authenticated customer. A successful response is a
 The customer form supports foreground current-location detection and manual
 entry, and can select existing saved addresses. Coordinates and postal codes
 are retained in app state when the selected location provides them. The
-summary can query the shared serviceability endpoint for both postal areas,
-but that endpoint only checks whether each pincode is active; it does not
-validate a parcel route, coordinates against a boundary, or the 50 km limit.
-This check is informational and does not gate request creation.
+backend requires map coordinates for both endpoints, so typed address text
+alone cannot be submitted; use a saved address with coordinates or a location
+source that supplies coordinates. The backend independently asks its
+configured road-routing provider for the pickup-to-drop driving distance. The
+shared serviceability endpoint only checks whether each pincode is active;
+that informational check does not validate a parcel route. The parcel API
+does not enforce the displayed 50 km limit.
 
-The current backend does not define parcel fare rules, a parcel-specific
-serviceability/distance check, cancellation policy, rider assignment/tracking,
-or a parcel delivery-status workflow. No price is quoted, cancellation or
-tracking is offered, and no migration is required for the existing request
-API. If a create request times out or loses its connection, the app prevents
-another submit during that app session and directs the customer to history;
-the backend does not yet provide cross-session idempotency.
+The existing parcel charge rule is ₹25 for up to 2 km, then ₹10 per additional
+km, prorated by metre; the backend computes and stores it when a request is
+submitted, but the app does not quote it before submission. This is not a
+₹12/km rule. The backend still has no parcel-specific 50 km enforcement,
+cancellation policy, rider assignment/tracking, or parcel delivery-status
+workflow. No migration is required for the existing request API. If a create
+request times out or loses its connection, the app prevents another submit
+during that app session and directs the customer to history; the backend does
+not yet provide cross-session idempotency.

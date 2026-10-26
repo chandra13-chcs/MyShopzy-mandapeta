@@ -8,9 +8,13 @@ import 'package:myshopzy/features/checkout/presentation/checkout_page.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
 import 'package:myshopzy/features/parcel/data/parcel_location_service.dart';
 import 'package:myshopzy/features/profile/models/saved_address.dart';
+import 'package:myshopzy/features/profile/data/selected_delivery_address_store.dart';
 import 'package:myshopzy/features/profile/presentation/saved_addresses_page.dart';
 
 void main() {
+  setUp(() => SelectedDeliveryAddressStore.instance.select(null));
+  tearDown(() => SelectedDeliveryAddressStore.instance.select(null));
+
   testWidgets('home location selector shows saved demo addresses and actions', (
     tester,
   ) async {
@@ -261,6 +265,13 @@ void main() {
         positionRequests++;
         return _testPosition;
       },
+      reverseGeocode: (_, _) async => const [
+        Placemark(
+          street: 'Market Street',
+          locality: 'Ravulapalem',
+          postalCode: '533308',
+        ),
+      ],
     );
     await tester.pumpWidget(_homeApp(service));
     await _pumpHome(tester);
@@ -275,6 +286,18 @@ void main() {
     expect(permissionRequests, 1);
     expect(positionRequests, 1);
     expect(find.text('Market Street, Ravulapalem'), findsOneWidget);
+    expect(
+      SelectedDeliveryAddressStore.instance.selectedAddress?.latitude,
+      16.87,
+    );
+    expect(
+      SelectedDeliveryAddressStore.instance.selectedAddress?.longitude,
+      81.95,
+    );
+    expect(
+      SelectedDeliveryAddressStore.instance.selectedAddress?.pincode,
+      '533308',
+    );
   });
 
   testWidgets('disabled GPS is presented separately from denied permission', (

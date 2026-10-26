@@ -18,6 +18,7 @@ import '../../bakery/presentation/bakery_page.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../checkout/presentation/checkout_page.dart';
 import '../../profile/models/saved_address.dart';
+import '../../profile/data/selected_delivery_address_store.dart';
 import '../../profile/presentation/dues_page.dart';
 import '../../profile/presentation/outstanding_dues_banner.dart';
 import '../../profile/presentation/saved_addresses_page.dart';
@@ -1268,14 +1269,27 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
   @override
   void initState() {
     super.initState();
+    _selectedAddress = SelectedDeliveryAddressStore.instance.selectedAddress;
+    SelectedDeliveryAddressStore.instance.listenable.addListener(
+      _handleSharedAddressChanged,
+    );
     WidgetsBinding.instance.addObserver(this);
     unawaited(_refreshCurrentLocation());
   }
 
   @override
   void dispose() {
+    SelectedDeliveryAddressStore.instance.listenable.removeListener(
+      _handleSharedAddressChanged,
+    );
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _handleSharedAddressChanged() {
+    final address = SelectedDeliveryAddressStore.instance.selectedAddress;
+    if (!mounted || address == _selectedAddress) return;
+    setState(() => _selectedAddress = address);
   }
 
   @override
@@ -1342,8 +1356,10 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
           icon: Icons.my_location_rounded,
           latitude: location.latitude,
           longitude: location.longitude,
+          pincode: location.pincode,
         );
       });
+      SelectedDeliveryAddressStore.instance.select(_selectedAddress);
     } on ParcelLocationException catch (error) {
       debugPrint('Unable to fetch home location: ${error.message}');
     } on PlatformException catch (error) {
@@ -1506,18 +1522,16 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
       _isLocationSheetOpen = false;
     }
     if (!mounted || selectedAddress == null) return;
-    setState(() {
-      _selectionRevision++;
-      _selectedAddress = selectedAddress;
-    });
+    _selectionRevision++;
+    SelectedDeliveryAddressStore.instance.select(selectedAddress);
   }
 
   void _selectManualAddress(CheckoutDeliveryAddress address) {
     if (!mounted) return;
-    setState(() {
-      _selectionRevision++;
-      _hasChosenManualLocation = true;
-      _selectedAddress = SavedAddress(
+    _selectionRevision++;
+    _hasChosenManualLocation = true;
+    SelectedDeliveryAddressStore.instance.select(
+      SavedAddress(
         id: 'manual-${address.id}',
         label: address.addressType,
         address: address.formattedAddress,
@@ -1528,8 +1542,12 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
         },
         latitude: address.latitude,
         longitude: address.longitude,
-      );
-    });
+        pincode: address.pincode,
+        receiverName: address.receiverName,
+        receiverMobile: address.receiverMobile,
+        landmark: address.landmark,
+      ),
+    );
   }
 }
 
@@ -2970,6 +2988,16 @@ class _Service {
     'grocery' || 'other' || 'local_stores' => 5,
     _ => 6,
   };
+
+  Color get tileColor => switch (partnerType ?? key) {
+    'restaurant' || 'restaurants' => const Color(0xFFE1F2E4),
+    'bakery' => const Color(0xFFFFE8D9),
+    'meat_shop' || 'meat_only_chicken' => const Color(0xFFEDE5FA),
+    'vegetables_fruits' || 'fruits_vegetables' => const Color(0xFFFBE4EC),
+    'parcel' => const Color(0xFFFFF1D5),
+    'grocery' || 'other' || 'local_stores' => const Color(0xFFE2EFF9),
+    _ => const Color(0xFFE2EFF9),
+  };
 }
 
 const _demoHomeServices = [
@@ -3053,9 +3081,9 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
               itemCount: 6,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                childAspectRatio: 1.15,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 0.85,
               ),
               itemBuilder: (context, index) =>
                   const SkeletonBox(height: 110, radius: 12),
@@ -3114,7 +3142,7 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
           builder: (context, constraints) {
             const crossAxisCount = 3;
             final tileWidth =
-                (constraints.maxWidth - 8 * (crossAxisCount - 1)) /
+                (constraints.maxWidth - 12 * (crossAxisCount - 1)) /
                 crossAxisCount;
             return GridView.builder(
               shrinkWrap: true,
@@ -3122,9 +3150,9 @@ class _HomeServiceGridState extends State<_HomeServiceGrid> {
               itemCount: services.length,
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: crossAxisCount,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-                childAspectRatio: 1.15,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 0.85,
               ),
               itemBuilder: (context, index) {
                 final service = services[index];
@@ -3177,8 +3205,6 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
     final animationDuration = reduceAnimations
         ? Duration.zero
         : const Duration(milliseconds: 150);
-    final blur = _pressed ? 12.0 : 10.0;
-
     return Listener(
       behavior: HitTestBehavior.deferToChild,
       onPointerDown: (_) => _setPressed(true),
@@ -3192,86 +3218,59 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
         onTapCancel: () => _setPressed(false),
         onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _pressed && !reduceAnimations ? 0.95 : 1,
+          scale: _pressed && !reduceAnimations ? 0.94 : 1,
           duration: animationDuration,
-          curve: Curves.easeInOut,
-          child: Container(
-            key: ValueKey('home-category-tile-${widget.service.key}'),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.06),
-                  blurRadius: 16,
-                  offset: Offset(0, 6),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
-              child: TweenAnimationBuilder<double>(
-                tween: Tween<double>(end: blur),
-                duration: reduceAnimations
-                    ? Duration.zero
-                    : const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                builder: (context, sigma, child) => BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                  child: child,
-                ),
-                child: AnimatedContainer(
-                  key: ValueKey('home-category-glass-${widget.service.key}'),
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(
-                      alpha: _pressed ? 0.76 : 0.65,
-                    ),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: Colors.white.withValues(
-                        alpha: _pressed ? 0.8 : 0.5,
+          curve: Curves.easeOutCubic,
+          child: AnimatedOpacity(
+            key: ValueKey('home-category-opacity-${widget.service.key}'),
+            opacity: _pressed ? 0.85 : 1,
+            duration: animationDuration,
+            child: Container(
+              key: ValueKey('home-category-tile-${widget.service.key}'),
+              decoration: BoxDecoration(
+                color: widget.service.tileColor,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Image.asset(
+                        key: ValueKey(
+                          'home-category-image-${widget.service.key}',
+                        ),
+                        widget.service.assetPath,
+                        width: double.infinity,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        cacheWidth: widget.cacheWidth,
+                        semanticLabel: widget.service.tileLabel,
                       ),
-                      width: 1.2,
                     ),
                   ),
-                  padding: const EdgeInsets.all(8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-                          child: Image.asset(
-                            key: ValueKey(
-                              'home-category-image-${widget.service.key}',
-                            ),
-                            widget.service.assetPath,
-                            width: double.infinity,
-                            fit: BoxFit.contain,
-                            cacheWidth: widget.cacheWidth,
-                            semanticLabel: widget.service.name,
-                          ),
-                        ),
+                  if (widget.service.partnerType == null)
+                    Text(
+                      widget.service.tileLabel,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
-                      if (widget.service.partnerType == null)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
-                          child: Text(
-                            widget.service.tileLabel,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.black87,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+                    ),
+                ],
               ),
             ),
           ),

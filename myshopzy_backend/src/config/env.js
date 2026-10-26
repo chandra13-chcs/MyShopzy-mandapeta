@@ -21,6 +21,7 @@ function parsePositiveIntegerEnv(env, name, fallback) {
 
 function loadConfig(env = process.env) {
   const rawPort = env.PORT || '3000';
+  const nodeEnv = env.NODE_ENV || 'development';
   const port = Number(rawPort);
 
   if (!/^\d+$/.test(rawPort) || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -158,6 +159,37 @@ function loadConfig(env = process.env) {
   const normalizedPartnerPortalOrigins = [
     ...new Set(partnerPortalOrigins.map((origin) => new URL(origin).origin)),
   ];
+  const customerAppOrigins = (
+    env.CUSTOMER_APP_ORIGINS?.trim() ||
+    (nodeEnv === 'development' ? 'http://127.0.0.1:7357' : '')
+  )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  for (const configuredOrigin of customerAppOrigins) {
+    let origin;
+    try {
+      origin = new URL(configuredOrigin);
+    } catch {
+      throw new Error(
+        'CUSTOMER_APP_ORIGINS must contain HTTPS origins or HTTP localhost origins.',
+      );
+    }
+    if (
+      configuredOrigin === '*' ||
+      origin.origin !== configuredOrigin.replace(/\/+$/, '') ||
+      (origin.protocol !== 'https:' &&
+        !(origin.protocol === 'http:' &&
+          ['localhost', '127.0.0.1'].includes(origin.hostname)))
+    ) {
+      throw new Error(
+        'CUSTOMER_APP_ORIGINS must contain HTTPS origins or HTTP localhost origins.',
+      );
+    }
+  }
+  const normalizedCustomerAppOrigins = [
+    ...new Set(customerAppOrigins.map((origin) => new URL(origin).origin)),
+  ];
 
   if (auth0AdminUserIdClaim) {
     if (!auth0IssuerUrl || !auth0Audience || !normalizedSuperAdminOrigin) {
@@ -249,7 +281,7 @@ function loadConfig(env = process.env) {
 
   return Object.freeze({
     port,
-    nodeEnv: env.NODE_ENV || 'development',
+    nodeEnv,
     database,
     googleMapsApiKey: env.GOOGLE_MAPS_API_KEY?.trim() || null,
     routingProvider,
@@ -266,6 +298,7 @@ function loadConfig(env = process.env) {
     auth0Partner,
     superAdminOrigin: normalizedSuperAdminOrigin,
     partnerPortalOrigins: Object.freeze(normalizedPartnerPortalOrigins),
+    customerAppOrigins: Object.freeze(normalizedCustomerAppOrigins),
   });
 }
 

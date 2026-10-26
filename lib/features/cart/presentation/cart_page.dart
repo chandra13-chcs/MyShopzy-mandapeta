@@ -15,7 +15,9 @@ import '../data/cart_store.dart';
 import '../../product_details/data/product_availability_store.dart';
 
 class CartPage extends StatefulWidget {
-  const CartPage({super.key});
+  const CartPage({super.key, this.onContinueShopping});
+
+  final VoidCallback? onContinueShopping;
 
   @override
   State<CartPage> createState() => _CartPageState();
@@ -270,6 +272,8 @@ class _CartPageState extends State<CartPage> {
             ),
             const SizedBox(height: 12),
           ],
+          const SizedBox(height: 8),
+          Center(child: _buildContinueShoppingButton(context)),
           const SizedBox(height: 8),
           _buildOrderSummary(),
         ],
@@ -652,25 +656,28 @@ class _CartPageState extends State<CartPage> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  OutlinedButton(
-                    onPressed: () =>
-                        Navigator.of(context)
-                            .popUntil((route) => route.isFirst),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _green,
-                      side: const BorderSide(color: _green),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    child: const Text('Continue Shopping'),
-                  ),
+                  _buildContinueShoppingButton(context),
                 ],
               ),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildContinueShoppingButton(BuildContext context) {
+    return OutlinedButton(
+      key: const ValueKey('cart-continue-shopping'),
+      onPressed:
+          widget.onContinueShopping ??
+          () => Navigator.of(context).popUntil((route) => route.isFirst),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _green,
+        side: const BorderSide(color: _green),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      child: const Text('Continue Shopping'),
     );
   }
 
