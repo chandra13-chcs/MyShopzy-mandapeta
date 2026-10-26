@@ -89,7 +89,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      body: !CustomerApi.instance.hasCustomerSession
+      body: !CustomerApi.instance.canAccessCustomerFeatures
           ? const Center(
               child: Padding(
                 padding: EdgeInsets.all(28),
@@ -106,7 +106,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ? _buildLoadError()
           : _buildForm(),
       bottomNavigationBar:
-          !CustomerApi.instance.hasCustomerSession ||
+          !CustomerApi.instance.canAccessCustomerFeatures ||
               _loading ||
               _loadError != null
           ? null

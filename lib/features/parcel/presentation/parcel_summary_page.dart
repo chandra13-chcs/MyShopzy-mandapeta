@@ -71,7 +71,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _page,
-      body: !CustomerApi.instance.hasCustomerSession
+      body: !CustomerApi.instance.canAccessCustomerFeatures
           ? const Center(
               child: Padding(
                 padding: EdgeInsets.all(28),

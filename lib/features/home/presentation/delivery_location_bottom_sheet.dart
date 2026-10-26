@@ -346,7 +346,7 @@ class _DeliveryLocationBottomSheetState
                   ),
                   TextButton(
                     key: const ValueKey('location-view-all'),
-                    onPressed: CustomerApi.instance.hasCustomerSession
+                    onPressed: CustomerApi.instance.canAccessCustomerFeatures
                         ? widget.onViewAll
                         : null,
                     style: TextButton.styleFrom(
@@ -368,7 +368,7 @@ class _DeliveryLocationBottomSheetState
               const SizedBox(height: 7),
               if (_loadingSavedAddresses)
                 const LinearProgressIndicator()
-              else if (!CustomerApi.instance.hasCustomerSession)
+              else if (!CustomerApi.instance.canAccessCustomerFeatures)
                 const Text(
                   'Sign in to access saved addresses.',
                   style: TextStyle(color: AppTheme.secondaryText),

@@ -175,7 +175,7 @@ class _CartPageState extends State<CartPage> {
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
-      body: !CustomerApi.instance.hasCustomerSession
+      body: !CustomerApi.instance.canAccessCustomerFeatures
           ? const Center(
               child: Padding(
                 padding: EdgeInsets.all(28),
@@ -207,7 +207,7 @@ class _CartPageState extends State<CartPage> {
                 return _buildEmptyState(context);
               },
             ),
-      bottomNavigationBar: !CustomerApi.instance.hasCustomerSession
+      bottomNavigationBar: !CustomerApi.instance.canAccessCustomerFeatures
           ? const SizedBox.shrink()
           : AnimatedBuilder(
               animation: _cartStore,

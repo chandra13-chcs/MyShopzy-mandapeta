@@ -105,7 +105,7 @@ class _ProfilePageState extends State<ProfilePage> {
       ]),
       builder: (context, child) => Scaffold(
         backgroundColor: _background,
-        body: !CustomerApi.instance.hasCustomerSession
+        body: !CustomerApi.instance.canAccessCustomerFeatures
             ? const Center(
                 child: Padding(
                   padding: EdgeInsets.all(28),

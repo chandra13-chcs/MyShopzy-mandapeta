@@ -55,10 +55,14 @@ not configured or unavailable. Parcel route checks also require the backend-only
 
 Restaurant and grocery/local-store shops, their categories and products remain
 public catalog reads. If catalog requests fail, the existing demo catalog
-remains visible and is labeled as demo data. Cart, checkout, order placement,
-payments, parcel booking/history, order history, and saved-address features
-require customer authentication and are unavailable while no valid customer
-session is available. The app does not provide customer login or OTP yet.
+remains visible and is labeled as demo data. In debug builds, customer screens
+are available as a UI preview without signing in. The preview does not create a
+customer session or provide backend data. Cart synchronization, checkout,
+order placement, payments, parcel booking/history, order history, and
+saved-address requests still require a real customer session and remain
+protected by backend authorization. Release builds continue to require
+customer authentication to open customer screens. The app does not provide
+customer login or OTP yet.
 
 The backend rejects unauthenticated customer API requests. Cart and checkout
 also fail closed for authenticated requests until cart ownership can be tied to

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../features/product_details/models/product_variant.dart';
@@ -997,13 +998,18 @@ class CustomerApi {
     required String baseUrl,
     http.Client? httpClient,
     this.timeout = const Duration(seconds: 10),
+    this.enableDevelopmentPreview = false,
   }) : _baseUrl = baseUrl.trim().replaceFirst(RegExp(r'/+$'), ''),
        _httpClient = httpClient ?? http.Client();
 
-  factory CustomerApi.fromEnvironment({http.Client? httpClient}) {
+  factory CustomerApi.fromEnvironment({
+    http.Client? httpClient,
+    bool enableDevelopmentPreview = false,
+  }) {
     return CustomerApi(
       baseUrl: const String.fromEnvironment('MYSHOPZY_API_BASE_URL'),
       httpClient: httpClient,
+      enableDevelopmentPreview: enableDevelopmentPreview,
     );
   }
 
@@ -1012,6 +1018,7 @@ class CustomerApi {
   final String _baseUrl;
   final http.Client _httpClient;
   final Duration timeout;
+  final bool enableDevelopmentPreview;
   String? _cartToken;
   Future<void>? _cartInitialization;
   bool _orderOutcomeUnknown = false;
@@ -1021,6 +1028,9 @@ class CustomerApi {
   bool get isConfigured => _baseUrl.isNotEmpty;
   bool get hasCartToken => _cartToken != null;
   bool get hasCustomerSession => _customerAccessToken != null;
+  // Preview access never changes the session required by customer API calls.
+  bool get canAccessCustomerFeatures =>
+      hasCustomerSession || (kDebugMode && enableDevelopmentPreview);
   bool get orderOutcomeUnknown => _orderOutcomeUnknown;
   bool get parcelOutcomeUnknown => _parcelOutcomeUnknown;
   CustomerApiException get _unknownOrderOutcomeException =>

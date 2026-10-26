@@ -25,6 +25,32 @@ void main() {
     CustomerApi.instance = CustomerApi(baseUrl: '');
   });
 
+  testWidgets('debug preview opens order history without a session', (
+    tester,
+  ) async {
+    CustomerApi.instance = CustomerApi(
+      baseUrl: '',
+      enableDevelopmentPreview: true,
+    );
+
+    await tester.pumpWidget(const MaterialApp(home: OrdersPage()));
+    await tester.pumpAndSettle();
+
+    expect(CustomerApi.instance.hasCustomerSession, isFalse);
+    expect(find.text('Sign in to access your order history.'), findsNothing);
+    expect(find.text('No orders yet'), findsOneWidget);
+    await expectLater(
+      CustomerApi.instance.getOrders(),
+      throwsA(
+        isA<CustomerApiException>().having(
+          (error) => error.code,
+          'code',
+          'AUTHENTICATION_REQUIRED',
+        ),
+      ),
+    );
+  });
+
   testWidgets('renders the variant label saved in the order snapshot', (
     tester,
   ) async {

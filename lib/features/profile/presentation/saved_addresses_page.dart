@@ -75,7 +75,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final backendMode = CustomerApi.instance.hasCustomerSession;
+    final hasCustomerAccess = CustomerApi.instance.canAccessCustomerFeatures;
     return Scaffold(
       backgroundColor: SavedAddressesPage._background,
       appBar: AppBar(
@@ -88,7 +88,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
         ),
       ),
       body: SafeArea(
-        child: !backendMode
+        child: !hasCustomerAccess
             ? const Center(
                 child: Padding(
                   padding: EdgeInsets.all(28),

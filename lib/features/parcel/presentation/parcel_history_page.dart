@@ -93,7 +93,7 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
   }
 
   Widget _buildBody() {
-    if (!CustomerApi.instance.hasCustomerSession) {
+    if (!CustomerApi.instance.canAccessCustomerFeatures) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(28),

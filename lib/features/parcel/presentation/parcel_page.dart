@@ -76,7 +76,7 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _page,
-      body: !CustomerApi.instance.hasCustomerSession
+      body: !CustomerApi.instance.canAccessCustomerFeatures
           ? const Center(
               child: Padding(
                 padding: EdgeInsets.all(28),
@@ -235,7 +235,7 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
                   ),
                 ),
               ),
-              if (CustomerApi.instance.hasCustomerSession)
+              if (CustomerApi.instance.canAccessCustomerFeatures)
                 TextButton.icon(
                   key: const ValueKey('parcel-pickup-saved-address'),
                   onPressed: _loadingSavedAddresses
@@ -313,7 +313,7 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
             _dropPincode = null;
           },
         ),
-        if (CustomerApi.instance.hasCustomerSession)
+        if (CustomerApi.instance.canAccessCustomerFeatures)
           Padding(
             padding: const EdgeInsets.only(left: 28, top: 4),
             child: TextButton.icon(
