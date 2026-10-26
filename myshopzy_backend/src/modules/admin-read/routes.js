@@ -150,7 +150,7 @@ function createAdminReadRouter({
 }) {
   const router = express.Router();
   router.use(requestIdMiddleware);
-  router.use(requireAdminAuthentication(authenticateAdmin));
+  router.use('/admin', requireAdminAuthentication(authenticateAdmin));
 
   router.get('/admin/catalog/category-commission-totals', async (req, res, next) => {
     try {

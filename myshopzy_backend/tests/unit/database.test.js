@@ -97,6 +97,22 @@ test('keeps liveness compatible and readiness reports no internal details', asyn
   assert.deepEqual(await readinessResponse.json(), { status: 'not_ready' });
 });
 
+test('root endpoint identifies the API and points to its health and API base', async (t) => {
+  const server = http.createServer(createApp());
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    service: 'MyShopzy API',
+    status: 'ok',
+    health: '/health',
+    apiBase: '/api/v1',
+  });
+});
+
 test('readiness succeeds when the mocked database query succeeds', async (t) => {
   const databasePool = { query: async () => ({ rows: [{ '?column?': 1 }] }) };
   const server = http.createServer(createApp({ databasePool }));

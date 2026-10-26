@@ -88,6 +88,83 @@ test('lists active dynamic partner categories from PostgreSQL', async (t) => {
   assert.deepEqual(calls[0].params, []);
 });
 
+test('keeps public catalog and API base accessible while protecting admin routes', async (t) => {
+  const databasePool = {
+    async query(sql) {
+      if (sql.includes('LEFT JOIN app.categories')) {
+        return {
+          rows: [
+            {
+              id: '7512bb41-8bcb-4237-996e-eb54635b5b74',
+              shop_id: '57a85a0c-7081-4eb7-9c13-4b9842216b54',
+              name: 'Pantry',
+            },
+          ],
+        };
+      }
+      if (sql.includes('WHERE pr.id = $1')) {
+        return {
+          rows: [
+            {
+              id: '40000000-0000-4000-8000-000000000007',
+              name: 'Product',
+              operating_details: {},
+              timezone: 'Asia/Kolkata',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  };
+  const baseUrl = await startTestServer(t, databasePool, {
+    authenticateAdmin: (_req, _res, next) => next(),
+  });
+
+  const apiBaseResponse = await fetch(`${baseUrl}/api/v1`);
+  const categoriesResponse = await fetch(
+    `${baseUrl}/api/v1/partner-categories`,
+  );
+  const shopsResponse = await fetch(`${baseUrl}/api/v1/shops`);
+  const productsResponse = await fetch(`${baseUrl}/api/v1/products`);
+  const shopCategoriesResponse = await fetch(
+    `${baseUrl}/api/v1/shops/57a85a0c-7081-4eb7-9c13-4b9842216b54/categories`,
+  );
+  const productDetailsResponse = await fetch(
+    `${baseUrl}/api/v1/products/40000000-0000-4000-8000-000000000007`,
+  );
+  const adminResponse = await fetch(`${baseUrl}/api/v1/admin/dues`);
+
+  assert.equal(apiBaseResponse.status, 200);
+  assert.deepEqual(await apiBaseResponse.json(), {
+    service: 'MyShopzy API',
+    version: 'v1',
+    status: 'ok',
+    endpoints: {
+      partnerCategories: '/api/v1/partner-categories',
+      shops: '/api/v1/shops',
+      shopCategories: '/api/v1/shops/:shopId/categories',
+      products: '/api/v1/products',
+      productDetails: '/api/v1/products/:productId',
+    },
+  });
+  assert.equal(categoriesResponse.status, 200);
+  assert.equal(shopsResponse.status, 200);
+  assert.equal(productsResponse.status, 200);
+  assert.equal(shopCategoriesResponse.status, 200);
+  assert.equal(productDetailsResponse.status, 200);
+  assert.equal(adminResponse.status, 401);
+  const adminBody = await adminResponse.json();
+  assert.deepEqual(adminBody.error, {
+    code: 'AUTHENTICATION_REQUIRED',
+    message: 'Admin authentication is required.',
+  });
+  assert.equal(
+    adminBody.meta.requestId,
+    adminResponse.headers.get('x-request-id'),
+  );
+});
+
 test('searches catalog products with parameterized filters and pagination', async (t) => {
   const calls = [];
   const databasePool = {

@@ -46,6 +46,15 @@ function createApp({
 
   app.use(express.json({ limit: '16kb' }));
 
+  app.get('/', (req, res) => {
+    res.status(200).json({
+      service: 'MyShopzy API',
+      status: 'ok',
+      health: '/health',
+      apiBase: '/api/v1',
+    });
+  });
+
   app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
   });
@@ -69,6 +78,21 @@ function createApp({
     res.vary('Origin');
     if (req.method === 'OPTIONS') return res.status(204).end();
     return next();
+  });
+
+  app.get('/api/v1', (req, res) => {
+    res.status(200).json({
+      service: 'MyShopzy API',
+      version: 'v1',
+      status: 'ok',
+      endpoints: {
+        partnerCategories: '/api/v1/partner-categories',
+        shops: '/api/v1/shops',
+        shopCategories: '/api/v1/shops/:shopId/categories',
+        products: '/api/v1/products',
+        productDetails: '/api/v1/products/:productId',
+      },
+    });
   });
 
   app.use(
