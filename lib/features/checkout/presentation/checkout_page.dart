@@ -35,6 +35,8 @@ class CheckoutPage extends StatefulWidget {
 }
 
 class _CheckoutPageState extends State<CheckoutPage> {
+  static int _activeCheckoutPageCount = 0;
+
   static const _background = AppTheme.lightBackground;
   static const _green = AppTheme.primaryGreen;
   static const _lightGreen = AppTheme.lightBackground;
@@ -45,7 +47,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
   // The backend checks the confirmed destination, not an inferred buyer GPS.
   static const _demoDeliveryChargeInPaise = 3000;
   final _cartStore = CartStore.instance;
-  final _orderSuccessPlayer = AudioPlayer();
+  final _checkoutPlayer = AudioPlayer();
+  bool _registeredAsActive = false;
   final _locationService = ParcelLocationService();
   ApiCartQuote? _backendQuote;
   String? _quoteError;
@@ -143,6 +146,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   @override
   void initState() {
     super.initState();
+    _registerActiveCheckoutPage();
     final selectedAddress =
         SelectedDeliveryAddressStore.instance.selectedAddress;
     if (selectedAddress != null &&
@@ -244,6 +248,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   @override
   void dispose() {
+    _unregisterActiveCheckoutPage();
     _cartStore.removeListener(_handleCartChanged);
     _couponCodeController.dispose();
     _receiverNameController.dispose();
@@ -259,15 +264,27 @@ class _CheckoutPageState extends State<CheckoutPage> {
     _newAddressLatitudeController.dispose();
     _newAddressLongitudeController.dispose();
     _newAddressLandmarkController.dispose();
-    unawaited(_orderSuccessPlayer.dispose());
+    unawaited(_checkoutPlayer.dispose());
     super.dispose();
   }
 
-  Future<void> _playOrderSuccessSound() async {
+  void _registerActiveCheckoutPage() {
+    if (_registeredAsActive) return;
+    _registeredAsActive = true;
+    if (_activeCheckoutPageCount++ == 0) unawaited(_playCheckoutSound());
+  }
+
+  void _unregisterActiveCheckoutPage() {
+    if (!_registeredAsActive) return;
+    _registeredAsActive = false;
+    _activeCheckoutPageCount--;
+  }
+
+  Future<void> _playCheckoutSound() async {
     try {
-      await _orderSuccessPlayer.play(AssetSource('sounds/order_success.wav'));
+      await _checkoutPlayer.play(AssetSource('audio/checkout and payment.mp3'));
     } catch (error) {
-      debugPrint('Order success sound playback failed: $error');
+      debugPrint('Checkout sound playback failed: $error');
     }
   }
 
@@ -2036,7 +2053,6 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final order = await CustomerApi.instance.placeOrder(deliveryAddress);
       if (!mounted) return;
       HapticFeedback.mediumImpact();
-      unawaited(_playOrderSuccessSound());
       final confirmedOrder = OrderRecord(
         storeName: _cartStore.items.first.merchantId ?? 'MyShopzy Store',
         icon: _cartStore.items.first.icon,
@@ -2070,7 +2086,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
         deliveryAddress: address.formattedAddress,
         deliveryAddressLabel: address.addressType,
         paymentMethod: _selectedPaymentMethod,
-        paymentStatus: 'Pending',
+        paymentStatus: order.paymentStatus ?? 'Pending',
+        paymentVerified: order.paymentVerified,
         deliveryChargeInPaise: order.deliveryFeeMinor,
         discountInPaise: order.discountMinor,
         trackingStatus: OrderTrackingStatus.orderPlaced,

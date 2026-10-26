@@ -33,7 +33,10 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
             onMainTabSelected: _selectTab,
           ),
           CategoriesPage(onMainTabSelected: _selectTab),
-          CartPage(onContinueShopping: () => _selectTab(0)),
+          CartPage(
+            onContinueShopping: () => _selectTab(0),
+            isActive: _currentIndex == 2,
+          ),
           const OrdersPage(),
           ProfilePage(onMainTabSelected: _selectTab),
         ],

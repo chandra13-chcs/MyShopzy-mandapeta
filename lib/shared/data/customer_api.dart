@@ -523,6 +523,8 @@ class ApiOrderResult {
     required this.discountMinor,
     required this.totalMinor,
     required this.itemCount,
+    this.paymentStatus,
+    this.paymentVerified = false,
   });
 
   final String orderId;
@@ -533,12 +535,19 @@ class ApiOrderResult {
   final int discountMinor;
   final int totalMinor;
   final int itemCount;
+  final String? paymentStatus;
+  final bool paymentVerified;
 
   factory ApiOrderResult.fromJson(Map<String, dynamic> json) {
     final status = _requiredString(json, 'status');
     if (status != 'placed') {
       throw const FormatException('Invalid order status.');
     }
+    final rawPaymentVerified = json['paymentVerified'];
+    if (rawPaymentVerified != null && rawPaymentVerified is! bool) {
+      throw const FormatException('Invalid payment verification result.');
+    }
+    final paymentStatus = _optionalString(json['paymentStatus']);
     return ApiOrderResult(
       orderId: _requiredString(json, 'orderId'),
       status: status,
@@ -548,6 +557,15 @@ class ApiOrderResult {
       discountMinor: _requiredMinor(json, 'discountMinor'),
       totalMinor: _requiredMinor(json, 'totalMinor'),
       itemCount: _requiredInteger(json, 'items', minimum: 1),
+      paymentStatus: paymentStatus,
+      paymentVerified:
+          rawPaymentVerified == true &&
+          const {
+            'paid',
+            'success',
+            'successful',
+            'succeeded',
+          }.contains(paymentStatus?.trim().toLowerCase()),
     );
   }
 }

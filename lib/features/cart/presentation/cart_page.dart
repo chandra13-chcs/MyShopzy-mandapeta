@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
@@ -15,15 +18,18 @@ import '../data/cart_store.dart';
 import '../../product_details/data/product_availability_store.dart';
 
 class CartPage extends StatefulWidget {
-  const CartPage({super.key, this.onContinueShopping});
+  const CartPage({super.key, this.onContinueShopping, this.isActive = true});
 
   final VoidCallback? onContinueShopping;
+  final bool isActive;
 
   @override
   State<CartPage> createState() => _CartPageState();
 }
 
 class _CartPageState extends State<CartPage> {
+  static int _activeCartPageCount = 0;
+
   static const _background = AppTheme.lightBackground;
   static const _green = AppTheme.primaryGreen;
   static const _lightGreen = AppTheme.lightBackground;
@@ -32,6 +38,8 @@ class _CartPageState extends State<CartPage> {
   static const _border = Color(0xFFE7EAE8);
 
   final _cartStore = CartStore.instance;
+  final _cartOpenPlayer = AudioPlayer();
+  bool _registeredAsActive = false;
   bool _loadingBackendCart = false;
   String? _cartLoadError;
   bool _cartOfflineError = false;
@@ -48,11 +56,49 @@ class _CartPageState extends State<CartPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.isActive) _registerActiveCartPage();
     if (CustomerApi.instance.hasCustomerSession) {
       Future<void>.delayed(Duration.zero, _refreshDues);
     }
     if (CustomerApi.instance.hasCustomerSession) {
       Future<void>.delayed(Duration.zero, _refreshBackendCart);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant CartPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.isActive && widget.isActive) {
+      _registerActiveCartPage();
+    } else if (oldWidget.isActive && !widget.isActive) {
+      _unregisterActiveCartPage();
+    }
+  }
+
+  @override
+  void dispose() {
+    _unregisterActiveCartPage();
+    unawaited(_cartOpenPlayer.dispose());
+    super.dispose();
+  }
+
+  void _registerActiveCartPage() {
+    if (_registeredAsActive) return;
+    _registeredAsActive = true;
+    if (_activeCartPageCount++ == 0) unawaited(_playCartOpenSound());
+  }
+
+  void _unregisterActiveCartPage() {
+    if (!_registeredAsActive) return;
+    _registeredAsActive = false;
+    _activeCartPageCount--;
+  }
+
+  Future<void> _playCartOpenSound() async {
+    try {
+      await _cartOpenPlayer.play(AssetSource('audio/checkout and payment.mp3'));
+    } catch (error) {
+      debugPrint('Cart open sound playback failed: $error');
     }
   }
 

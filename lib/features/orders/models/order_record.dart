@@ -55,6 +55,7 @@ class OrderRecord {
     required this.paymentStatus,
     required this.deliveryChargeInPaise,
     required this.discountInPaise,
+    this.paymentVerified = false,
     this.trackingStatus,
     this.deliveryOtp,
     this.cancellationReason,
@@ -78,6 +79,7 @@ class OrderRecord {
   final String deliveryAddressLabel;
   final String paymentMethod;
   final String paymentStatus;
+  final bool paymentVerified;
   final int deliveryChargeInPaise;
   final int discountInPaise;
   String status;
@@ -92,6 +94,25 @@ class OrderRecord {
   final bool cancellationEligible;
   final String? cancellationDeadlineAt;
   final String? serverNow;
+
+  bool get isVerifiedSuccessfulPayment {
+    final orderState = status.trim().toLowerCase();
+    final paymentState = paymentStatus.trim().toLowerCase();
+    return isBackendData &&
+        paymentVerified &&
+        const {
+          'placed',
+          'confirmed',
+          'order placed',
+          'order confirmed',
+        }.contains(orderState) &&
+        const {
+          'paid',
+          'success',
+          'successful',
+          'succeeded',
+        }.contains(paymentState);
+  }
 
   bool get canCustomerCancel =>
       orderTab == OrdersTab.ongoing &&

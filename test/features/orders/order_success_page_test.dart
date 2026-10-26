@@ -5,8 +5,72 @@ import 'package:myshopzy/features/orders/models/order_record.dart';
 import 'package:myshopzy/features/orders/presentation/order_details_page.dart';
 import 'package:myshopzy/features/orders/presentation/order_success_page.dart';
 import 'package:myshopzy/features/orders/presentation/order_tracking_page.dart';
+import 'package:myshopzy/shared/data/customer_api.dart';
 
 void main() {
+  test('order API only marks an explicit verified successful payment', () {
+    final baseOrder = {
+      'orderId': 'ORDER-123',
+      'status': 'placed',
+      'currency': 'INR',
+      'itemSubtotalMinor': 7000,
+      'deliveryFeeMinor': 3000,
+      'discountMinor': 0,
+      'totalMinor': 10000,
+      'items': 1,
+    };
+
+    expect(ApiOrderResult.fromJson(baseOrder).paymentVerified, isFalse);
+    expect(
+      ApiOrderResult.fromJson({
+        ...baseOrder,
+        'paymentStatus': 'pending',
+        'paymentVerified': true,
+      }).paymentVerified,
+      isFalse,
+    );
+    expect(
+      ApiOrderResult.fromJson({
+        ...baseOrder,
+        'paymentStatus': 'paid',
+        'paymentVerified': true,
+      }).paymentVerified,
+      isTrue,
+    );
+  });
+
+  test('verified success sound requires a verified backend payment', () {
+    expect(_confirmedOrder().isVerifiedSuccessfulPayment, isFalse);
+    expect(
+      _confirmedOrder(paymentStatus: 'Paid').isVerifiedSuccessfulPayment,
+      isFalse,
+    );
+    expect(
+      _confirmedOrder(
+        paymentStatus: 'Paid',
+        paymentVerified: true,
+      ).isVerifiedSuccessfulPayment,
+      isFalse,
+    );
+    expect(
+      _confirmedOrder(
+        paymentStatus: 'Paid',
+        paymentVerified: true,
+        isBackendData: true,
+      ).isVerifiedSuccessfulPayment,
+      isTrue,
+    );
+    expect(
+      _confirmedOrder(
+        status: 'Cancelled',
+        paymentStatus: 'Paid',
+        paymentVerified: true,
+        isBackendData: true,
+      ).isVerifiedSuccessfulPayment,
+      isFalse,
+    );
+  });
+
   testWidgets('success screen uses the confirmed record and opens details', (
     tester,
   ) async {
@@ -43,14 +107,19 @@ void main() {
   });
 }
 
-OrderRecord _confirmedOrder() => OrderRecord(
+OrderRecord _confirmedOrder({
+  String status = 'Order Placed',
+  String paymentStatus = 'Pending',
+  bool paymentVerified = false,
+  bool isBackendData = false,
+}) => OrderRecord(
   storeName: 'Demo Store',
   icon: Icons.storefront_outlined,
   orderId: 'ORDER-123',
   dateTime: 'Today',
   itemSummary: '1 item · Demo item',
   totalInPaise: 10000,
-  status: 'Order Placed',
+  status: status,
   statusMessage: 'Order accepted',
   orderTab: OrdersTab.ongoing,
   serviceType: 'Local Store',
@@ -64,8 +133,10 @@ OrderRecord _confirmedOrder() => OrderRecord(
   ],
   deliveryAddress: 'Home · Demo Address',
   paymentMethod: 'Cash on Delivery',
-  paymentStatus: 'Pending',
+  paymentStatus: paymentStatus,
+  paymentVerified: paymentVerified,
   deliveryChargeInPaise: 3000,
   discountInPaise: 0,
   trackingStatus: OrderTrackingStatus.orderPlaced,
+  isBackendData: isBackendData,
 );

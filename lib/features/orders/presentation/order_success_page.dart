@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/main_navigation_shell.dart';
@@ -7,21 +10,56 @@ import '../models/order_record.dart';
 import 'order_details_page.dart';
 import 'order_tracking_page.dart';
 
-class OrderSuccessPage extends StatelessWidget {
+class OrderSuccessPage extends StatefulWidget {
   const OrderSuccessPage({required this.confirmedOrder, super.key});
 
   final OrderRecord confirmedOrder;
 
+  @override
+  State<OrderSuccessPage> createState() => _OrderSuccessPageState();
+}
+
+class _OrderSuccessPageState extends State<OrderSuccessPage> {
+  static final _playedVerifiedOrderIds = <String>{};
+  final _successPlayer = AudioPlayer();
+
+  @override
+  void initState() {
+    super.initState();
+    final order = widget.confirmedOrder;
+    if (order.isVerifiedSuccessfulPayment &&
+        _playedVerifiedOrderIds.add(order.orderId)) {
+      unawaited(_playOrderSuccessSound());
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_successPlayer.dispose());
+    super.dispose();
+  }
+
+  Future<void> _playOrderSuccessSound() async {
+    try {
+      await _successPlayer.play(
+        AssetSource('audio/order successful souds.mp3'),
+      );
+    } catch (error) {
+      debugPrint('Order success sound playback failed: $error');
+    }
+  }
+
   OrderTrackingData _trackingData() => OrderTrackingData(
-    orderId: confirmedOrder.orderId,
-    storeName: confirmedOrder.storeName,
-    items: confirmedOrder.itemSummary,
-    total: confirmedOrder.total,
-    status: confirmedOrder.trackingStatus ?? OrderTrackingStatus.orderPlaced,
-    deliveryAddressLabel: confirmedOrder.deliveryAddressLabel,
-    deliveryAddress: confirmedOrder.deliveryAddress,
-    itemNames: confirmedOrder.items.map((item) => item.name).toList(),
-    isDemo: !confirmedOrder.isBackendData,
+    orderId: widget.confirmedOrder.orderId,
+    storeName: widget.confirmedOrder.storeName,
+    items: widget.confirmedOrder.itemSummary,
+    total: widget.confirmedOrder.total,
+    status:
+        widget.confirmedOrder.trackingStatus ?? OrderTrackingStatus.orderPlaced,
+    deliveryAddressLabel: widget.confirmedOrder.deliveryAddressLabel,
+    deliveryAddress: widget.confirmedOrder.deliveryAddress,
+    itemNames: widget.confirmedOrder.items.map((item) => item.name).toList(),
+    isDemo: !widget.confirmedOrder.isBackendData,
   );
 
   @override
@@ -73,7 +111,7 @@ class OrderSuccessPage extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  confirmedOrder.deliveryAddressLabel,
+                  widget.confirmedOrder.deliveryAddressLabel,
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: AppTheme.primaryText,
@@ -85,7 +123,7 @@ class OrderSuccessPage extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                    confirmedOrder.deliveryAddress,
+                    widget.confirmedOrder.deliveryAddress,
                     textAlign: TextAlign.center,
                     maxLines: 4,
                     overflow: TextOverflow.ellipsis,
@@ -99,7 +137,7 @@ class OrderSuccessPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  'Order ID: ${confirmedOrder.orderId}',
+                  'Order ID: ${widget.confirmedOrder.orderId}',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: AppTheme.secondaryText,
@@ -131,7 +169,7 @@ class OrderSuccessPage extends StatelessWidget {
                     onPressed: () => Navigator.of(context).push(
                       AppPageRoute<void>.builder(
                         builder: (context) =>
-                            OrderDetailsPage(order: confirmedOrder),
+                            OrderDetailsPage(order: widget.confirmedOrder),
                       ),
                     ),
                     child: const Text('View details'),
