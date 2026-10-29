@@ -85,6 +85,10 @@ const razorpayPaymentsSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/019_razorpay_order_payments.sql',
 );
+const riderReadyForPickupOffersSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/020_rider_ready_for_pickup_offers.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -196,8 +200,8 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.deepEqual(
     migrationFiles.slice(-2).map(({ version, name }) => ({ version, name })),
     [
-      { version: '018', name: '018_customer_owned_carts_and_razorpay.sql' },
       { version: '019', name: '019_razorpay_order_payments.sql' },
+      { version: '020', name: '020_rider_ready_for_pickup_offers.sql' },
     ],
   );
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
@@ -325,6 +329,16 @@ test('rider location migration renames the pool state and tracks fix freshness',
   assert.match(migration, /ADD COLUMN current_location_accuracy double precision/);
   assert.match(migration, /ADD COLUMN current_location_updated_at timestamptz/);
   assert.match(migration, /COMMIT;/);
+});
+
+test('rider ready-for-pickup offers migration adds a matching partial index', async () => {
+  const migration = await readFile(riderReadyForPickupOffersSchemaPath, 'utf8');
+
+  assert.match(
+    migration,
+    /CREATE INDEX orders_ready_for_pickup_riders_idx\s+ON app\.orders \(placed_at, id\)\s+WHERE status = 'ready_for_pickup' AND rider_id IS NULL;/,
+  );
+  assert.doesNotMatch(migration, /\b(UPDATE|DELETE|DROP)\b/i);
 });
 
 test('defaulting platform fees to zero preserves historical order amounts', () => {

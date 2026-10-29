@@ -118,6 +118,52 @@ const resources = {
       u.status AS "status",
       u.created_at AS "createdAt"`,
   },
+  riders: {
+    table: `app.riders AS r
+      JOIN app.users AS u ON u.id = r.user_id`,
+    baseWhere: `u.system_role = 'rider'`,
+    columns: `r.user_id AS "riderId",
+      u.display_name AS "displayName",
+      r.status AS "riderAccountStatus",
+      u.status AS "userAccountStatus",
+      r.is_online AS "isOnline",
+      r.created_at AS "createdAt",
+      r.updated_at AS "updatedAt"`,
+    sorts: {
+      riderId: 'r.user_id',
+      displayName: 'u.display_name',
+      riderAccountStatus: 'r.status',
+      userAccountStatus: 'u.status',
+      isOnline: 'r.is_online',
+      createdAt: 'r.created_at',
+      updatedAt: 'r.updated_at',
+    },
+    filters: {
+      riderStatus: {
+        field: 'r.status',
+        type: 'text',
+        allowedValues: new Set(['active', 'suspended']),
+      },
+      userStatus: {
+        field: 'u.status',
+        type: 'text',
+        allowedValues: new Set(['active', 'suspended']),
+      },
+      isOnline: { field: 'r.is_online', type: 'boolean' },
+      from: { field: 'r.created_at', type: 'date', operator: '>=' },
+      to: { field: 'r.created_at', type: 'date', operator: '<' },
+    },
+    defaultSort: 'createdAt:desc',
+    idField: 'r.user_id',
+    idSort: 'r.user_id',
+    detailColumns: `r.user_id AS "riderId",
+      u.display_name AS "displayName",
+      r.status AS "riderAccountStatus",
+      u.status AS "userAccountStatus",
+      r.is_online AS "isOnline",
+      r.created_at AS "createdAt",
+      r.updated_at AS "updatedAt"`,
+  },
   partners: {
     table: 'app.partners AS p',
     columns: `p.id AS "id",
@@ -379,6 +425,8 @@ function buildWhere(resourceName, parsed, parameters) {
       clauses.push(`(o.id::text ILIKE '%' || ${placeholder} || '%' OR cu.display_name ILIKE '%' || ${placeholder} || '%' OR p.name ILIKE '%' || ${placeholder} || '%')`);
     } else if (resourceName === 'customers') {
       clauses.push(`(u.id::text ILIKE '%' || ${placeholder} || '%' OR u.display_name ILIKE '%' || ${placeholder} || '%')`);
+    } else if (resourceName === 'riders') {
+      clauses.push(`(r.user_id::text ILIKE '%' || ${placeholder} || '%' OR u.display_name ILIKE '%' || ${placeholder} || '%')`);
     } else if (resourceName === 'partners') {
       clauses.push(`(p.id::text ILIKE '%' || ${placeholder} || '%' OR p.name ILIKE '%' || ${placeholder} || '%')`);
     } else {

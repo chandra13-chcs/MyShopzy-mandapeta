@@ -35,6 +35,7 @@ const SUPPORT_OUTCOMES = new Set([
 const resourceRoutes = [
   ['/admin/orders', 'orders'],
   ['/admin/customers', 'customers'],
+  ['/admin/riders', 'riders', 'riderId'],
   ['/admin/partners', 'partners'],
   ['/admin/catalog/products', 'products'],
 ];
@@ -611,7 +612,7 @@ function createAdminReadRouter({
     }
   });
 
-  for (const [path, resource] of resourceRoutes) {
+  for (const [path, resource, idParameter = 'id'] of resourceRoutes) {
     router.get(path, async (req, res, next) => {
       try {
         return sendAdapterResponse(
@@ -630,12 +631,12 @@ function createAdminReadRouter({
       }
     });
 
-    router.get(`${path}/:id`, async (req, res, next) => {
+    router.get(`${path}/:${idParameter}`, async (req, res, next) => {
       try {
         return sendAdapterResponse(
           res,
           toDetailHttpResponse(
-            await getResource(databasePool, resource, req.params.id),
+            await getResource(databasePool, resource, req.params[idParameter]),
             req.requestId,
           ),
         );

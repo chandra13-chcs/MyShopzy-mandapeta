@@ -205,8 +205,17 @@ defaulting to 5000 metres and 2 active orders. Apply migration
 deploying support escalation routes. `SUPPORT_PHONE` defaults to
 `+91 88972 67490`; `SUPPORT_ESCALATION_MINUTES` defaults to 10.
 
-Prepared Super Admin queries cover orders, customers, partners, products, and
-dues. Dues can be confirmed with a support reference, waived with a reason, and
+Prepared Super Admin queries cover orders, customers, partners, products,
+riders, and dues. Rider directory endpoints are read-only:
+
+- `GET /api/v1/admin/riders?limit=25&offset=0` lists riders. Optional query
+  parameters are `q`, `riderStatus`, `userStatus`, `isOnline`, `from`, `to`,
+  and allow-listed `sort`. Rider account status, user account status, and
+  online state are separate fields; contact details and precise location are
+  not returned.
+- `GET /api/v1/admin/riders/:riderId` returns one rider directory record.
+
+Dues can be confirmed with a support reference, waived with a reason, and
 cleared with a referenced payment; each action appends a ledger row. Admin
 routes mount only when `AUTH0_ISSUER_URL`, `AUTH0_AUDIENCE`,
 `AUTH0_ADMIN_USER_ID_CLAIM`, `SUPER_ADMIN_ORIGIN`, and PostgreSQL are

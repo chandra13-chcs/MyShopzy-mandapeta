@@ -91,7 +91,7 @@ function transactionPool({
   };
 }
 
-test('lists nearby available packed orders without customer address data', async (t) => {
+test('lists nearby ready-for-pickup orders without customer address data', async (t) => {
   const queries = [];
   const riderQueries = [];
   const order = {
@@ -139,7 +139,7 @@ test('lists nearby available packed orders without customer address data', async
   });
   const listQuery = queries.find((sql) => sql.includes('app.orders AS o'));
   assert.match(listQuery, /JOIN app\.shops AS s/);
-  assert.match(listQuery, /o\.status = 'packed'/);
+  assert.match(listQuery, /o\.status = 'ready_for_pickup'/);
   assert.match(listQuery, /o\.rider_id IS NULL/);
   assert.match(listQuery, /s\.latitude BETWEEN \$1 AND \$2/);
   assert.match(listQuery, /s\.longitude BETWEEN \$3 AND \$4/);
@@ -256,7 +256,7 @@ test('stale rider locations receive no offers and cannot accept orders', async (
   assert.equal((await accept.json()).error.code, 'RIDER_LOCATION_STALE');
 });
 
-test('accepts an unassigned packed order transactionally', async (t) => {
+test('accepts an unassigned ready-for-pickup order transactionally', async (t) => {
   let transactionCalls = [];
   const baseUrl = await startServer(t, {
     databasePool: transactionPool({
@@ -337,7 +337,7 @@ test('accepts an unassigned packed order transactionally', async (t) => {
     sql.includes('UPDATE app.orders'),
   ).sql;
   assert.match(assignment, /rider_id IS NULL/);
-  assert.match(assignment, /status = 'packed'/);
+  assert.match(assignment, /status = 'ready_for_pickup'/);
   assert.equal(
     transactionCalls.filter(({ sql }) => sql.includes('UPDATE app.orders')).length,
     1,
@@ -346,6 +346,7 @@ test('accepts an unassigned packed order transactionally', async (t) => {
 
 test('only one rider can accept an order in concurrent requests', async (t) => {
   const orderState = { riderId: null };
+  const assignments = [];
   const otherRiderId = '00000000-0000-4000-8000-000000000002';
   const makeDatabase = () => transactionPool({
     connectHandler(sql, params) {
@@ -353,6 +354,7 @@ test('only one rider can accept an order in concurrent requests', async (t) => {
         return { rows: [{ count: 0 }] };
       }
       if (sql.includes('UPDATE app.orders')) {
+        assignments.push(sql);
         if (orderState.riderId !== null) return { rows: [] };
         orderState.riderId = params[1];
         return {
@@ -407,6 +409,11 @@ test('only one rider can accept an order in concurrent requests', async (t) => {
   assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409]);
   const loser = responses.find((response) => response.status === 409);
   assert.equal((await loser.json()).error.code, 'ORDER_TAKEN');
+  assert.equal(assignments.length, 2);
+  for (const assignment of assignments) {
+    assert.match(assignment, /status = 'ready_for_pickup'/);
+    assert.match(assignment, /rider_id IS NULL/);
+  }
 });
 
 test("a rider cannot cancel another rider's order", async (t) => {
@@ -439,6 +446,57 @@ test("a rider cannot cancel another rider's order", async (t) => {
   assert.match(updateSql, /rider_id = \$2/);
   assert.match(updateSql, /rider_stage = 'accepted'/);
   assert.equal(penaltyCalls, 0);
+});
+
+test('requeues an eligible pre-pickup cancellation as ready for pickup', async (t) => {
+  let update;
+  let penaltyCalls = 0;
+  const baseUrl = await startServer(t, {
+    databasePool: transactionPool({
+      connectHandler(sql, params) {
+        if (sql.includes('UPDATE app.orders')) {
+          update = { sql, params };
+          return {
+            rows: [{
+              orderId,
+              status: 'ready_for_pickup',
+              riderId: null,
+              cancellationReason: 'Cannot reach pickup',
+              updatedAt: '2026-10-15T10:00:00.000Z',
+            }],
+          };
+        }
+        return { rows: [] };
+      },
+    }),
+    applyRiderCancelPenalty: async () => {
+      penaltyCalls += 1;
+    },
+  });
+
+  const response = await fetch(
+    `${baseUrl}/api/v1/rider/orders/${orderId}/cancel`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ reason: 'Cannot reach pickup' }),
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data.order, {
+    orderId,
+    status: 'ready_for_pickup',
+    riderId: null,
+    cancellationReason: 'Cannot reach pickup',
+    updatedAt: '2026-10-15T10:00:00.000Z',
+  });
+  assert.match(update.sql, /rider_id = NULL/);
+  assert.match(update.sql, /status = 'ready_for_pickup'/);
+  assert.match(update.sql, /rider_stage = 'accepted'/);
+  assert.match(update.sql, /cancellation_reason = \$3/);
+  assert.deepEqual(update.params, [orderId, riderId, 'Cannot reach pickup']);
+  assert.equal(penaltyCalls, 1);
 });
 
 test('rejects order acceptance and does not inspect or update orders while offline', async (t) => {

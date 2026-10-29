@@ -10,6 +10,16 @@ const resources = [
   ['/api/v1/admin/partners', 'partners'],
   ['/api/v1/admin/catalog/products', 'products'],
 ];
+const riderId = 'c0d3d8e6-655e-4d33-a24d-fd3575f640f6';
+const riderRecord = {
+  riderId,
+  displayName: 'Rider One',
+  riderAccountStatus: 'suspended',
+  userAccountStatus: 'active',
+  isOnline: false,
+  createdAt: '2026-10-01T10:00:00.000Z',
+  updatedAt: '2026-10-02T10:00:00.000Z',
+};
 
 function createPool(queryHandler = async () => ({ rows: [] })) {
   const calls = [];
@@ -63,7 +73,131 @@ test('keeps admin resources inaccessible without trusted admin authentication', 
     assert.equal(body.meta.requestId, response.headers.get('x-request-id'));
     assert.match(body.meta.requestId, /^[0-9a-f-]{36}$/i);
   }
+  for (const path of [
+    '/api/v1/admin/riders',
+    `/api/v1/admin/riders/${riderId}`,
+  ]) {
+    const response = await request(baseUrl, path);
+    const body = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(body.error.code, 'AUTHENTICATION_REQUIRED');
+    assert.equal(body.meta.requestId, response.headers.get('x-request-id'));
+  }
   assert.equal(pool.calls.length, 0);
+});
+
+test('lists riders with independent account and online statuses using a read-only query', async (t) => {
+  const pool = createPool((_sql, _params, call) => call === 1
+    ? { rows: [{ total: '1' }] }
+    : { rows: [riderRecord] });
+  const baseUrl = await startServer(t, pool, { authenticateAdmin: testAuthenticator });
+  const response = await request(
+    baseUrl,
+    '/api/v1/admin/riders?q=Rider%20One&riderStatus=suspended&userStatus=active&isOnline=false&sort=displayName%3Aasc&limit=10&offset=0',
+    { headers: { authorization: '******', 'x-request-id': 'rider-list-test' } },
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data, [riderRecord]);
+  assert.deepEqual(body.meta.pagination, { limit: 10, offset: 0, total: 1 });
+  assert.equal(body.meta.requestId, 'rider-list-test');
+  assert.equal(response.headers.get('x-request-id'), 'rider-list-test');
+  assert.deepEqual(pool.calls[0].params, [
+    'Rider One',
+    'suspended',
+    'active',
+    false,
+  ]);
+  assert.deepEqual(pool.calls[1].params, [
+    'Rider One',
+    'suspended',
+    'active',
+    false,
+    10,
+    0,
+  ]);
+  assert.match(pool.calls[1].sql, /ORDER BY u\.display_name ASC, r\.user_id ASC/);
+  assert.match(pool.calls[1].sql, /r\.status AS "riderAccountStatus"/);
+  assert.match(pool.calls[1].sql, /u\.status AS "userAccountStatus"/);
+  assert.match(pool.calls[1].sql, /r\.is_online AS "isOnline"/);
+  assert.doesNotMatch(pool.calls[1].sql, /\b(UPDATE|INSERT|DELETE|FOR UPDATE)\b/i);
+  assert.doesNotMatch(JSON.stringify(body), /phone|email|latitude|longitude/i);
+});
+
+test('search values are parameterized and rider filters, pagination, and sorting are validated', async (t) => {
+  const pool = createPool((_sql, _params, call) => call === 1
+    ? { rows: [{ total: '0' }] }
+    : { rows: [] });
+  const baseUrl = await startServer(t, pool, { authenticateAdmin: testAuthenticator });
+  const headers = { authorization: '******' };
+  const invalidQueries = [
+    '?limit=101',
+    '?offset=9007199254740992',
+    '?riderStatus=deleted',
+    '?userStatus=deleted',
+    '?isOnline=yes',
+    '?sort=phone:asc',
+    '?unsupported=true',
+  ];
+
+  for (const query of invalidQueries) {
+    const response = await request(baseUrl, `/api/v1/admin/riders${query}`, { headers });
+    assert.equal(response.status, 400, query);
+    assert.equal((await response.json()).error.code, 'INVALID_REQUEST', query);
+  }
+  assert.equal(pool.calls.length, 0);
+
+  const search = "Rider' OR 1=1 --";
+  const response = await request(
+    baseUrl,
+    `/api/v1/admin/riders?q=${encodeURIComponent(search)}&sort=riderId%3Adesc`,
+    { headers },
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual(pool.calls[0].params, [search]);
+  assert.deepEqual(pool.calls[1].params, [search, 25, 0]);
+  assert.doesNotMatch(pool.calls[1].sql, /Rider' OR 1=1/);
+  assert.match(pool.calls[1].sql, /ORDER BY r\.user_id DESC, r\.user_id ASC/);
+  assert.ok(pool.calls.every(({ sql }) => !/\b(UPDATE|INSERT|DELETE|FOR UPDATE)\b/i.test(sql)));
+});
+
+test('returns a rider detail record and rejects invalid or missing rider IDs', async (t) => {
+  const pool = createPool((_sql, _params, call) => call === 1
+    ? { rows: [riderRecord] }
+    : { rows: [] });
+  const baseUrl = await startServer(t, pool, { authenticateAdmin: testAuthenticator });
+  const headers = { authorization: '******' };
+
+  const invalid = await request(baseUrl, '/api/v1/admin/riders/not-a-uuid', { headers });
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error.code, 'INVALID_REQUEST');
+  assert.equal(pool.calls.length, 0);
+
+  const detail = await request(
+    baseUrl,
+    `/api/v1/admin/riders/${riderId}`,
+    { headers: { ...headers, 'x-request-id': 'rider-detail-test' } },
+  );
+  const detailBody = await detail.json();
+  assert.equal(detail.status, 200);
+  assert.deepEqual(detailBody.data, riderRecord);
+  assert.equal(detailBody.meta.requestId, 'rider-detail-test');
+  assert.deepEqual(pool.calls[0].params, [riderId]);
+  assert.match(pool.calls[0].sql, /WHERE r\.user_id = \$1 AND u\.system_role = 'rider'/);
+  assert.doesNotMatch(pool.calls[0].sql, /\b(UPDATE|INSERT|DELETE|FOR UPDATE)\b/i);
+  assert.doesNotMatch(JSON.stringify(detailBody), /phone|email|latitude|longitude/i);
+
+  const missing = await request(
+    baseUrl,
+    `/api/v1/admin/riders/${riderId}`,
+    { headers },
+  );
+  const missingBody = await missing.json();
+  assert.equal(missing.status, 404);
+  assert.equal(missingBody.error.code, 'NOT_FOUND');
+  assert.equal(missingBody.meta.requestId, missing.headers.get('x-request-id'));
+  assert.deepEqual(pool.calls[1].params, [riderId]);
 });
 
 test('exposes category sales and commission totals only to authenticated admins', async (t) => {

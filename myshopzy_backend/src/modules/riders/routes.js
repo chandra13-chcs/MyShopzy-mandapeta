@@ -429,7 +429,7 @@ function createRiderRouter({
          FROM app.orders AS o
          JOIN app.shops AS s
            ON s.id = o.shop_id AND s.partner_id = o.partner_id
-         WHERE o.status = 'packed'
+         WHERE o.status = 'ready_for_pickup'
            AND o.rider_id IS NULL
            AND s.latitude BETWEEN $1 AND $2
            AND s.longitude BETWEEN $3 AND $4
@@ -540,7 +540,7 @@ function createRiderRouter({
                rider_stage = 'accepted',
                updated_at = now()
            WHERE id = $1
-             AND status = 'packed'
+             AND status = 'ready_for_pickup'
              AND rider_id IS NULL
            RETURNING id AS "orderId", status, rider_id AS "riderId",
                      updated_at AS "updatedAt"`,
@@ -628,7 +628,7 @@ function createRiderRouter({
         const result = await client.query(
           `UPDATE app.orders
            SET rider_id = NULL,
-               status = 'packed',
+               status = 'ready_for_pickup',
                rider_stage = 'accepted',
                cancellation_reason = $3,
                updated_at = now()
