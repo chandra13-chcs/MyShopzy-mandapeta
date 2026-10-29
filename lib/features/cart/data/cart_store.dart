@@ -34,6 +34,11 @@ class CartStore extends ChangeNotifier {
   bool get hasBackendCart =>
       _items.isNotEmpty && _items.every((item) => item.isBackendProduct);
 
+  bool get isDevelopmentDemoCart =>
+      CustomerApi.instance.isDevelopmentDemoMode &&
+      _items.isNotEmpty &&
+      _items.every((item) => !item.isBackendProduct);
+
   int get totalQuantity =>
       _items.fold(0, (total, item) => total + item.quantity);
 
@@ -82,6 +87,13 @@ class CartStore extends ChangeNotifier {
         statusCode: 401,
         code: 'AUTHENTICATION_REQUIRED',
         message: 'Sign in to add items to your cart.',
+      );
+    }
+    if (isDevelopmentGuest && isBackendProduct) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'DEMO_CART_CANNOT_OWN_BACKEND_ITEMS',
+        message: 'Development demo carts can contain local preview items only.',
       );
     }
     if ((!isBackendProduct || !api.isConfigured) && !isDevelopmentGuest) {

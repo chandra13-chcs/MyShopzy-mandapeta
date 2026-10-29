@@ -135,7 +135,7 @@ class _DuesPageState extends State<DuesPage> {
               child: Padding(
                 padding: EdgeInsets.all(24),
                 child: Text(
-                  'Dues data is available after connecting an authenticated backend session.',
+                  'Dues are shown here after a customer account is connected. This development preview does not load account data.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.secondaryText),
                 ),

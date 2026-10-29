@@ -5,6 +5,8 @@ import 'package:myshopzy/features/checkout/presentation/checkout_page.dart';
 import 'package:myshopzy/features/profile/data/selected_delivery_address_store.dart';
 import 'package:myshopzy/features/profile/models/saved_address.dart';
 
+import 'checkout_test_support.dart';
+
 void main() {
   final cart = CartStore.instance;
 
@@ -12,13 +14,12 @@ void main() {
     cart.clear();
     SelectedDeliveryAddressStore.instance.select(null);
   });
-  tearDown(() {
-    cart.clear();
-    SelectedDeliveryAddressStore.instance.select(null);
-  });
+  tearDown(tearDownCheckoutTest);
 
   testWidgets('checkout shows an actionable empty-cart state', (tester) async {
+    await setUpAuthenticatedCheckout(cartItems: const []);
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
 
     expect(find.text('Your cart is empty'), findsOneWidget);
     expect(
@@ -26,23 +27,19 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Place Order'), findsNothing);
-    expect(find.text('Return to Cart'), findsOneWidget);
-    expect(find.text('Delivery Instructions'), findsOneWidget);
+    expect(find.text('Continue Shopping'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('checkout-continue-shopping')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('checkout explains why placing an order is unavailable', (
     tester,
   ) async {
-    cart.addItem(
-      productId: 'checkout-validation-item',
-      serviceType: 'local_store',
-      merchantId: 'checkout-validation-store',
-      name: 'Validation item',
-      description: '',
-      priceInPaise: 15400,
-      icon: Icons.shopping_bag_outlined,
-    );
+    await setUpAuthenticatedCheckout();
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
 
     expect(
       find.byKey(const ValueKey('checkout-address-validation')),
@@ -66,15 +63,7 @@ void main() {
   testWidgets('GPS-only fallback is not accepted as a delivery address', (
     tester,
   ) async {
-    cart.addItem(
-      productId: 'gps-only-checkout-item',
-      serviceType: 'local_store',
-      merchantId: 'gps-only-checkout-store',
-      name: 'GPS-only item',
-      description: '',
-      priceInPaise: 15400,
-      icon: Icons.shopping_bag_outlined,
-    );
+    await setUpAuthenticatedCheckout();
     SelectedDeliveryAddressStore.instance.select(
       const SavedAddress(
         id: 'current-location',
@@ -87,6 +76,7 @@ void main() {
     );
 
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
 
     expect(
       find.byKey(const ValueKey('checkout-address-validation')),
@@ -105,21 +95,22 @@ void main() {
   testWidgets('checkout shows the selected variant and its line total', (
     tester,
   ) async {
-    for (var index = 0; index < 2; index++) {
-      cart.addItem(
-        productId: 'checkout-variant-item',
-        serviceType: 'local_store',
-        merchantId: 'checkout-variant-store',
-        productVariantId: 'checkout-500g',
-        variantLabel: '500 g',
-        name: 'Variant item',
-        description: '',
-        priceInPaise: 15400,
-        icon: Icons.shopping_bag_outlined,
-      );
-    }
+    await setUpAuthenticatedCheckout(
+      cartItems: const [
+        CheckoutCartItemFixture(
+          productId: 'checkout-variant-item',
+          variantId: 'checkout-500g',
+          variantLabel: '500 g',
+          name: 'Variant item',
+          priceMinor: 15400,
+          quantity: 2,
+        ),
+      ],
+      selectHomeAddress: true,
+    );
 
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
 
     expect(find.text('500 g'), findsOneWidget);
     expect(find.text('₹308'), findsWidgets);
@@ -128,30 +119,28 @@ void main() {
   testWidgets('checkout keeps different variants of one product separate', (
     tester,
   ) async {
-    cart.addItem(
-      productId: 'checkout-multiple-variants',
-      serviceType: 'local_store',
-      merchantId: 'checkout-variant-store',
-      productVariantId: 'checkout-500g',
-      variantLabel: '500 g',
-      name: 'Variant item',
-      description: '',
-      priceInPaise: 15400,
-      icon: Icons.shopping_bag_outlined,
-    );
-    cart.addItem(
-      productId: 'checkout-multiple-variants',
-      serviceType: 'local_store',
-      merchantId: 'checkout-variant-store',
-      productVariantId: 'checkout-1kg',
-      variantLabel: '1 kg',
-      name: 'Variant item',
-      description: '',
-      priceInPaise: 28400,
-      icon: Icons.shopping_bag_outlined,
+    await setUpAuthenticatedCheckout(
+      cartItems: const [
+        CheckoutCartItemFixture(
+          productId: 'checkout-multiple-variants',
+          variantId: 'checkout-500g',
+          variantLabel: '500 g',
+          name: 'Variant item',
+          priceMinor: 15400,
+        ),
+        CheckoutCartItemFixture(
+          productId: 'checkout-multiple-variants',
+          variantId: 'checkout-1kg',
+          variantLabel: '1 kg',
+          name: 'Variant item',
+          priceMinor: 28400,
+        ),
+      ],
+      selectHomeAddress: true,
     );
 
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
 
     expect(cart.items, hasLength(2));
     expect(find.text('500 g'), findsOneWidget);

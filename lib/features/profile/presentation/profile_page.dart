@@ -199,14 +199,45 @@ class _ProfilePageState extends State<ProfilePage> {
                     ],
                   )
                 : profile == null
-                ? const Text(
-                    'Profile details are unavailable.',
-                    style: TextStyle(color: _secondaryText),
-                  )
+                ? CustomerApi.instance.canAccessCustomerFeatures
+                      ? _buildDemoProfilePreview(context)
+                      : const Text(
+                          'Profile details are unavailable.',
+                          style: TextStyle(color: _secondaryText),
+                        )
                 : _buildProfileDetails(context, profile),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDemoProfilePreview(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Demo profile · not signed in',
+          style: TextStyle(color: _secondaryText, fontSize: 12),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (context) => const EditProfilePage(),
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _green,
+            side: const BorderSide(color: _green),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: const StadiumBorder(),
+          ),
+          child: const Text('Edit Profile Preview'),
+        ),
+      ],
     );
   }
 

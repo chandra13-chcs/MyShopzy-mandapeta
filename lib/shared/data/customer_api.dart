@@ -1103,9 +1103,13 @@ class CustomerApi {
   bool get isConfigured => _baseUrl.isNotEmpty;
   bool get hasCartToken => _cartToken != null;
   bool get hasCustomerSession => _customerAccessToken != null;
+  bool get isDevelopmentDemoMode =>
+      kDebugMode && enableDevelopmentGuestCart && !hasCustomerSession;
   // Preview access never changes the session required by customer API calls.
   bool get canAccessCustomerFeatures =>
-      hasCustomerSession || (kDebugMode && enableDevelopmentPreview);
+      hasCustomerSession ||
+      (kDebugMode && enableDevelopmentPreview) ||
+      isDevelopmentDemoMode;
   bool get canUseDevelopmentGuestCart =>
       kDebugMode && enableDevelopmentGuestCart;
   bool get orderOutcomeUnknown => _orderOutcomeUnknown;

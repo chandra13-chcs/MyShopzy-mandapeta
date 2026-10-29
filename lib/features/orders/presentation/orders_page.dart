@@ -203,12 +203,14 @@ class _OrdersPageState extends State<OrdersPage> {
     }
     return Column(
       children: [
-        const Align(
+        Align(
           alignment: Alignment.centerLeft,
           child: Padding(
             padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Text(
-              'Backend order history',
+              _backendMode
+                  ? 'Backend order history'
+                  : 'Development preview · no account orders',
               style: TextStyle(color: _secondaryText, fontSize: 11),
             ),
           ),
@@ -235,7 +237,7 @@ class _OrdersPageState extends State<OrdersPage> {
     Future<void> Function()? onRefresh,
   }) {
     if (orders.isEmpty) {
-      final emptyState = const Center(
+      final emptyState = Center(
         child: Padding(
           padding: EdgeInsets.all(32),
           child: Column(
@@ -257,7 +259,10 @@ class _OrdersPageState extends State<OrdersPage> {
               ),
               SizedBox(height: 6),
               Text(
-                'Your orders will appear here.',
+                CustomerApi.instance.canAccessCustomerFeatures &&
+                        !CustomerApi.instance.hasCustomerSession
+                    ? 'Orders are not created in preview mode.'
+                    : 'Your orders will appear here.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: _secondaryText, fontSize: 14),
               ),

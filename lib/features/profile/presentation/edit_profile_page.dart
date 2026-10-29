@@ -35,6 +35,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
   bool get _backendMode =>
       CustomerApi.instance.isConfigured &&
       CustomerApi.instance.hasCustomerSession;
+  bool get _isDevelopmentPreview =>
+      CustomerApi.instance.canAccessCustomerFeatures &&
+      !CustomerApi.instance.hasCustomerSession;
 
   @override
   void initState() {
@@ -119,7 +122,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   height: 52,
                   child: FilledButton(
                     key: const ValueKey('save-profile-button'),
-                    onPressed: _saving ? null : _saveProfile,
+                    onPressed: _saving || _isDevelopmentPreview
+                        ? null
+                        : _saveProfile,
                     style: FilledButton.styleFrom(
                       backgroundColor: _green,
                       foregroundColor: Colors.white,
@@ -136,9 +141,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text(
-                            'Save Changes',
-                            style: TextStyle(
+                        : Text(
+                            _isDevelopmentPreview
+                                ? 'Preview Only · Not Saved'
+                                : 'Save Changes',
+                            style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                             ),
@@ -182,10 +189,18 @@ class _EditProfilePageState extends State<EditProfilePage> {
           padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
           child: Column(
             children: [
+              if (_isDevelopmentPreview) ...[
+                const Text(
+                  'Development preview only. Profile changes are not saved.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: _secondaryText, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+              ],
               const Text(
                 'Your account profile',
-                key: const ValueKey('profile-data-source'),
-                style: const TextStyle(color: _secondaryText, fontSize: 11),
+                key: ValueKey('profile-data-source'),
+                style: TextStyle(color: _secondaryText, fontSize: 11),
               ),
               const SizedBox(height: 10),
               Container(

@@ -51,6 +51,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
   final _cartStore = CartStore.instance;
   final _checkoutPlayer = AudioPlayer();
   bool _registeredAsActive = false;
+  bool _backendCartLoading = false;
+  String? _backendCartError;
   final _locationService = ParcelLocationService();
   ApiCartQuote? _backendQuote;
   String? _quoteError;
@@ -116,6 +118,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
       CustomerApi.instance.hasCustomerSession &&
       _cartStore.hasBackendCart;
 
+  bool get _isDevelopmentDemoCart => _cartStore.isDevelopmentDemoCart;
+
   bool get _hasPlaceableAddress {
     final address = _confirmedDeliveryAddress?.formattedAddress.trim();
     return address != null &&
@@ -178,6 +182,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
     }
     _cartStore.addListener(_handleCartChanged);
+    if (CustomerApi.instance.hasCustomerSession &&
+        CustomerApi.instance.isConfigured &&
+        _cartStore.items.isEmpty) {
+      _backendCartLoading = true;
+      Future<void>.delayed(Duration.zero, _refreshBackendCart);
+    }
     if (CustomerApi.instance.hasCustomerSession) {
       _savedAddressesLoading = true;
       Future<void>.delayed(Duration.zero, _loadSavedAddresses);
@@ -302,6 +312,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   void _handleCartChanged() {
     _quoteRequestGeneration++;
+    if (mounted) setState(() {});
     if (_isBackendCart) {
       unawaited(_refreshBackendQuote());
     } else if (_cartStore.items.isEmpty) {
@@ -398,8 +409,42 @@ class _CheckoutPageState extends State<CheckoutPage> {
     }
   }
 
+  Future<void> _refreshBackendCart() async {
+    if (!mounted || !CustomerApi.instance.hasCustomerSession) return;
+    if (_cartStore.items.any((item) => !item.isBackendProduct)) {
+      setState(() {
+        _backendCartLoading = false;
+        _backendCartError = 'Local preview items cannot be used for checkout.';
+      });
+      return;
+    }
+    setState(() {
+      _backendCartLoading = true;
+      _backendCartError = null;
+    });
+    try {
+      await _cartStore.refreshBackendCart();
+    } on CustomerApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _backendCartError = error.message;
+      });
+    } finally {
+      if (mounted) setState(() => _backendCartLoading = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final api = CustomerApi.instance;
+    final isDevelopmentDemoMode = api.isDevelopmentDemoMode;
+    final hasLocalCartItems = _cartStore.items.any(
+      (item) => !item.isBackendProduct,
+    );
+    final cartUnavailable =
+        (!api.hasCustomerSession && !isDevelopmentDemoMode) ||
+        (api.hasCustomerSession && !api.isConfigured) ||
+        (hasLocalCartItems && !_cartStore.isDevelopmentDemoCart);
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
@@ -422,7 +467,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
             )
-          : !_cartStore.hasBackendCart
+          : cartUnavailable
           ? const Center(
               child: Padding(
                 padding: EdgeInsets.all(28),
@@ -433,6 +478,31 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ),
               ),
             )
+          : _backendCartLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _backendCartError != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _backendCartError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: _secondaryText),
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton(
+                      onPressed: _refreshBackendCart,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : _cartStore.items.isEmpty && _pendingOnlineOrder == null
+          ? _buildEmptyCartScreen(context)
           : SafeArea(
               child: AnimatedBuilder(
                 animation: _cartStore,
@@ -442,6 +512,29 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (_isDevelopmentDemoCart) ...[
+                          Container(
+                            key: const ValueKey('checkout-demo-mode-banner'),
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF4E5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFFF2D4A8),
+                              ),
+                            ),
+                            child: const Text(
+                              'Demo checkout · UI preview only. Orders and payments are disabled.',
+                              style: TextStyle(
+                                color: Color(0xFF805000),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                        ],
                         if (_isBackendCart &&
                             (_storeClosedByServer ||
                                 _backendQuote?.storeOpen == false)) ...[
@@ -559,6 +652,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                         ? 'Choose a different delivery location to continue.'
                                         : _backendQuote?.message ??
                                               'Select a delivery address to get a server quote.')
+                              : _isDevelopmentDemoCart
+                              ? 'Demo totals are for UI preview only; no order or payment is submitted.'
                               : 'Sign in to get a checkout quote.',
                           style: TextStyle(
                             color: _quoteError == null
@@ -586,6 +681,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               animation: _cartStore,
               builder: (context, child) {
                 final hasItems = _cartStore.items.isNotEmpty;
+                final isDemoCart = _cartStore.isDevelopmentDemoCart;
                 final hasConfirmedAddress = _hasPlaceableAddress;
                 final orderOutcomeUnknown =
                     _isBackendCart && CustomerApi.instance.orderOutcomeUnknown;
@@ -593,18 +689,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     _selectedPaymentMethod == 'Razorpay' &&
                     _pendingOnlineOrder != null;
                 final canPlaceOrder =
-                    canRetryPendingPayment ||
-                    (_isBackendCart &&
-                        hasItems &&
-                        hasConfirmedAddress &&
-                        (_backendQuote != null &&
-                            _backendQuote!.isDeliverable &&
-                            _backendQuote!.totalMinor != null) &&
-                        _backendQuote?.storeOpen != false &&
-                        _outstandingMinor <= 0 &&
-                        !_storeClosedByServer &&
-                        !_quoteLoading &&
-                        _quoteError == null);
+                    !isDemoCart &&
+                    (canRetryPendingPayment ||
+                        (_isBackendCart &&
+                            hasItems &&
+                            hasConfirmedAddress &&
+                            (_backendQuote != null &&
+                                _backendQuote!.isDeliverable &&
+                                _backendQuote!.totalMinor != null) &&
+                            _backendQuote?.storeOpen != false &&
+                            _outstandingMinor <= 0 &&
+                            !_storeClosedByServer &&
+                            !_quoteLoading &&
+                            _quoteError == null));
                 final canSubmitOrder =
                     canPlaceOrder &&
                     !_placingOrder &&
@@ -624,7 +721,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (!hasConfirmedAddress)
+                        if (isDemoCart)
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 8),
+                            child: Text(
+                              'Demo mode: orders and payments are disabled.',
+                              key: ValueKey('checkout-demo-submit-disabled'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _secondaryText,
+                                fontSize: 12,
+                              ),
+                            ),
+                          )
+                        else if (!hasConfirmedAddress)
                           const Padding(
                             padding: EdgeInsets.only(bottom: 8),
                             child: Text(
@@ -666,7 +776,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               ),
                             ),
                             child: Text(
-                              _placingOrder
+                              isDemoCart
+                                  ? 'Demo Checkout · UI Only'
+                                  : _placingOrder
                                   ? 'Submitting…'
                                   : _selectedPaymentMethod == 'Razorpay' &&
                                         _pendingPaymentResponse != null
@@ -735,6 +847,50 @@ class _CheckoutPageState extends State<CheckoutPage> {
             child: const Text('Return to Cart'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyCartScreen(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.shopping_cart_outlined, color: _green, size: 48),
+            const SizedBox(height: 14),
+            const Text(
+              'Your cart is empty',
+              key: ValueKey('checkout-empty-cart-title'),
+              style: TextStyle(
+                color: _mainText,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Add items before placing an order.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _secondaryText, fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            OutlinedButton(
+              key: const ValueKey('checkout-continue-shopping'),
+              onPressed: () =>
+                  Navigator.of(context).popUntil((route) => route.isFirst),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _green,
+                side: const BorderSide(color: _green),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text('Continue Shopping'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1691,7 +1847,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           const SizedBox(height: 8),
           _paymentOption(
             title: 'Razorpay (UPI, Cards & More)',
-            status: 'TEST MODE',
+            status: _isDevelopmentDemoCart ? 'Demo disabled' : 'TEST MODE',
             icon: Icons.lock_outline_rounded,
             selected: _selectedPaymentMethod == 'Razorpay',
             enabled: _isBackendCart && _pendingOnlineOrder == null,
@@ -1700,10 +1856,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
           const SizedBox(height: 8),
           _paymentOption(
             title: 'Cash on Delivery',
-            status: 'Available',
+            status: _isDevelopmentDemoCart ? 'Demo disabled' : 'Available',
             icon: Icons.payments_outlined,
             selected: _selectedPaymentMethod == 'Cash on Delivery',
-            enabled: _pendingOnlineOrder == null,
+            enabled: !_isDevelopmentDemoCart && _pendingOnlineOrder == null,
             onTap: () =>
                 setState(() => _selectedPaymentMethod = 'Cash on Delivery'),
           ),
@@ -2043,6 +2199,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }
 
   Future<void> _placeOrder() async {
+    if (CustomerApi.instance.isDevelopmentDemoMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Demo checkout is UI-only. Orders and payments are disabled.',
+          ),
+        ),
+      );
+      return;
+    }
     if (!CustomerApi.instance.hasCustomerSession) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sign in to place an order.')),

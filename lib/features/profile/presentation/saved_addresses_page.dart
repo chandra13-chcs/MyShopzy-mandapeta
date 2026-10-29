@@ -23,6 +23,9 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
   bool _loading = false;
   bool _saving = false;
   String? _loadError;
+  bool get _isDevelopmentPreview =>
+      CustomerApi.instance.canAccessCustomerFeatures &&
+      !CustomerApi.instance.hasCustomerSession;
 
   @override
   void initState() {
@@ -121,6 +124,17 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
                       ),
                     ),
                   ),
+                  if (_isDevelopmentPreview)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
+                      child: Text(
+                        'Address management is a preview; no addresses are saved.',
+                        style: TextStyle(
+                          color: SavedAddressesPage._secondaryText,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                   if (_loadError != null) _buildLoadErrorBanner(),
                   Expanded(
                     child: _addresses.isEmpty
@@ -228,7 +242,7 @@ class _SavedAddressesPageState extends State<SavedAddressesPage> {
       width: double.infinity,
       height: 56,
       child: OutlinedButton.icon(
-        onPressed: _saving ? null : _addAddress,
+        onPressed: _saving || _isDevelopmentPreview ? null : _addAddress,
         icon: const Icon(Icons.add_rounded),
         label: const Text(
           'Add New Address',

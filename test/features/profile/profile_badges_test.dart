@@ -3,8 +3,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myshopzy/features/coupons/presentation/coupons_page.dart';
 import 'package:myshopzy/features/notifications/presentation/notifications_page.dart';
 import 'package:myshopzy/features/profile/presentation/profile_page.dart';
+import 'package:myshopzy/shared/data/customer_api.dart';
 
 void main() {
+  setUp(() {
+    CustomerApi.instance.close();
+    CustomerApi.instance = CustomerApi(
+      baseUrl: '',
+      enableDevelopmentPreview: true,
+    );
+  });
+
+  tearDown(() {
+    CustomerApi.instance.close();
+    CustomerApi.instance = CustomerApi(baseUrl: '');
+  });
+
   testWidgets('notification badge follows unread and mark-all state', (
     tester,
   ) async {

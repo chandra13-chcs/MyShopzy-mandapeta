@@ -6,6 +6,7 @@ const { createApp } = require('../../src/app');
 const { DEMO_RIDER_ID } = require('../../src/middleware/mock-rider-auth');
 
 const riderId = '00000000-0000-4000-8000-000000000001';
+const riderUserId = riderId;
 const orderId = 'd1ca6b39-b9d9-423b-b93b-3e513f232d9a';
 const serverNow = new Date('2026-10-15T10:00:00.000Z');
 const freshLocationAt = new Date(serverNow).toISOString();
@@ -61,6 +62,9 @@ function transactionPool({
         calls,
         async query(sql, params) {
           calls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
+          if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql.trim())) {
+            return { rows: [] };
+          }
           if (sql.includes('FROM app.riders AS r')) {
             return riderExists
               ? {
@@ -253,11 +257,11 @@ test('stale rider locations receive no offers and cannot accept orders', async (
 });
 
 test('accepts an unassigned packed order transactionally', async (t) => {
-  const transactionCalls = [];
+  let transactionCalls = [];
   const baseUrl = await startServer(t, {
     databasePool: transactionPool({
-      connectHandler(sql, params) {
-        transactionCalls.push({ sql: sql.replace(/\s+/g, ' ').trim(), params });
+      connectHandler(sql, params, calls) {
+        transactionCalls = calls;
         if (sql.includes('SELECT COUNT(*)::int AS count')) {
           return { rows: [{ count: 0 }] };
         }

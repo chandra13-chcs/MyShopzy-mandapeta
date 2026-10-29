@@ -212,7 +212,9 @@ class _CartPageState extends State<CartPage> {
           : AnimatedBuilder(
               animation: _cartStore,
               builder: (context, child) =>
-                  _cartStore.items.isEmpty || !_cartStore.hasBackendCart
+                  _cartStore.items.isEmpty ||
+                      (!_cartStore.hasBackendCart &&
+                          !_cartStore.isDevelopmentDemoCart)
                   ? const SizedBox.shrink()
                   : _buildCheckoutAction(context),
             ),
@@ -313,6 +315,8 @@ class _CartPageState extends State<CartPage> {
                   child: Text(
                     items.every((item) => item.isBackendProduct)
                         ? 'Backend cart · Prices are refreshed during checkout'
+                        : _cartStore.isDevelopmentDemoCart
+                        ? 'Demo cart · UI preview only; no order or payment will be submitted.'
                         : 'Local preview items cannot be used for checkout.',
                     style: const TextStyle(color: _green, fontSize: 12),
                   ),
@@ -612,16 +616,32 @@ class _CartPageState extends State<CartPage> {
             _formatPrice(_cartStore.subtotalInPaise),
           ),
           const SizedBox(height: 9),
-          _summaryRow('Delivery fee', 'Calculated after address selection'),
+          _summaryRow(
+            'Delivery fee',
+            _cartStore.isDevelopmentDemoCart
+                ? 'Demo estimate in checkout'
+                : 'Calculated after address selection',
+          ),
           const SizedBox(height: 9),
-          _summaryRow('Platform fee', '₹10 at checkout'),
+          _summaryRow(
+            'Platform fee',
+            _cartStore.isDevelopmentDemoCart
+                ? 'Demo estimate in checkout'
+                : '₹10 at checkout',
+          ),
           const SizedBox(height: 9),
           _summaryRow('Discount', 'Calculated at checkout'),
           const SizedBox(height: 8),
-          const Text(
-            'Your final total will appear in checkout after you select a delivery '
-            'address and receive a valid server quote.',
-            style: TextStyle(color: _secondaryText, fontSize: 11, height: 1.4),
+          Text(
+            _cartStore.isDevelopmentDemoCart
+                ? 'Demo totals are for UI preview only; no order or payment is submitted.'
+                : 'Your final total will appear in checkout after you select a delivery '
+                      'address and receive a valid server quote.',
+            style: const TextStyle(
+              color: _secondaryText,
+              fontSize: 11,
+              height: 1.4,
+            ),
           ),
         ],
       ),

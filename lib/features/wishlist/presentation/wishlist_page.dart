@@ -87,12 +87,13 @@ class _WishlistPageState extends State<WishlistPage> {
   }
 
   Widget _sourceLabel() {
+    final isPreview = WishlistStore.instance.isDevelopmentPreview;
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
         child: Text(
-          'Your wishlist',
+          isPreview ? 'Local preview · not synced' : 'Your wishlist',
           style: const TextStyle(color: _secondaryText, fontSize: 11),
         ),
       ),

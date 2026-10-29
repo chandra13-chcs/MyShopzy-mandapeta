@@ -11,7 +11,10 @@ import 'package:myshopzy/shared/data/customer_api.dart';
 void main() {
   setUp(() {
     CustomerApi.instance.close();
-    CustomerApi.instance = CustomerApi(baseUrl: '');
+    CustomerApi.instance = CustomerApi(
+      baseUrl: '',
+      enableDevelopmentPreview: true,
+    );
   });
 
   tearDown(() {

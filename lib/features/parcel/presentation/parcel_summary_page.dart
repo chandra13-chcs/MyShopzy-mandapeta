@@ -46,12 +46,17 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
   bool _checkingServiceability = false;
   String? _error;
   String? _postalCoverageMessage;
+  bool get _isDevelopmentPreview =>
+      CustomerApi.instance.canAccessCustomerFeatures &&
+      !CustomerApi.instance.hasCustomerSession;
 
   @override
   void initState() {
     super.initState();
     _outcomeUnknown = CustomerApi.instance.parcelOutcomeUnknown;
-    if (_hasLocationData && CustomerApi.instance.isConfigured) {
+    if (!_isDevelopmentPreview &&
+        _hasLocationData &&
+        CustomerApi.instance.isConfigured) {
       _checkPostalCoverage();
     }
   }
@@ -95,6 +100,16 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 17, 16, 20),
                       children: [
+                        if (_isDevelopmentPreview) ...[
+                          const SizedBox(height: 14),
+                          const Text(
+                            'Development preview only. No booking or server quote will be requested.',
+                            style: TextStyle(
+                              color: AppTheme.secondaryText,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                         _buildRouteSection(),
                         const SizedBox(height: 14),
                         _buildParcelDetails(),
@@ -224,7 +239,7 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
         width: double.infinity,
         height: 50,
         child: FilledButton(
-          onPressed: _submitting
+          onPressed: _isDevelopmentPreview || _submitting
               ? null
               : _outcomeUnknown
               ? null
@@ -252,6 +267,8 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
               : Text(
                   _outcomeUnknown
                       ? 'Request status unknown'
+                      : _isDevelopmentPreview
+                      ? 'Preview Only · No Booking'
                       : 'Submit Parcel Request',
                 ),
         ),

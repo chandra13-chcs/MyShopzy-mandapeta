@@ -5,11 +5,17 @@ import 'package:myshopzy/features/orders/models/order_record.dart';
 import 'package:myshopzy/features/orders/presentation/order_details_page.dart';
 import 'package:myshopzy/features/orders/presentation/order_tracking_page.dart';
 
+import 'checkout_test_support.dart';
+
 void main() {
+  tearDown(tearDownCheckoutTest);
+
   testWidgets('quick instruction selection is visibly exclusive', (
     tester,
   ) async {
+    await setUpAuthenticatedCheckout();
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Leave at the door').first);
     await tester.pumpAndSettle();
@@ -25,7 +31,9 @@ void main() {
   testWidgets('custom instructions accept text up to 200 characters', (
     tester,
   ) async {
+    await setUpAuthenticatedCheckout();
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
     final instruction = List.filled(200, 'A').join();
 
     await tester.enterText(
@@ -43,7 +51,9 @@ void main() {
   });
 
   testWidgets('instructions are optional and can be cleared', (tester) async {
+    await setUpAuthenticatedCheckout();
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
 
     expect(find.text('Clear'), findsNothing);
     expect(
@@ -82,7 +92,9 @@ void main() {
   testWidgets('selected instruction survives Checkout address navigation', (
     tester,
   ) async {
+    await setUpAuthenticatedCheckout();
     await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Leave at the door').first);
     await tester.enterText(
       find.byKey(const ValueKey('custom-delivery-instructions')),

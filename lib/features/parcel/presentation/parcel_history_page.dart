@@ -94,7 +94,7 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
 
   Widget _buildBody() {
     if (!CustomerApi.instance.canAccessCustomerFeatures) {
-      return const Center(
+      return Center(
         child: Padding(
           padding: EdgeInsets.all(28),
           child: Text(
@@ -106,13 +106,15 @@ class _ParcelHistoryPageState extends State<ParcelHistoryPage> {
       );
     }
     if (!_backendMode) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(28),
+          padding: const EdgeInsets.all(28),
           child: Text(
-            'Parcel history is currently unavailable.',
+            CustomerApi.instance.canAccessCustomerFeatures
+                ? 'Parcel history appears after a real booking. Development preview does not create bookings.'
+                : 'Parcel history is currently unavailable.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTheme.secondaryText, height: 1.4),
+            style: const TextStyle(color: AppTheme.secondaryText, height: 1.4),
           ),
         ),
       );

@@ -16,6 +16,9 @@ class WishlistStore extends ChangeNotifier {
   bool get isBackendMode =>
       CustomerApi.instance.isConfigured &&
       CustomerApi.instance.hasCustomerSession;
+  bool get isDevelopmentPreview =>
+      CustomerApi.instance.canAccessCustomerFeatures &&
+      !CustomerApi.instance.hasCustomerSession;
   bool get isLoading => _isLoading;
   String? get error => _error;
 
@@ -64,6 +67,41 @@ class WishlistStore extends ChangeNotifier {
   }
 
   Future<void> toggleSavedProduct(ProductDetailsProduct product) async {
+    if (isDevelopmentPreview) {
+      final key = _identityOf(product);
+      if (contains(product)) {
+        _products.removeWhere((saved) => _identityOf(saved) == key);
+      } else {
+        _products.insert(
+          0,
+          ProductDetailsProduct(
+            id: product.id,
+            serviceType: product.serviceType,
+            name: product.name,
+            icon: product.icon,
+            available: product.available,
+            merchantId: product.merchantId,
+            merchantName: product.merchantName,
+            serviceVariant: product.serviceVariant,
+            categoryId: product.categoryId,
+            brand: product.brand,
+            description: product.description,
+            imageUrl: product.imageUrl,
+            priceInPaise: product.priceInPaise,
+            mrpInPaise: product.mrpInPaise,
+            discountPercent: product.discountPercent,
+            quantityLabel: product.quantityLabel,
+            rating: product.rating,
+            isVegetarian: product.isVegetarian,
+            isBackendProduct: product.isBackendProduct,
+            variants: product.variants,
+            relatedProducts: product.relatedProducts,
+          ),
+        );
+      }
+      notifyListeners();
+      return;
+    }
     _requireCustomerSession();
     if (!product.isBackendProduct) {
       throw const CustomerApiException(
@@ -91,6 +129,13 @@ class WishlistStore extends ChangeNotifier {
   }
 
   Future<void> removeSavedProduct(ProductDetailsProduct product) async {
+    if (isDevelopmentPreview) {
+      _products.removeWhere(
+        (saved) => _identityOf(saved) == _identityOf(product),
+      );
+      notifyListeners();
+      return;
+    }
     _requireCustomerSession();
     if (!product.isBackendProduct) {
       throw const CustomerApiException(

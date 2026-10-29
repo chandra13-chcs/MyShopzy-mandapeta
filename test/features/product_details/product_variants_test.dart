@@ -120,6 +120,8 @@ void main() {
       expect(cart.items.single.priceInPaise, 31000);
       expect(cart.items.single.isBackendProduct, isFalse);
       expect(cart.totalQuantity, 1);
+      expect(CustomerApi.instance.hasCustomerSession, isFalse);
+      expect(cart.hasBackendCart, isFalse);
       expect(find.text('Sign in to add items to your cart.'), findsNothing);
 
       await tester.tap(find.byTooltip('Increase quantity'));

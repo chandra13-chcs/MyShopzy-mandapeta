@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:myshopzy/features/cart/data/cart_store.dart';
 import 'package:myshopzy/features/checkout/presentation/checkout_page.dart';
 import 'package:myshopzy/features/profile/presentation/saved_addresses_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
@@ -249,8 +250,9 @@ void main() {
   });
 
   testWidgets(
-    'checkout stays unavailable without customer-owned cart support',
+    'checkout shows the empty state for an authenticated empty backend cart',
     (tester) async {
+      CartStore.instance.clear();
       CustomerApi.instance = _api((request) async {
         if (request.url.path == '/api/v1/me/addresses') {
           return _jsonResponse({
@@ -259,6 +261,16 @@ void main() {
               'message': 'Customer authentication is required.',
             },
           }, statusCode: 401);
+        }
+        if (request.method == 'POST' && request.url.path == '/api/v1/carts') {
+          return _jsonResponse({
+            'data': {'cartToken': 'a' * 43},
+          });
+        }
+        if (request.method == 'GET' && request.url.path == '/api/v1/cart') {
+          return _jsonResponse({
+            'data': {'items': <Object>[], 'itemSubtotalMinor': '0'},
+          });
         }
         return _jsonResponse({
           'data': {
@@ -276,12 +288,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: CheckoutPage()));
       await _pumpFor(tester);
 
-      expect(
-        find.text(
-          'Checkout is unavailable until customer cart ownership is supported.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Your cart is empty'), findsOneWidget);
       expect(find.text('Saved Addresses'), findsNothing);
       expect(find.text('Home'), findsNothing);
       expect(find.text('Customer authentication is required.'), findsNothing);

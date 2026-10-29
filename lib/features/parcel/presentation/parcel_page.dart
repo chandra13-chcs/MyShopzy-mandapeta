@@ -653,7 +653,13 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
     if (_loadingSavedAddresses) return;
     if (!CustomerApi.instance.hasCustomerSession) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sign in to access saved addresses.')),
+        SnackBar(
+          content: Text(
+            CustomerApi.instance.canAccessCustomerFeatures
+                ? 'Saved addresses are not available in preview. Enter a location manually.'
+                : 'Sign in to access saved addresses.',
+          ),
+        ),
       );
       return;
     }
