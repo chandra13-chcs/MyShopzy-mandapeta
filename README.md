@@ -35,8 +35,16 @@ Use an origin reachable from the target:
   from the device over HTTPS. The app rejects non-loopback HTTP URLs.
 
 The VS Code task **Run MyShopzy in Chrome** supplies the local web development
-origin (`http://localhost:3000`). Start the backend separately as described
-below; this task does not start or configure the backend.
+origin (`http://localhost:3000`) and enables the development-only guest cart.
+Start the backend separately as described below; this task does not start or
+configure the backend.
+
+The guest cart is an in-memory local preview that reuses the app's existing
+cart. To enable it in another debug run, add
+`--dart-define=MYSHOPZY_ENABLE_DEV_GUEST_CART=true`. It is disabled by default
+and additionally gated to debug builds, so release builds always require a
+customer session. Guest cart contents are not sent to the backend and cannot
+be checked out.
 
 Check backend liveness at `/health`; `/health/ready` additionally checks
 PostgreSQL readiness. Start the backend from the repository root with:

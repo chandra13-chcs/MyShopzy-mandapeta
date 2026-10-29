@@ -8,6 +8,7 @@ test('uses development defaults and permits health-only configuration', () => {
     port: 3000,
     nodeEnv: 'development',
     database: null,
+    razorpay: null,
     googleMapsApiKey: null,
     routingProvider: 'google',
     routingApiKey: null,
@@ -24,6 +25,28 @@ test('uses development defaults and permits health-only configuration', () => {
     partnerPortalOrigins: ['http://localhost:5173'],
     customerAppOrigins: ['http://127.0.0.1:7357'],
   });
+});
+
+test('accepts only a complete Razorpay TEST MODE configuration', () => {
+  const config = loadConfig({
+    RAZORPAY_KEY_ID: 'rzp_test_public_id',
+    RAZORPAY_KEY_SECRET: 'server-only-test-secret',
+  });
+  assert.deepEqual(config.razorpay, {
+    keyId: 'rzp_test_public_id',
+    keySecret: 'server-only-test-secret',
+  });
+  assert.throws(
+    () => loadConfig({ RAZORPAY_KEY_ID: 'rzp_test_public_id' }),
+    /Set both RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET/,
+  );
+  assert.throws(
+    () => loadConfig({
+      RAZORPAY_KEY_ID: 'rzp_live_public_id',
+      RAZORPAY_KEY_SECRET: 'server-only-test-secret',
+    }),
+    /RAZORPAY_KEY_ID must be a TEST MODE key/,
+  );
 });
 
 test('configures explicit customer web origins and rejects wildcard CORS', () => {

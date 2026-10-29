@@ -74,14 +74,17 @@ class CartStore extends ChangeNotifier {
     required IconData icon,
     bool isBackendProduct = false,
   }) {
-    if (!CustomerApi.instance.hasCustomerSession) {
+    final api = CustomerApi.instance;
+    final isDevelopmentGuest =
+        api.canUseDevelopmentGuestCart && !api.hasCustomerSession;
+    if (!api.hasCustomerSession && !isDevelopmentGuest) {
       throw const CustomerApiException(
         statusCode: 401,
         code: 'AUTHENTICATION_REQUIRED',
         message: 'Sign in to add items to your cart.',
       );
     }
-    if (!isBackendProduct || !CustomerApi.instance.isConfigured) {
+    if ((!isBackendProduct || !api.isConfigured) && !isDevelopmentGuest) {
       throw const CustomerApiException(
         statusCode: 503,
         code: 'CART_OWNERSHIP_UNAVAILABLE',
@@ -148,6 +151,27 @@ class CartStore extends ChangeNotifier {
     required IconData icon,
   }) async {
     final api = CustomerApi.instance;
+    if (!api.hasCustomerSession && api.canUseDevelopmentGuestCart) {
+      if (productVariantId == null || productVariantId.isEmpty) {
+        throw const CustomerApiException(
+          statusCode: null,
+          code: 'VARIANT_REQUIRED',
+          message: 'Choose a product variant before adding it to your cart.',
+        );
+      }
+      return addItem(
+        productId: productId,
+        serviceType: serviceType,
+        merchantId: merchantId,
+        categoryId: categoryId,
+        productVariantId: productVariantId,
+        variantLabel: variantLabel,
+        name: name,
+        description: description,
+        priceInPaise: priceInPaise,
+        icon: icon,
+      );
+    }
     if (!api.isConfigured) {
       return addItem(
         productId: productId,

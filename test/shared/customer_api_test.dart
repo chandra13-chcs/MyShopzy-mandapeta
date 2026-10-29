@@ -5,6 +5,30 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
 
+http.Client _authenticatedMockClient(
+  Future<http.Response> Function(http.Request request) handler,
+) {
+  return MockClient((request) async {
+    if (request.url.path.endsWith('/auth/otp/verify')) {
+      return http.Response(
+        jsonEncode({
+          'data': {
+            'accessToken': 'test-access-token',
+            'tokenType': 'Bearer',
+            'expiresIn': 900,
+          },
+        }),
+        200,
+      );
+    }
+    return handler(request);
+  });
+}
+
+Future<void> _signInTestCustomer(CustomerApi api) {
+  return api.verifyOtp(phoneNumber: '+919876543210', otp: '123456');
+}
+
 void main() {
   group('CustomerApi', () {
     test(
@@ -572,7 +596,7 @@ void main() {
       final requests = <http.Request>[];
       final api = CustomerApi(
         baseUrl: 'https://shop.example',
-        httpClient: MockClient((request) async {
+        httpClient: _authenticatedMockClient((request) async {
           requests.add(request);
           if (request.url.path.endsWith('/carts')) {
             return http.Response(
@@ -624,6 +648,7 @@ void main() {
         }),
       );
       addTearDown(api.close);
+      await _signInTestCustomer(api);
 
       expect(
         await api.addCartItem(
@@ -669,7 +694,7 @@ void main() {
       final requests = <http.Request>[];
       final api = CustomerApi(
         baseUrl: 'https://shop.example',
-        httpClient: MockClient((request) async {
+        httpClient: _authenticatedMockClient((request) async {
           requests.add(request);
           if (request.url.path.endsWith('/carts')) {
             return http.Response(
@@ -695,6 +720,7 @@ void main() {
         }),
       );
       addTearDown(api.close);
+      await _signInTestCustomer(api);
       await api.ensureCart();
 
       final quantity = await api.updateCartItem('product-id', 'variant-id', 3);
@@ -725,7 +751,7 @@ void main() {
       var listCount = 0;
       final api = CustomerApi(
         baseUrl: 'https://shop.example',
-        httpClient: MockClient((request) async {
+        httpClient: _authenticatedMockClient((request) async {
           requests.add(request);
           if (request.method == 'GET') {
             listCount++;
@@ -772,6 +798,7 @@ void main() {
         }),
       );
       addTearDown(api.close);
+      await _signInTestCustomer(api);
 
       final addresses = await api.getSavedAddresses();
       final created = await api.createSavedAddress(
@@ -811,7 +838,7 @@ void main() {
     test('surfaces saved-address authentication and API errors', () async {
       final api = CustomerApi(
         baseUrl: 'https://shop.example',
-        httpClient: MockClient((request) async {
+        httpClient: _authenticatedMockClient((request) async {
           return http.Response(
             jsonEncode({
               'error': {
@@ -824,6 +851,7 @@ void main() {
         }),
       );
       addTearDown(api.close);
+      await _signInTestCustomer(api);
 
       await expectLater(
         api.getSavedAddresses(),
@@ -844,7 +872,7 @@ void main() {
       final requests = <http.Request>[];
       final api = CustomerApi(
         baseUrl: 'https://shop.example',
-        httpClient: MockClient((request) async {
+        httpClient: _authenticatedMockClient((request) async {
           requests.add(request);
           if (request.url.path.endsWith('/carts')) {
             return http.Response(
@@ -882,6 +910,7 @@ void main() {
         }),
       );
       addTearDown(api.close);
+      await _signInTestCustomer(api);
 
       final cart = await api.getCart();
       await api.getCart();
@@ -942,7 +971,7 @@ void main() {
         final requests = <http.Request>[];
         final api = CustomerApi(
           baseUrl: 'https://shop.example',
-          httpClient: MockClient((request) async {
+          httpClient: _authenticatedMockClient((request) async {
             requests.add(request);
             if (request.url.path.endsWith('/carts')) {
               return http.Response(
@@ -965,6 +994,7 @@ void main() {
           }),
         );
         addTearDown(api.close);
+        await _signInTestCustomer(api);
         await api.ensureCart();
 
         await expectLater(
@@ -982,9 +1012,56 @@ void main() {
         expect(requests.last.headers['X-Cart-Token'], 'b' * 43);
         expect(jsonDecode(requests.last.body), {
           'deliveryAddress': {'formattedAddress': 'Main Road'},
+          'paymentMethod': 'cod',
         });
       },
     );
+
+    test('parses only server-provided Razorpay TEST MODE checkout details', () {
+      final order = ApiOrderResult.fromJson({
+        'orderId': 'myshopzy-order-id',
+        'status': 'payment_pending',
+        'currency': 'INR',
+        'itemSubtotalMinor': '900',
+        'deliveryFeeMinor': '100',
+        'discountMinor': '0',
+        'totalMinor': '1000',
+        'items': 1,
+        'paymentStatus': 'pending',
+        'paymentVerified': false,
+        'checkout': {
+          'keyId': 'rzp_test_public_id',
+          'razorpayOrderId': 'order_test_id',
+          'amountMinor': '1000',
+          'currency': 'INR',
+        },
+      });
+
+      expect(order.paymentVerified, isFalse);
+      expect(order.checkout?.keyId, 'rzp_test_public_id');
+      expect(order.checkout?.amountMinor, 1000);
+      expect(
+        () => ApiOrderResult.fromJson({
+          'orderId': 'myshopzy-order-id',
+          'status': 'payment_pending',
+          'currency': 'INR',
+          'itemSubtotalMinor': '900',
+          'deliveryFeeMinor': '100',
+          'discountMinor': '0',
+          'totalMinor': '1000',
+          'items': 1,
+          'paymentStatus': 'pending',
+          'paymentVerified': false,
+          'checkout': {
+            'keyId': 'rzp_live_public_id',
+            'razorpayOrderId': 'order_test_id',
+            'amountMinor': '1000',
+            'currency': 'INR',
+          },
+        }),
+        throwsFormatException,
+      );
+    });
 
     test('converts request timeouts into safe client errors', () async {
       final api = CustomerApi(
@@ -1007,6 +1084,55 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('sends Razorpay callback details for backend verification', () async {
+      final requests = <http.Request>[];
+      final api = CustomerApi(
+        baseUrl: 'https://shop.example',
+        httpClient: _authenticatedMockClient((request) async {
+          requests.add(request);
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'orderId': '27dcad4a-f166-4fc8-a224-3d1c099dd459',
+                'status': 'placed',
+                'currency': 'INR',
+                'itemSubtotalMinor': '900',
+                'deliveryFeeMinor': '100',
+                'discountMinor': '0',
+                'totalMinor': '1000',
+                'items': 1,
+                'paymentStatus': 'paid',
+                'paymentVerified': true,
+              },
+            }),
+            200,
+          );
+        }),
+      );
+      addTearDown(api.close);
+      await _signInTestCustomer(api);
+
+      final order = await api.verifyRazorpayPayment(
+        orderId: '27dcad4a-f166-4fc8-a224-3d1c099dd459',
+        razorpayOrderId: 'order_test_id',
+        razorpayPaymentId: 'payment_test_id',
+        razorpaySignature: 'test-signature',
+      );
+
+      expect(order.paymentVerified, isTrue);
+      expect(order.status, 'placed');
+      expect(requests.single.method, 'POST');
+      expect(
+        requests.single.url.path,
+        '/api/v1/orders/27dcad4a-f166-4fc8-a224-3d1c099dd459/verify-payment',
+      );
+      expect(jsonDecode(requests.single.body), {
+        'razorpayOrderId': 'order_test_id',
+        'razorpayPaymentId': 'payment_test_id',
+        'razorpaySignature': 'test-signature',
+      });
     });
   });
 }

@@ -4,8 +4,8 @@ CommonJS/Express backend for the MyShopzy Mandapeta delivery platform.
 Customer catalog read APIs are implemented against PostgreSQL. Catalog reads
 are public; customer account, parcel, order-history, and saved-address APIs
 require a verified customer session. Customer OTP/login routes are not mounted.
-Cart and checkout routes fail closed until carts can be durably owned by the
-verified customer. Admin, partner, and rider endpoints retain their separate
+Cart and checkout use customer-owned carts and require the same verified
+customer session. Admin, partner, and rider endpoints retain their separate
 access controls. The backend is not production-ready.
 
 ## Structure
@@ -16,7 +16,8 @@ access controls. The backend is not production-ready.
 - `GET /api/v1/partner-categories` returns active partner types and counts for
   the customer Home Page.
 - `src/modules/cart-checkout/routes.js` protects cart and checkout endpoints;
-  they remain unavailable until customer cart ownership is supported.
+  it also creates prepaid Razorpay orders and verifies customer payment
+  callbacks.
 - `src/modules/customer-account/routes.js` implements authenticated,
   customer-scoped `/me/*` endpoints, including parcel and address APIs.
 - `src/modules/riders/routes.js` implements rider order offers, order acceptance
@@ -86,12 +87,19 @@ SET is_active = true, updated_at = now();
 
 Cart and checkout endpoints (`/api/v1/carts`, `/api/v1/cart`,
 `/api/v1/cart/items`, `/api/v1/checkout/quote`, and `/api/v1/orders`) require a
-verified customer session. Unauthenticated requests receive `401
-AUTHENTICATION_REQUIRED`. Authenticated requests currently receive `503
-CART_OWNERSHIP_UNAVAILABLE`: the existing cart schema stores only a token hash
-and cannot safely bind a cart to the authenticated customer. The token is not
-proof of identity. Do not enable these routes until customer ownership is
-implemented with approval for a schema change.
+verified customer session. Cart tokens are additionally bound to the
+authenticated customer in migration 018; a token alone is not proof of
+identity. `POST /api/v1/orders` calculates totals from database state and
+accepts `paymentMethod: "cod"` or `"prepaid"`. Prepaid requests also require a
+client-generated `checkoutRequestId` UUID for idempotent retries. The backend
+creates a pending MyShopzy order and Razorpay order using the server-calculated
+amount, then returns only the public TEST MODE Key ID, Razorpay order ID,
+amount, and currency. `POST /api/v1/orders/:orderId/verify-payment` checks the
+Razorpay signature and confirms the provider reports a captured payment before
+marking the payment attempt verified and changing the order to `placed`.
+Unpaid orders remain `payment_pending` and are excluded from partner order
+views and rider offers. Repeating the same prepaid request ID reuses its order
+and payment attempt.
 
 Delivery pricing uses integer paise and integer metres. Standard orders use a
 4,000-metre base distance and 4,000-paise base fee; parcel bookings use a
@@ -105,6 +113,11 @@ distance/fee fallback is used.
 Configure routing on the backend only with `ROUTING_PROVIDER=google` and
 `ROUTING_API_KEY=<server-side Google Routes API key>`. The `fake` provider is
 available for tests and local development only; production startup rejects it.
+For Razorpay testing, set `RAZORPAY_KEY_ID` to a `rzp_test_` key ID and
+`RAZORPAY_KEY_SECRET` to its matching secret in the backend `.env` file. Keep
+both values server-side; only the Key ID is returned to the customer checkout.
+The backend rejects live-mode Key IDs. Never put either setting in Flutter
+build defines, assets, logs, or API responses.
 The Flutter web app's development origin is allowed by default only in
 development mode (`http://127.0.0.1:7357`). Set `CUSTOMER_APP_ORIGINS` to a
 comma-separated list of exact HTTPS origins for deployed customer web apps;
@@ -309,11 +322,10 @@ all planned areas. Catalog endpoints validate query/path inputs and return
 generic errors without leaking PostgreSQL details. The PostgreSQL pool uses
 validated environment settings; pool errors and readiness responses do not
 expose database diagnostics or credentials. Payment processing, object
-storage, and production deployment remain unconfigured. Cart and checkout
-remain unavailable until customer ownership can be enforced.
+storage, and production deployment remain unconfigured. Razorpay is restricted
+to TEST MODE; live payments are not supported.
 
 The migrations do not model coupons, refunds, reviews, general support
-ticketing, notifications, or payment verification. Coupon
-eligibility/redemption, notification delivery, support ticketing, payment
-verification/provider references, and review/rating records need separately
-designed schema and integrations before those APIs can be implemented.
+ticketing, or notifications. Coupon eligibility/redemption, notification
+delivery, support ticketing, and review/rating records need separately designed
+schema and integrations before those APIs can be implemented.

@@ -526,6 +526,7 @@ class ApiOrderResult {
     required this.itemCount,
     this.paymentStatus,
     this.paymentVerified = false,
+    this.checkout,
   });
 
   final String orderId;
@@ -538,10 +539,11 @@ class ApiOrderResult {
   final int itemCount;
   final String? paymentStatus;
   final bool paymentVerified;
+  final ApiRazorpayCheckout? checkout;
 
   factory ApiOrderResult.fromJson(Map<String, dynamic> json) {
     final status = _requiredString(json, 'status');
-    if (status != 'placed') {
+    if (status != 'placed' && status != 'payment_pending') {
       throw const FormatException('Invalid order status.');
     }
     final rawPaymentVerified = json['paymentVerified'];
@@ -549,24 +551,77 @@ class ApiOrderResult {
       throw const FormatException('Invalid payment verification result.');
     }
     final paymentStatus = _optionalString(json['paymentStatus']);
+    final rawCheckout = json['checkout'];
+    if (rawCheckout != null && rawCheckout is! Map<String, dynamic>) {
+      throw const FormatException('Invalid payment checkout details.');
+    }
+    final checkout = rawCheckout == null
+        ? null
+        : ApiRazorpayCheckout.fromJson(rawCheckout);
+    final totalMinor = _requiredMinor(json, 'totalMinor');
+    final currency = _requiredString(json, 'currency');
+    final paymentVerified =
+        rawPaymentVerified == true &&
+        const {
+          'paid',
+          'success',
+          'successful',
+          'succeeded',
+        }.contains(paymentStatus?.trim().toLowerCase());
+    if (checkout != null &&
+        (checkout.amountMinor != totalMinor || checkout.currency != currency)) {
+      throw const FormatException('Payment amount does not match the order.');
+    }
+    if (status == 'payment_pending' &&
+        (checkout == null || paymentVerified || paymentStatus != 'pending')) {
+      throw const FormatException('Invalid pending payment response.');
+    }
+    if (paymentVerified && status != 'placed') {
+      throw const FormatException(
+        'Unplaced orders cannot be payment-verified.',
+      );
+    }
     return ApiOrderResult(
       orderId: _requiredString(json, 'orderId'),
       status: status,
-      currency: _requiredString(json, 'currency'),
+      currency: currency,
       itemSubtotalMinor: _requiredMinor(json, 'itemSubtotalMinor'),
       deliveryFeeMinor: _requiredMinor(json, 'deliveryFeeMinor'),
       discountMinor: _requiredMinor(json, 'discountMinor'),
-      totalMinor: _requiredMinor(json, 'totalMinor'),
+      totalMinor: totalMinor,
       itemCount: _requiredInteger(json, 'items', minimum: 1),
       paymentStatus: paymentStatus,
-      paymentVerified:
-          rawPaymentVerified == true &&
-          const {
-            'paid',
-            'success',
-            'successful',
-            'succeeded',
-          }.contains(paymentStatus?.trim().toLowerCase()),
+      paymentVerified: paymentVerified,
+      checkout: checkout,
+    );
+  }
+}
+
+class ApiRazorpayCheckout {
+  const ApiRazorpayCheckout({
+    required this.keyId,
+    required this.razorpayOrderId,
+    required this.amountMinor,
+    required this.currency,
+  });
+
+  final String keyId;
+  final String razorpayOrderId;
+  final int amountMinor;
+  final String currency;
+
+  factory ApiRazorpayCheckout.fromJson(Map<String, dynamic> json) {
+    final keyId = _requiredString(json, 'keyId');
+    if (!keyId.startsWith('rzp_test_')) {
+      throw const FormatException(
+        'Checkout must use a Razorpay TEST MODE key.',
+      );
+    }
+    return ApiRazorpayCheckout(
+      keyId: keyId,
+      razorpayOrderId: _requiredString(json, 'razorpayOrderId'),
+      amountMinor: _requiredMinor(json, 'amountMinor'),
+      currency: _requiredString(json, 'currency'),
     );
   }
 }
@@ -611,6 +666,9 @@ class ApiCustomerOrder {
     this.serverNow,
     this.updatedAt,
     this.cancellationEligible = false,
+    this.paymentMethod,
+    this.paymentStatus,
+    this.paymentVerified = false,
   });
 
   final String id;
@@ -629,12 +687,20 @@ class ApiCustomerOrder {
   final String? serverNow;
   final String? updatedAt;
   final bool cancellationEligible;
+  final String? paymentMethod;
+  final String? paymentStatus;
+  final bool paymentVerified;
 
   factory ApiCustomerOrder.fromJson(Map<String, dynamic> json) {
     final cancellationEligible = json['cancellation_eligible'];
     if (cancellationEligible != null && cancellationEligible is! bool) {
       throw const FormatException('Invalid cancellation eligibility.');
     }
+    final paymentVerified = json['payment_verified'];
+    if (paymentVerified != null && paymentVerified is! bool) {
+      throw const FormatException('Invalid payment verification result.');
+    }
+    final paymentStatus = _optionalString(json['payment_status']);
     return ApiCustomerOrder(
       id: _requiredString(json, 'id'),
       shopId: _requiredString(json, 'shop_id'),
@@ -652,6 +718,10 @@ class ApiCustomerOrder {
       serverNow: _optionalString(json['server_now']),
       updatedAt: _optionalString(json['updated_at']),
       cancellationEligible: cancellationEligible == true,
+      paymentMethod: _optionalString(json['payment_method']),
+      paymentStatus: paymentStatus,
+      paymentVerified:
+          paymentVerified == true && paymentStatus?.toLowerCase() == 'paid',
     );
   }
 }
@@ -999,17 +1069,21 @@ class CustomerApi {
     http.Client? httpClient,
     this.timeout = const Duration(seconds: 10),
     this.enableDevelopmentPreview = false,
+    bool enableDevelopmentGuestCart = false,
   }) : _baseUrl = baseUrl.trim().replaceFirst(RegExp(r'/+$'), ''),
+       enableDevelopmentGuestCart = kDebugMode && enableDevelopmentGuestCart,
        _httpClient = httpClient ?? http.Client();
 
   factory CustomerApi.fromEnvironment({
     http.Client? httpClient,
     bool enableDevelopmentPreview = false,
+    bool enableDevelopmentGuestCart = false,
   }) {
     return CustomerApi(
       baseUrl: const String.fromEnvironment('MYSHOPZY_API_BASE_URL'),
       httpClient: httpClient,
       enableDevelopmentPreview: enableDevelopmentPreview,
+      enableDevelopmentGuestCart: enableDevelopmentGuestCart,
     );
   }
 
@@ -1019,6 +1093,7 @@ class CustomerApi {
   final http.Client _httpClient;
   final Duration timeout;
   final bool enableDevelopmentPreview;
+  final bool enableDevelopmentGuestCart;
   String? _cartToken;
   Future<void>? _cartInitialization;
   bool _orderOutcomeUnknown = false;
@@ -1031,6 +1106,8 @@ class CustomerApi {
   // Preview access never changes the session required by customer API calls.
   bool get canAccessCustomerFeatures =>
       hasCustomerSession || (kDebugMode && enableDevelopmentPreview);
+  bool get canUseDevelopmentGuestCart =>
+      kDebugMode && enableDevelopmentGuestCart;
   bool get orderOutcomeUnknown => _orderOutcomeUnknown;
   bool get parcelOutcomeUnknown => _parcelOutcomeUnknown;
   CustomerApiException get _unknownOrderOutcomeException =>
@@ -1493,14 +1570,28 @@ class CustomerApi {
   }
 
   Future<ApiOrderResult> placeOrder(
-    Map<String, Object?> deliveryAddress,
-  ) async {
+    Map<String, Object?> deliveryAddress, {
+    String paymentMethod = 'cod',
+    String? checkoutRequestId,
+  }) async {
     if (_orderOutcomeUnknown) throw _unknownOrderOutcomeException;
+    if (!const {'cod', 'prepaid'}.contains(paymentMethod) ||
+        (paymentMethod == 'prepaid' && checkoutRequestId == null)) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'INVALID_REQUEST',
+        message: 'A valid payment method and checkout request ID are required.',
+      );
+    }
     try {
       final payload = await _request(
         'POST',
         '/orders',
-        body: {'deliveryAddress': deliveryAddress},
+        body: {
+          'deliveryAddress': deliveryAddress,
+          'paymentMethod': paymentMethod,
+          'checkoutRequestId': ?checkoutRequestId,
+        },
         useCartToken: true,
       );
       return ApiOrderResult.fromJson(_dataObject(payload));
@@ -1509,11 +1600,37 @@ class CustomerApi {
           error.code == 'NETWORK_ERROR' ||
           error.code == 'INVALID_RESPONSE' ||
           (error.statusCode != null && error.statusCode! >= 500)) {
-        _orderOutcomeUnknown = true;
+        if (checkoutRequestId == null) {
+          _orderOutcomeUnknown = true;
+        }
       }
       rethrow;
     } on FormatException {
-      _orderOutcomeUnknown = true;
+      if (checkoutRequestId == null) {
+        _orderOutcomeUnknown = true;
+      }
+      throw _invalidResponse();
+    }
+  }
+
+  Future<ApiOrderResult> verifyRazorpayPayment({
+    required String orderId,
+    required String razorpayOrderId,
+    required String razorpayPaymentId,
+    required String razorpaySignature,
+  }) async {
+    final payload = await _request(
+      'POST',
+      '/orders/$orderId/verify-payment',
+      body: {
+        'razorpayOrderId': razorpayOrderId,
+        'razorpayPaymentId': razorpayPaymentId,
+        'razorpaySignature': razorpaySignature,
+      },
+    );
+    try {
+      return ApiOrderResult.fromJson(_dataObject(payload));
+    } on FormatException {
       throw _invalidResponse();
     }
   }
@@ -1668,13 +1785,6 @@ class CustomerApi {
     Object? body,
     bool useCartToken = false,
   }) async {
-    if (_requiresCustomerSession(path) && !hasCustomerSession) {
-      throw const CustomerApiException(
-        statusCode: 401,
-        code: 'AUTHENTICATION_REQUIRED',
-        message: 'Sign in to access this customer feature.',
-      );
-    }
     if (!isConfigured) {
       throw const CustomerApiException(
         statusCode: null,
@@ -1707,6 +1817,13 @@ class CustomerApi {
           statusCode: null,
           code: 'INSECURE_BASE_URL',
           message: 'Use HTTPS for non-local backend connections.',
+        );
+      }
+      if (_requiresCustomerSession(path) && !hasCustomerSession) {
+        throw const CustomerApiException(
+          statusCode: 401,
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'Sign in to access this customer feature.',
         );
       }
       final headers = <String, String>{

@@ -28,6 +28,15 @@ function loadConfig(env = process.env) {
     throw new Error('PORT must be an integer between 1 and 65535.');
   }
 
+  const razorpayKeyId = env.RAZORPAY_KEY_ID?.trim() || null;
+  const razorpayKeySecret = env.RAZORPAY_KEY_SECRET?.trim() || null;
+  if (Boolean(razorpayKeyId) !== Boolean(razorpayKeySecret)) {
+    throw new Error('Set both RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.');
+  }
+  if (razorpayKeyId && !razorpayKeyId.startsWith('rzp_test_')) {
+    throw new Error('RAZORPAY_KEY_ID must be a TEST MODE key.');
+  }
+
   const configuredPostgresKeys = POSTGRES_ENV_KEYS.filter(
     (key) => env[key] !== undefined && env[key] !== '',
   );
@@ -283,6 +292,12 @@ function loadConfig(env = process.env) {
     port,
     nodeEnv,
     database,
+    razorpay: razorpayKeyId
+      ? Object.freeze({
+          keyId: razorpayKeyId,
+          keySecret: razorpayKeySecret,
+        })
+      : null,
     googleMapsApiKey: env.GOOGLE_MAPS_API_KEY?.trim() || null,
     routingProvider,
     routingApiKey: env.ROUTING_API_KEY?.trim() || null,

@@ -12,6 +12,7 @@ const {
 } = require('./modules/partner-types/auth0-authentication');
 const { mockRiderAuth } = require('./middleware/mock-rider-auth');
 const { createDistanceClient } = require('./modules/delivery-fee/distance');
+const Razorpay = require('razorpay');
 
 function shutdownServer(server, pool) {
   return new Promise((resolve, reject) => {
@@ -52,6 +53,12 @@ function startServer({
     provider: config.routingProvider,
     apiKey: config.routingApiKey,
   });
+  const razorpayClient = config.razorpay
+    ? new Razorpay({
+        key_id: config.razorpay.keyId,
+        key_secret: config.razorpay.keySecret,
+      })
+    : null;
   const authenticateAdmin = config.auth0Admin && config.superAdminOrigin && pool
     ? createAuth0AdminAuthenticator({
         databasePool: pool,
@@ -67,6 +74,9 @@ function startServer({
   const app = createApp({
     databasePool: pool,
     deliveryDistanceClient,
+    razorpayClient,
+    razorpayKeyId: config.razorpay?.keyId ?? null,
+    razorpayKeySecret: config.razorpay?.keySecret ?? null,
     authenticateCustomer: createCustomerAuthenticator({
       databasePool: pool,
       config,

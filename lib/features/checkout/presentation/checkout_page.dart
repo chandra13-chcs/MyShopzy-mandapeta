@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/config/business_hours.dart';
@@ -60,6 +62,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool _duesLoading = false;
   bool _storeClosedByServer = false;
   bool _placingOrder = false;
+  bool _checkoutOpen = false;
   static const _storeClosedMessage =
       'Store is closed. Orders are accepted between '
       '${BusinessHours.openingLabel} and ${BusinessHours.closingLabel}.';
@@ -84,6 +87,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   bool _someoneElseSelected = false;
   String _newAddressType = 'Other';
   String _selectedPaymentMethod = 'Cash on Delivery';
+  late final Razorpay _razorpay;
+  ApiOrderResult? _pendingOnlineOrder;
+  PaymentSuccessResponse? _pendingPaymentResponse;
+  String? _checkoutRequestId;
   DemoCoupon? _selectedCoupon;
   String? _couponMessage;
   bool _couponMessageIsError = false;
@@ -146,6 +153,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
   @override
   void initState() {
     super.initState();
+    _razorpay = Razorpay()
+      ..on(Razorpay.EVENT_PAYMENT_SUCCESS, _handleRazorpayPaymentSuccess)
+      ..on(Razorpay.EVENT_PAYMENT_ERROR, _handleRazorpayPaymentError)
+      ..on(Razorpay.EVENT_EXTERNAL_WALLET, _handleRazorpayExternalWallet);
     _registerActiveCheckoutPage();
     final selectedAddress =
         SelectedDeliveryAddressStore.instance.selectedAddress;
@@ -248,6 +259,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   @override
   void dispose() {
+    _razorpay.clear();
     _unregisterActiveCheckoutPage();
     _cartStore.removeListener(_handleCartChanged);
     _couponCodeController.dispose();
@@ -577,22 +589,30 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 final hasConfirmedAddress = _hasPlaceableAddress;
                 final orderOutcomeUnknown =
                     _isBackendCart && CustomerApi.instance.orderOutcomeUnknown;
+                final canRetryPendingPayment =
+                    _selectedPaymentMethod == 'Razorpay' &&
+                    _pendingOnlineOrder != null;
                 final canPlaceOrder =
-                    _isBackendCart &&
-                    hasItems &&
-                    hasConfirmedAddress &&
-                    (!_isBackendCart ||
+                    canRetryPendingPayment ||
+                    (_isBackendCart &&
+                        hasItems &&
+                        hasConfirmedAddress &&
                         (_backendQuote != null &&
                             _backendQuote!.isDeliverable &&
-                            _backendQuote!.totalMinor != null)) &&
-                    (!_isBackendCart || _backendQuote?.storeOpen != false) &&
-                    _outstandingMinor <= 0 &&
-                    !_storeClosedByServer &&
-                    (!_isBackendCart ||
-                        (!_quoteLoading && _quoteError == null)) &&
+                            _backendQuote!.totalMinor != null) &&
+                        _backendQuote?.storeOpen != false &&
+                        _outstandingMinor <= 0 &&
+                        !_storeClosedByServer &&
+                        !_quoteLoading &&
+                        _quoteError == null);
+                final canSubmitOrder =
+                    canPlaceOrder &&
                     !_placingOrder &&
+                    !_checkoutOpen &&
                     !orderOutcomeUnknown;
-                if (!hasItems) return const SizedBox.shrink();
+                if (!hasItems && !canRetryPendingPayment) {
+                  return const SizedBox.shrink();
+                }
                 return SafeArea(
                   top: false,
                   child: Container(
@@ -636,7 +656,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           height: 52,
                           width: double.infinity,
                           child: FilledButton(
-                            onPressed: canPlaceOrder ? _placeOrder : null,
+                            onPressed: canSubmitOrder ? _placeOrder : null,
                             style: FilledButton.styleFrom(
                               backgroundColor: _green,
                               foregroundColor: Colors.white,
@@ -648,6 +668,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             child: Text(
                               _placingOrder
                                   ? 'Submitting…'
+                                  : _selectedPaymentMethod == 'Razorpay' &&
+                                        _pendingPaymentResponse != null
+                                  ? 'Verify Payment'
+                                  : _selectedPaymentMethod == 'Razorpay' &&
+                                        _pendingOnlineOrder != null
+                                  ? 'Retry Payment'
+                                  : _selectedPaymentMethod == 'Razorpay'
+                                  ? 'Pay with Razorpay'
                                   : orderOutcomeUnknown
                                   ? 'Order Status Unknown'
                                   : 'Place Order',
@@ -1662,10 +1690,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
           ),
           const SizedBox(height: 8),
           _paymentOption(
+            title: 'Razorpay (UPI, Cards & More)',
+            status: 'TEST MODE',
+            icon: Icons.lock_outline_rounded,
+            selected: _selectedPaymentMethod == 'Razorpay',
+            enabled: _isBackendCart && _pendingOnlineOrder == null,
+            onTap: () => setState(() => _selectedPaymentMethod = 'Razorpay'),
+          ),
+          const SizedBox(height: 8),
+          _paymentOption(
             title: 'Cash on Delivery',
             status: 'Available',
             icon: Icons.payments_outlined,
             selected: _selectedPaymentMethod == 'Cash on Delivery',
+            enabled: _pendingOnlineOrder == null,
             onTap: () =>
                 setState(() => _selectedPaymentMethod = 'Cash on Delivery'),
           ),
@@ -2011,17 +2049,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
       );
       return;
     }
-    if (!CustomerApi.instance.isConfigured || !_cartStore.hasBackendCart) {
+    if (!CustomerApi.instance.isConfigured ||
+        (!_cartStore.hasBackendCart && _pendingOnlineOrder == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Checkout is unavailable until customer cart ownership is supported.',
+            'Checkout is unavailable until a signed-in backend cart is ready.',
           ),
         ),
       );
       return;
     }
-    if (_cartStore.items.isEmpty || !_hasPlaceableAddress) {
+    if ((_cartStore.items.isEmpty && _pendingOnlineOrder == null) ||
+        !_hasPlaceableAddress) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -2032,10 +2072,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
       return;
     }
     final address = _confirmedDeliveryAddress!;
-    if (_isBackendCart &&
+    if (_pendingOnlineOrder == null &&
+        _isBackendCart &&
         (_backendQuote == null || !_backendQuote!.isDeliverable)) {
       return;
     }
+    if (_pendingPaymentResponse != null) {
+      await _verifyPendingRazorpayPayment();
+      return;
+    }
+
     setState(() => _placingOrder = true);
     try {
       final deliveryAddress = <String, Object?>{
@@ -2050,57 +2096,24 @@ class _CheckoutPageState extends State<CheckoutPage> {
         if (address.latitude != null) 'latitude': address.latitude,
         if (address.longitude != null) 'longitude': address.longitude,
       };
-      final order = await CustomerApi.instance.placeOrder(deliveryAddress);
+      final isPrepaid = _selectedPaymentMethod == 'Razorpay';
+      final requestId = isPrepaid
+          ? (_checkoutRequestId ??= _newCheckoutRequestId())
+          : null;
+      final order =
+          _pendingOnlineOrder ??
+          await CustomerApi.instance.placeOrder(
+            deliveryAddress,
+            paymentMethod: isPrepaid ? 'prepaid' : 'cod',
+            checkoutRequestId: requestId,
+          );
       if (!mounted) return;
-      HapticFeedback.mediumImpact();
-      final confirmedOrder = OrderRecord(
-        storeName: _cartStore.items.first.merchantId ?? 'MyShopzy Store',
-        icon: _cartStore.items.first.icon,
-        orderId: order.orderId,
-        dateTime: DateTime.now().toLocal().toString(),
-        itemSummary: _cartStore.items
-            .map((item) => '${item.quantity} ${item.name}')
-            .join(', '),
-        totalInPaise: order.totalMinor,
-        status: order.status,
-        statusMessage: 'We have received your order',
-        orderTab: OrdersTab.ongoing,
-        serviceType: _cartStore.items.first.serviceType,
-        items: [
-          for (final item in _cartStore.items)
-            OrderLineItem(
-              name: item.name,
-              quantity: item.quantity,
-              unitPriceInPaise: item.priceInPaise,
-              icon: item.icon,
-              description: item.description,
-              imageUrl: item.imageUrl,
-              productId: item.productId,
-              serviceType: item.serviceType,
-              merchantId: item.merchantId,
-              serviceVariant: item.serviceVariant,
-              productVariantId: item.productVariantId,
-              variantLabel: item.variantLabel,
-            ),
-        ],
-        deliveryAddress: address.formattedAddress,
-        deliveryAddressLabel: address.addressType,
-        paymentMethod: _selectedPaymentMethod,
-        paymentStatus: order.paymentStatus ?? 'Pending',
-        paymentVerified: order.paymentVerified,
-        deliveryChargeInPaise: order.deliveryFeeMinor,
-        discountInPaise: order.discountMinor,
-        trackingStatus: OrderTrackingStatus.orderPlaced,
-        isBackendData: true,
-        itemCount: order.itemCount,
-      );
-      _cartStore.clear();
-      await Navigator.of(context).pushReplacement<void, void>(
-        AppPageRoute<void>.builder(
-          builder: (context) =>
-              OrderSuccessPage(confirmedOrder: confirmedOrder),
-        ),
-      );
+      if (isPrepaid && !order.paymentVerified) {
+        _pendingOnlineOrder = order;
+        _openRazorpayCheckout(order);
+        return;
+      }
+      await _completeOrder(order, address);
     } on CustomerApiException catch (error) {
       if (!mounted) return;
       if (error.code == 'OUTSTANDING_DUES') {
@@ -2126,6 +2139,193 @@ class _CheckoutPageState extends State<CheckoutPage> {
     } finally {
       if (mounted) setState(() => _placingOrder = false);
     }
+  }
+
+  String _newCheckoutRequestId() {
+    final random = math.Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+        '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+        '${hex.substring(20)}';
+  }
+
+  void _openRazorpayCheckout(ApiOrderResult order) {
+    final checkout = order.checkout;
+    if (checkout == null) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'INVALID_RESPONSE',
+        message: 'The backend did not return valid payment checkout details.',
+      );
+    }
+    setState(() => _checkoutOpen = true);
+    _razorpay.open({
+      'key': checkout.keyId,
+      'order_id': checkout.razorpayOrderId,
+      'amount': checkout.amountMinor,
+      'currency': checkout.currency,
+      'name': 'MyShopzy',
+      'description': 'Order payment',
+      'theme': {'color': '#168B56'},
+    });
+  }
+
+  void _handleRazorpayPaymentSuccess(PaymentSuccessResponse response) {
+    if (!mounted) return;
+    setState(() {
+      _checkoutOpen = false;
+      _pendingPaymentResponse = response;
+    });
+    unawaited(_verifyPendingRazorpayPayment());
+  }
+
+  void _handleRazorpayPaymentError(PaymentFailureResponse response) {
+    if (!mounted) return;
+    setState(() => _checkoutOpen = false);
+    final cancelled = response.code == Razorpay.PAYMENT_CANCELLED;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          cancelled
+              ? 'Payment cancelled. Your order is pending; you can retry.'
+              : 'Payment failed. Your order is pending; you can retry.',
+        ),
+      ),
+    );
+  }
+
+  void _handleRazorpayExternalWallet(ExternalWalletResponse response) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          response.walletName == null
+              ? 'Complete the payment in Razorpay Checkout.'
+              : 'Complete the ${response.walletName} payment in Razorpay Checkout.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _verifyPendingRazorpayPayment() async {
+    final order = _pendingOnlineOrder;
+    final response = _pendingPaymentResponse;
+    final address = _confirmedDeliveryAddress;
+    if (order == null || response == null || address == null) return;
+    final checkout = order.checkout;
+    if (checkout == null ||
+        response.orderId != checkout.razorpayOrderId ||
+        response.paymentId == null ||
+        response.signature == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Payment details could not be verified. Retry payment verification.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _placingOrder = true);
+    try {
+      final verifiedOrder = await CustomerApi.instance.verifyRazorpayPayment(
+        orderId: order.orderId,
+        razorpayOrderId: response.orderId!,
+        razorpayPaymentId: response.paymentId!,
+        razorpaySignature: response.signature!,
+      );
+      if (!verifiedOrder.paymentVerified) {
+        throw const CustomerApiException(
+          statusCode: null,
+          code: 'PAYMENT_NOT_VERIFIED',
+          message: 'The backend has not verified this payment yet.',
+        );
+      }
+      await _completeOrder(verifiedOrder, address);
+      _pendingPaymentResponse = null;
+    } on CustomerApiException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Payment verification is still pending. Tap Verify Payment to retry.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _placingOrder = false);
+    }
+  }
+
+  Future<void> _completeOrder(
+    ApiOrderResult order,
+    CheckoutDeliveryAddress address,
+  ) async {
+    if (!mounted) return;
+    if (_selectedPaymentMethod == 'Razorpay' && !order.paymentVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The order will be confirmed after payment verification.',
+          ),
+        ),
+      );
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    final confirmedOrder = OrderRecord(
+      storeName: _cartStore.items.first.merchantId ?? 'MyShopzy Store',
+      icon: _cartStore.items.first.icon,
+      orderId: order.orderId,
+      dateTime: DateTime.now().toLocal().toString(),
+      itemSummary: _cartStore.items
+          .map((item) => '${item.quantity} ${item.name}')
+          .join(', '),
+      totalInPaise: order.totalMinor,
+      status: order.status,
+      statusMessage: 'We have received your order',
+      orderTab: OrdersTab.ongoing,
+      serviceType: _cartStore.items.first.serviceType,
+      items: [
+        for (final item in _cartStore.items)
+          OrderLineItem(
+            name: item.name,
+            quantity: item.quantity,
+            unitPriceInPaise: item.priceInPaise,
+            icon: item.icon,
+            description: item.description,
+            imageUrl: item.imageUrl,
+            productId: item.productId,
+            serviceType: item.serviceType,
+            merchantId: item.merchantId,
+            serviceVariant: item.serviceVariant,
+            productVariantId: item.productVariantId,
+            variantLabel: item.variantLabel,
+          ),
+      ],
+      deliveryAddress: address.formattedAddress,
+      deliveryAddressLabel: address.addressType,
+      paymentMethod: _selectedPaymentMethod,
+      paymentStatus: order.paymentStatus ?? 'Pending',
+      paymentVerified: order.paymentVerified,
+      deliveryChargeInPaise: order.deliveryFeeMinor,
+      discountInPaise: order.discountMinor,
+      trackingStatus: OrderTrackingStatus.orderPlaced,
+      isBackendData: true,
+      itemCount: order.itemCount,
+    );
+    _cartStore.clear();
+    await Navigator.of(context).pushReplacement<void, void>(
+      AppPageRoute<void>.builder(
+        builder: (context) => OrderSuccessPage(confirmedOrder: confirmedOrder),
+      ),
+    );
   }
 
   IconData _addressIcon(String addressType) {

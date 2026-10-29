@@ -689,6 +689,7 @@ function createPartnerProductOrderRouter({ databasePool }) {
          JOIN app.shops AS s
            ON s.id = o.shop_id AND s.partner_id = o.partner_id
          WHERE o.partner_id = $1::uuid
+           AND o.status <> 'payment_pending'
            AND ($2::text IS NULL OR o.status = $2)
          ORDER BY o.placed_at DESC, o.id DESC
          LIMIT $3 OFFSET $4`,
@@ -698,6 +699,7 @@ function createPartnerProductOrderRouter({ databasePool }) {
         `SELECT count(*)::integer AS total
          FROM app.orders AS o
          WHERE o.partner_id = $1::uuid
+           AND o.status <> 'payment_pending'
            AND ($2::text IS NULL OR o.status = $2)`,
         [req.partnerContext.partnerId, databaseStatus],
       );
@@ -732,7 +734,9 @@ function createPartnerProductOrderRouter({ databasePool }) {
          FROM app.orders AS o
          JOIN app.shops AS s
            ON s.id = o.shop_id AND s.partner_id = o.partner_id
-         WHERE o.id = $1::uuid AND o.partner_id = $2::uuid
+         WHERE o.id = $1::uuid
+           AND o.partner_id = $2::uuid
+           AND o.status <> 'payment_pending'
          LIMIT 1`,
         [id, req.partnerContext.partnerId],
       );

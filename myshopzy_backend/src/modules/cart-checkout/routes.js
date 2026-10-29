@@ -11,6 +11,9 @@ const { PLATFORM_FEE_MINOR } = require('../delivery-serviceability/pricing');
 const {
   validateCoordinates,
 } = require('../delivery-fee/distance');
+const {
+  verifyRazorpaySignature,
+} = require('../payments/razorpay-signature');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -100,14 +103,7 @@ function requireCustomerCartOwnership(authenticateCustomer) {
             ),
           );
         }
-        return sendApiError(
-          res,
-          new ApiError(
-            503,
-            'CART_OWNERSHIP_UNAVAILABLE',
-            'Customer cart ownership is unavailable until the database supports customer-owned carts.',
-          ),
-        );
+        return next();
       },
     );
   };
@@ -160,6 +156,112 @@ function hashCartToken(token) {
   return createHash('sha256').update(token).digest();
 }
 
+function formatPaymentOrderResult(row, itemCount) {
+  return {
+    orderId: row.order_id,
+    status: row.order_status,
+    currency: row.currency.trim(),
+    itemSubtotalMinor: row.items_subtotal_minor,
+    deliveryFeeMinor: row.delivery_fee_minor,
+    discountMinor: row.discount_minor,
+    totalMinor: row.total_minor,
+    items: itemCount,
+    paymentStatus: row.payment_status === 'verified' ? 'paid' : 'pending',
+    paymentVerified: row.payment_status === 'verified',
+  };
+}
+
+function isValidRazorpayOrder(order, { receipt, amountMinor, currency }) {
+  return (
+    order &&
+    typeof order.id === 'string' &&
+    order.receipt === receipt &&
+    Number(order.amount) === Number(amountMinor) &&
+    typeof order.currency === 'string' &&
+    order.currency === currency
+  );
+}
+
+async function ensureRazorpayOrder({
+  databasePool,
+  razorpayClient,
+  razorpayKeyId,
+  paymentAttempt,
+}) {
+  let razorpayOrderId = paymentAttempt.provider_order_id;
+  if (!razorpayOrderId) {
+    const orders = await razorpayClient.orders.all({
+      receipt: paymentAttempt.payment_attempt_id,
+      count: 10,
+    });
+    const receiptOrders = Array.isArray(orders?.items)
+      ? orders.items.filter(
+          (order) => order?.receipt === paymentAttempt.payment_attempt_id,
+        )
+      : [];
+    const existingOrder = receiptOrders.find((order) =>
+      isValidRazorpayOrder(order, {
+        receipt: paymentAttempt.payment_attempt_id,
+        amountMinor: paymentAttempt.total_minor,
+        currency: paymentAttempt.currency.trim(),
+      }),
+    );
+    if (receiptOrders.length > 0 && !existingOrder) {
+      throw new ApiError(
+        502,
+        'PAYMENT_PROVIDER_INVALID_RESPONSE',
+        'The payment provider returned an inconsistent order for this checkout.',
+      );
+    }
+    const providerOrder =
+      existingOrder ??
+      (await razorpayClient.orders.create({
+        amount: Number(paymentAttempt.total_minor),
+        currency: paymentAttempt.currency.trim(),
+        receipt: paymentAttempt.payment_attempt_id,
+        notes: { myshopzy_order_id: paymentAttempt.order_id },
+      }));
+    if (
+      !isValidRazorpayOrder(providerOrder, {
+        receipt: paymentAttempt.payment_attempt_id,
+        amountMinor: paymentAttempt.total_minor,
+        currency: paymentAttempt.currency.trim(),
+      })
+    ) {
+      throw new ApiError(
+        502,
+        'PAYMENT_PROVIDER_INVALID_RESPONSE',
+        'The payment provider returned an invalid order.',
+      );
+    }
+
+    const savedOrder = await databasePool.query(
+      `UPDATE app.order_payment_attempts
+       SET provider_order_id = $2
+       WHERE id = $1
+         AND status = 'pending'
+         AND (provider_order_id IS NULL OR provider_order_id = $2)
+       RETURNING provider_order_id`,
+      [paymentAttempt.payment_attempt_id, providerOrder.id],
+    );
+    if (savedOrder.rows.length === 0) {
+      throw new ApiError(
+        409,
+        'PAYMENT_ORDER_CONFLICT',
+        'This checkout is already associated with another payment order.',
+      );
+    }
+    razorpayOrderId = savedOrder.rows[0].provider_order_id;
+  }
+
+  return {
+    keyId: razorpayKeyId,
+    razorpayOrderId,
+    amountMinor: paymentAttempt.total_minor,
+    currency: paymentAttempt.currency.trim(),
+  };
+}
+
 async function withTransaction(pool, action) {
   const client = await pool.connect();
   try {
@@ -184,12 +286,17 @@ async function withTransaction(pool, action) {
   }
 }
 
-async function findCart(client, tokenHash, { lock = false } = {}) {
+async function findCart(
+  client,
+  tokenHash,
+  customerUserId,
+  { lock = false } = {},
+) {
   const result = await client.query(
     `SELECT id, shop_id, partner_id
      FROM app.customer_carts
-     WHERE token_hash = $1${lock ? ' FOR UPDATE' : ''}`,
-    [tokenHash],
+     WHERE token_hash = $1 AND customer_user_id = $2${lock ? ' FOR UPDATE' : ''}`,
+    [tokenHash, customerUserId],
   );
   if (result.rows.length === 0) {
     throw new ApiError(404, 'CART_NOT_FOUND', 'Cart not found.');
@@ -503,15 +610,15 @@ function createCartCheckoutRouter({
   databasePool,
   authenticateCustomer = null,
   deliveryDistanceClient = null,
+  razorpayClient = null,
+  razorpayKeyId = null,
+  razorpayKeySecret = null,
 }) {
   const router = express.Router();
   const cartOwnershipRequired = requireCustomerCartOwnership(
     authenticateCustomer,
   );
-  router.use(
-    ['/carts', '/cart', '/checkout/quote', '/orders'],
-    cartOwnershipRequired,
-  );
+  router.use(['/carts', '/cart'], cartOwnershipRequired);
 
   router.post('/carts', async (req, res, next) => {
     const body = parseObjectBody(req.body ?? {}, new Set());
@@ -524,9 +631,9 @@ function createCartCheckoutRouter({
       const cartToken = randomBytes(32).toString('base64url');
       const cartId = randomUUID();
       await databasePool.query(
-        `INSERT INTO app.customer_carts (id, token_hash)
-         VALUES ($1, $2)`,
-        [cartId, hashCartToken(cartToken)],
+        `INSERT INTO app.customer_carts (id, token_hash, customer_user_id)
+         VALUES ($1, $2, $3)`,
+        [cartId, hashCartToken(cartToken), req.auth.customerUserId],
       );
       return res.status(201).json({ data: { cartToken } });
     } catch (error) {
@@ -540,7 +647,12 @@ function createCartCheckoutRouter({
     try {
       const tokenHash = hashCartToken(getCartToken(req));
       const cart = await withTransaction(databasePool, async (client) => {
-        const currentCart = await findCart(client, tokenHash, { lock: true });
+        const currentCart = await findCart(
+          client,
+          tokenHash,
+          req.auth.customerUserId,
+          { lock: true },
+        );
         const items = await readCartItems(client, currentCart.id);
         return formatCart(currentCart, items);
       });
@@ -568,7 +680,12 @@ function createCartCheckoutRouter({
     try {
       const tokenHash = hashCartToken(getCartToken(req));
       const cart = await withTransaction(databasePool, async (client) => {
-        const currentCart = await findCart(client, tokenHash, { lock: true });
+        const currentCart = await findCart(
+          client,
+          tokenHash,
+          req.auth.customerUserId,
+          { lock: true },
+        );
         const currentProduct = await findProduct(client, product.value);
         const currentVariant = await findVariant(
           client,
@@ -676,7 +793,12 @@ function createCartCheckoutRouter({
     try {
       const tokenHash = hashCartToken(getCartToken(req));
       const item = await withTransaction(databasePool, async (client) => {
-        const cart = await findCart(client, tokenHash, { lock: true });
+        const cart = await findCart(
+          client,
+          tokenHash,
+          req.auth.customerUserId,
+          { lock: true },
+        );
         const productRecord = await findProduct(client, product.value);
         const variantRecord = await findVariant(
           client,
@@ -726,7 +848,12 @@ function createCartCheckoutRouter({
     try {
       const tokenHash = hashCartToken(getCartToken(req));
       await withTransaction(databasePool, async (client) => {
-        const cart = await findCart(client, tokenHash, { lock: true });
+        const cart = await findCart(
+          client,
+          tokenHash,
+          req.auth.customerUserId,
+          { lock: true },
+        );
         const result = await client.query(
           `DELETE FROM app.customer_cart_items
            WHERE cart_id = $1 AND product_id = $2 AND variant_id = $3`,
@@ -762,7 +889,12 @@ function createCartCheckoutRouter({
     try {
       const tokenHash = hashCartToken(getCartToken(req));
       const cart = await withTransaction(databasePool, async (client) => {
-        const currentCart = await findCart(client, tokenHash, { lock: true });
+        const currentCart = await findCart(
+          client,
+          tokenHash,
+          req.auth.customerUserId,
+          { lock: true },
+        );
         await client.query(
           `DELETE FROM app.customer_cart_items WHERE cart_id = $1`,
           [currentCart.id],
@@ -850,7 +982,12 @@ function createCartCheckoutRouter({
               );
             }
           }
-          const cart = await findCart(client, tokenHash, { lock: true });
+          const cart = await findCart(
+            client,
+            tokenHash,
+            customerUserId,
+            { lock: true },
+          );
           const checkout = await loadCheckoutItems(client, cart);
           return {
             shopId: cart.shop_id,
@@ -989,10 +1126,10 @@ function createCartCheckoutRouter({
             totalMinor: totalMinor.toString(),
           },
         });
-      } catch (error) {
-        if (error instanceof ApiError) return sendApiError(res, error);
-        return next(error);
-      }
+        } catch (error) {
+          if (error instanceof ApiError) return sendApiError(res, error);
+          return next(error);
+        }
     },
   );
 
@@ -1014,6 +1151,8 @@ function createCartCheckoutRouter({
         req.body,
         new Set([
           'deliveryAddress',
+          'paymentMethod',
+          'checkoutRequestId',
           'deliveryFeeMinor',
           'distanceMeters',
           'deliveryDistanceM',
@@ -1024,6 +1163,38 @@ function createCartCheckoutRouter({
         ]),
       );
       if (body.error) return sendApiError(res, new ApiError(400, 'INVALID_REQUEST', body.error));
+      const paymentMethod = body.value.paymentMethod ?? 'cod';
+      if (!['cod', 'prepaid'].includes(paymentMethod)) {
+        return sendApiError(
+          res,
+          new ApiError(400, 'INVALID_REQUEST', 'paymentMethod must be cod or prepaid.'),
+        );
+      }
+      const checkoutRequestId = body.value.checkoutRequestId;
+      if (
+        paymentMethod === 'prepaid' &&
+        (typeof checkoutRequestId !== 'string' ||
+          !UUID_PATTERN.test(checkoutRequestId))
+      ) {
+        return sendApiError(
+          res,
+          new ApiError(
+            400,
+            'INVALID_REQUEST',
+            'checkoutRequestId must be a valid UUID for prepaid checkout.',
+          ),
+        );
+      }
+      if (paymentMethod === 'prepaid' && (!razorpayClient || !razorpayKeyId)) {
+        return sendApiError(
+          res,
+          new ApiError(
+            503,
+            'PAYMENT_UNAVAILABLE',
+            'Online payment is temporarily unavailable.',
+          ),
+        );
+      }
       const address = validateDeliveryAddress(body.value.deliveryAddress);
       if (address.error) {
         return sendApiError(
@@ -1055,6 +1226,44 @@ function createCartCheckoutRouter({
         const order = await withTransaction(databasePool, async (client) => {
           if (customerUserId) {
             await lockCustomer(client, customerUserId);
+            if (paymentMethod === 'prepaid') {
+              const existingPayment = await client.query(
+                `SELECT
+                   payment.id AS payment_attempt_id,
+                   payment.provider_order_id,
+                   payment.status AS payment_status,
+                   payment.amount_minor::text AS total_minor,
+                   payment.currency,
+                   orders.id AS order_id,
+                   orders.status AS order_status,
+                   orders.items_subtotal_minor::text AS items_subtotal_minor,
+                   orders.delivery_fee_minor::text AS delivery_fee_minor,
+                   orders.discount_minor::text AS discount_minor
+                 FROM app.order_payment_attempts AS payment
+                 JOIN app.orders AS orders ON orders.id = payment.order_id
+                 WHERE payment.customer_user_id = $1
+                   AND payment.checkout_request_id = $2
+                 FOR UPDATE OF payment, orders`,
+                [customerUserId, checkoutRequestId],
+              );
+              if (existingPayment.rows.length > 0) {
+                const payment = existingPayment.rows[0];
+                const itemCount = await client.query(
+                  `SELECT count(*)::integer AS count
+                   FROM app.order_items
+                   WHERE order_id = $1`,
+                  [payment.order_id],
+                );
+                return {
+                  ...formatPaymentOrderResult(
+                    payment,
+                    Number(itemCount.rows[0].count),
+                  ),
+                  paymentAttempt: payment,
+                  isExisting: true,
+                };
+              }
+            }
             const outstandingMinor = await getOutstandingMinor(client, customerUserId);
             if (outstandingMinor > 0n) {
               throw new ApiError(
@@ -1100,7 +1309,12 @@ function createCartCheckoutRouter({
             }
           }
 
-          const cart = await findCart(client, tokenHash, { lock: true });
+          const cart = await findCart(
+            client,
+            tokenHash,
+            customerUserId,
+            { lock: true },
+          );
           if (!cart.shop_id || !cart.partner_id) {
             throw new ApiError(422, 'EMPTY_CART', 'Add at least one item before checkout.');
           }
@@ -1173,6 +1387,13 @@ function createCartCheckoutRouter({
           const discount = 0n;
           const total =
             checkout.subtotal + deliveryFee + platformFee - discount;
+          if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
+            throw new ApiError(
+              422,
+              'ORDER_TOTAL_TOO_LARGE',
+              'Order total is too large.',
+            );
+          }
           let commissionTotalMinor = 0n;
           for (const item of checkout.items) {
             item.commission_bps = resolveCommissionBps({
@@ -1196,12 +1417,13 @@ function createCartCheckoutRouter({
                delivery_distance_m, delivery_fee_kind, platform_fee_minor,
                payment_method
              )
-             VALUES ($1, $2, $3, $4, 'placed', $5, $6, $7, $8, $9, $10::jsonb, $11, $12, 'standard', $13, 'cod')`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, 'standard', $14, $15)`,
             [
               orderId,
               customerUserId,
               cart.partner_id,
               cart.shop_id,
+              paymentMethod === 'prepaid' ? 'payment_pending' : 'placed',
               checkout.currency,
               checkout.subtotal.toString(),
               deliveryFee.toString(),
@@ -1211,6 +1433,7 @@ function createCartCheckoutRouter({
               commissionTotalMinor.toString(),
               deliveryDistanceM,
               platformFee.toString(),
+              paymentMethod,
             ],
           );
 
@@ -1279,17 +1502,80 @@ function createCartCheckoutRouter({
             [cart.id],
           );
 
-          return {
+          const orderResult = {
             orderId,
-            status: 'placed',
+            status: paymentMethod === 'prepaid' ? 'payment_pending' : 'placed',
             currency: checkout.currency,
             itemSubtotalMinor: checkout.subtotal.toString(),
             deliveryFeeMinor: deliveryFee.toString(),
             discountMinor: discount.toString(),
             totalMinor: total.toString(),
             items: checkout.items.length,
+            paymentStatus: paymentMethod === 'prepaid' ? 'pending' : null,
+            paymentVerified: false,
           };
+          if (paymentMethod === 'prepaid') {
+            const paymentAttemptId = randomUUID();
+            await client.query(
+              `INSERT INTO app.order_payment_attempts (
+                 id, order_id, customer_user_id, checkout_request_id,
+                 amount_minor, currency
+               )
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [
+                paymentAttemptId,
+                orderId,
+                customerUserId,
+                checkoutRequestId,
+                total.toString(),
+                checkout.currency,
+              ],
+            );
+            orderResult.paymentAttempt = {
+              payment_attempt_id: paymentAttemptId,
+              provider_order_id: null,
+              payment_status: 'pending',
+              total_minor: total.toString(),
+              currency: checkout.currency,
+              order_id: orderId,
+              order_status: 'payment_pending',
+            };
+            orderResult.isExisting = false;
+          }
+          return orderResult;
         });
+        if (paymentMethod === 'prepaid') {
+          if (order.paymentVerified) {
+            const { paymentAttempt, isExisting, ...orderData } = order;
+            return res.status(200).json({ data: orderData });
+          }
+          try {
+            const checkout = await ensureRazorpayOrder({
+              databasePool,
+              razorpayClient,
+              razorpayKeyId,
+              paymentAttempt: order.paymentAttempt,
+            });
+            const {
+              paymentAttempt,
+              isExisting,
+              ...orderData
+            } = order;
+            return res.status(isExisting ? 200 : 201).json({
+              data: { ...orderData, checkout },
+            });
+          } catch (error) {
+            if (error instanceof ApiError) return sendApiError(res, error);
+            return sendApiError(
+              res,
+              new ApiError(
+                502,
+                'PAYMENT_PROVIDER_UNAVAILABLE',
+                'Online payment could not be initialized. Retry checkout.',
+              ),
+            );
+          }
+        }
         return res.status(201).json({ data: order });
       } catch (error) {
         if (error instanceof ApiError) return sendApiError(res, error);
@@ -1297,6 +1583,266 @@ function createCartCheckoutRouter({
       }
     },
   );
+
+  router.post(
+    '/orders/:orderId/verify-payment',
+    (req, res, next) => {
+      if (!authenticateCustomer) {
+        return res.status(401).json({
+          error: {
+            code: 'AUTHENTICATION_REQUIRED',
+            message: 'Customer authentication is required.',
+          },
+        });
+      }
+      return invokeCustomerAuthentication(
+        authenticateCustomer,
+        req,
+        res,
+        () => {
+          const customerUserId = req.auth?.customerUserId;
+          if (
+            typeof customerUserId !== 'string' ||
+            !UUID_PATTERN.test(customerUserId)
+          ) {
+            return res.status(401).json({
+              error: {
+                code: 'AUTHENTICATION_REQUIRED',
+                message: 'Customer authentication is required.',
+              },
+            });
+          }
+          return next();
+        },
+      );
+    },
+    async (req, res, next) => {
+      const orderId = req.params.orderId;
+      if (typeof orderId !== 'string' || !UUID_PATTERN.test(orderId)) {
+        return sendApiError(
+          res,
+          new ApiError(400, 'INVALID_REQUEST', 'orderId must be a valid UUID.'),
+        );
+      }
+      const body = parseObjectBody(
+        req.body,
+        new Set(['razorpayOrderId', 'razorpayPaymentId', 'razorpaySignature']),
+      );
+      if (body.error) {
+        return sendApiError(
+          res,
+          new ApiError(400, 'INVALID_REQUEST', body.error),
+        );
+      }
+      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } =
+        body.value;
+      if (
+        typeof razorpayOrderId !== 'string' ||
+        typeof razorpayPaymentId !== 'string' ||
+        typeof razorpaySignature !== 'string'
+      ) {
+        return sendApiError(
+          res,
+          new ApiError(
+            400,
+            'INVALID_REQUEST',
+            'Razorpay order, payment, and signature fields are required.',
+          ),
+        );
+      }
+      if (!databasePool) return sendDatabaseUnavailable(res);
+      if (!razorpayClient || !razorpayKeySecret) {
+        return sendApiError(
+          res,
+          new ApiError(
+            503,
+            'PAYMENT_UNAVAILABLE',
+            'Online payment verification is temporarily unavailable.',
+          ),
+        );
+      }
+
+      try {
+      const customerUserId = req.auth.customerUserId;
+      const lookup = await databasePool.query(
+        `SELECT
+           payment.id AS payment_attempt_id,
+           payment.provider_order_id,
+           payment.provider_payment_id,
+           payment.amount_minor::text AS total_minor,
+           payment.currency,
+           payment.status AS payment_status,
+           orders.id AS order_id,
+           orders.status AS order_status,
+           orders.items_subtotal_minor::text AS items_subtotal_minor,
+           orders.delivery_fee_minor::text AS delivery_fee_minor,
+           orders.discount_minor::text AS discount_minor
+         FROM app.order_payment_attempts AS payment
+         JOIN app.orders AS orders ON orders.id = payment.order_id
+         WHERE payment.order_id = $1
+           AND payment.customer_user_id = $2`,
+        [orderId, customerUserId],
+      );
+      if (lookup.rows.length === 0) {
+        return sendApiError(
+          res,
+          new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found.'),
+        );
+      }
+      const payment = lookup.rows[0];
+      if (
+        payment.provider_order_id !== razorpayOrderId ||
+        !verifyRazorpaySignature({
+          orderId: payment.provider_order_id,
+          paymentId: razorpayPaymentId,
+          signature: razorpaySignature,
+          keySecret: razorpayKeySecret,
+        })
+      ) {
+        return sendApiError(
+          res,
+          new ApiError(
+            400,
+            'PAYMENT_VERIFICATION_FAILED',
+            'Payment verification failed.',
+          ),
+        );
+      }
+      if (payment.payment_status === 'verified') {
+        if (payment.provider_payment_id !== razorpayPaymentId) {
+          return sendApiError(
+            res,
+            new ApiError(
+              409,
+              'PAYMENT_ALREADY_VERIFIED',
+              'A different payment has already verified this order.',
+            ),
+          );
+        }
+        const itemCount = await databasePool.query(
+          `SELECT count(*)::integer AS count
+           FROM app.order_items
+           WHERE order_id = $1`,
+          [orderId],
+        );
+        return res.status(200).json({
+          data: formatPaymentOrderResult(
+            payment,
+            Number(itemCount.rows[0].count),
+          ),
+          },
+        );
+      }
+
+      let providerPayment;
+      try {
+        providerPayment = await razorpayClient.payments.fetch(
+          razorpayPaymentId,
+        );
+      } catch {
+        return sendApiError(
+          res,
+          new ApiError(
+            502,
+            'PAYMENT_PROVIDER_UNAVAILABLE',
+            'Payment verification could not be completed. Retry verification.',
+          ),
+        );
+      }
+      if (
+        providerPayment.order_id !== payment.provider_order_id ||
+        Number(providerPayment.amount) !== Number(payment.total_minor) ||
+        providerPayment.currency !== payment.currency.trim() ||
+        providerPayment.status !== 'captured'
+      ) {
+        return sendApiError(
+          res,
+          new ApiError(
+            409,
+            'PAYMENT_NOT_CAPTURED',
+            'The payment has not been captured by the provider.',
+          ),
+        );
+      }
+
+      const verifiedOrder = await withTransaction(databasePool, async (client) => {
+        const current = await client.query(
+          `SELECT
+             payment.id AS payment_attempt_id,
+             payment.provider_order_id,
+             payment.provider_payment_id,
+             payment.amount_minor::text AS total_minor,
+             payment.currency,
+             payment.status AS payment_status,
+             orders.id AS order_id,
+             orders.status AS order_status,
+             orders.items_subtotal_minor::text AS items_subtotal_minor,
+             orders.delivery_fee_minor::text AS delivery_fee_minor,
+             orders.discount_minor::text AS discount_minor
+           FROM app.order_payment_attempts AS payment
+           JOIN app.orders AS orders ON orders.id = payment.order_id
+           WHERE payment.order_id = $1
+             AND payment.customer_user_id = $2
+           FOR UPDATE OF payment, orders`,
+          [orderId, customerUserId],
+        );
+        if (current.rows.length === 0) {
+          throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found.');
+        }
+        const currentPayment = current.rows[0];
+        if (currentPayment.payment_status === 'verified') {
+          if (currentPayment.provider_payment_id !== razorpayPaymentId) {
+            throw new ApiError(
+              409,
+              'PAYMENT_ALREADY_VERIFIED',
+              'A different payment has already verified this order.',
+            );
+          }
+        } else {
+          await client.query(
+            `UPDATE app.order_payment_attempts
+             SET status = 'verified',
+                 provider_payment_id = $2,
+                 verified_at = now()
+             WHERE id = $1 AND status = 'pending'`,
+            [currentPayment.payment_attempt_id, razorpayPaymentId],
+          );
+          const updatedOrder = await client.query(
+            `UPDATE app.orders
+             SET status = 'placed', updated_at = now()
+             WHERE id = $1 AND status = 'payment_pending'
+             RETURNING id`,
+            [orderId],
+          );
+          if (updatedOrder.rows.length === 0) {
+            throw new ApiError(
+              409,
+              'ORDER_STATE_CONFLICT',
+              'The order is no longer awaiting payment.',
+            );
+          }
+        }
+        const itemCount = await client.query(
+          `SELECT count(*)::integer AS count
+           FROM app.order_items
+           WHERE order_id = $1`,
+          [orderId],
+        );
+        return formatPaymentOrderResult(
+          {
+            ...currentPayment,
+            order_status: 'placed',
+            payment_status: 'verified',
+          },
+          Number(itemCount.rows[0].count),
+        );
+      });
+      return res.status(200).json({ data: verifiedOrder });
+    } catch (error) {
+      if (error instanceof ApiError) return sendApiError(res, error);
+      return next(error);
+    }
+  });
 
   return router;
 }

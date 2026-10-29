@@ -73,6 +73,65 @@ void main() {
     expect(find.text('Sign in to add items to your cart.'), findsOneWidget);
   });
 
+  testWidgets(
+    'development guest mode adds the selected catalog variant locally',
+    (tester) async {
+      final previousApi = CustomerApi.instance;
+      final guestApi = CustomerApi(
+        baseUrl: '',
+        enableDevelopmentGuestCart: true,
+      );
+      CustomerApi.instance = guestApi;
+      addTearDown(() {
+        guestApi.close();
+        CustomerApi.instance = previousApi;
+      });
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: ProductDetailsPage(
+            product: ProductDetailsProduct(
+              id: 'slgs-ashirvad-atta',
+              serviceType: 'local_store',
+              merchantId: 'sri-lakshmi-general-store',
+              name: 'Ashirvad Atta',
+              icon: Icons.inventory_2_rounded,
+              available: true,
+              isBackendProduct: true,
+              variants: _testVariants,
+            ),
+          ),
+        ),
+      );
+
+      final fiveKg = find.widgetWithText(ChoiceChip, '5 KG');
+      await tester.ensureVisible(fiveKg);
+      await tester.tap(fiveKg);
+      await tester.pumpAndSettle();
+
+      final addButton = find.text('ADD').last;
+      await tester.ensureVisible(addButton);
+      await tester.tap(addButton);
+      await tester.pumpAndSettle();
+
+      expect(cart.items, hasLength(1));
+      expect(cart.items.single.productVariantId, '5-kg');
+      expect(cart.items.single.variantLabel, '5 KG');
+      expect(cart.items.single.priceInPaise, 31000);
+      expect(cart.items.single.isBackendProduct, isFalse);
+      expect(cart.totalQuantity, 1);
+      expect(find.text('Sign in to add items to your cart.'), findsNothing);
+
+      await tester.tap(find.byTooltip('Increase quantity'));
+      await tester.pumpAndSettle();
+      expect(cart.items.single.quantity, 2);
+
+      await tester.tap(find.byTooltip('Decrease quantity'));
+      await tester.pumpAndSettle();
+      expect(cart.items.single.quantity, 1);
+    },
+  );
+
   testWidgets('Product Details keeps variant pricing and visible wishlist', (
     tester,
   ) async {

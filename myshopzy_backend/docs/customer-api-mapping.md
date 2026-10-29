@@ -86,16 +86,16 @@ accepted or delivered.
 The additive migration `002_customer_carts.sql` adds
 `app.customer_carts` and `app.customer_cart_items`; migration
 `008_product_variants_and_images.sql` adds `variant_id` and changes cart-line
-identity to `(cart_id, product_id, variant_id)`. The existing schema stores
-only a random token hash and has no customer-owner relation. A token is not
-customer authentication, so cart and checkout endpoints currently return 401
-without a valid customer session and 503 `CART_OWNERSHIP_UNAVAILABLE` with one.
-No schema change or migration is included in this work.
+identity to `(cart_id, product_id, variant_id)`. Migration 018 adds a nullable
+customer owner for existing cart rows; new cart rows are bound to the
+authenticated customer. Cart tokens are not accepted as identity.
 
 | Endpoint | Request | Response / behavior | PostgreSQL tables |
 |---|---|---|---|
-| Cart operations | `POST /carts`, `GET /cart`, cart item mutations | Not available until cart records can be tied to the authenticated customer. Cart tokens are never accepted as identity. | Existing cart tables lack customer ownership |
-| Checkout quote and order placement | `POST /checkout/quote`, `POST /orders` | Not available until customer-owned cart support is implemented. Authenticated requests fail closed rather than quote or place an order. | Cart tables, orders, and related catalog data |
+| Cart operations | `POST /carts`, `GET /cart`, cart item mutations | Require a valid customer session and owner-bound cart token. A cart token from another customer returns `CART_NOT_FOUND`. | `app.customer_carts`, `app.customer_cart_items` |
+| Checkout quote | `POST /checkout/quote` | Authenticated quote using server-loaded cart, delivery distance, fees, and product prices. | Cart tables, catalog, serviceability |
+| Order placement | `POST /orders` with `paymentMethod: "cod"` or `"prepaid"` | Server computes order totals. Prepaid requests also require a UUID `checkoutRequestId`; the response includes public Razorpay TEST MODE checkout fields only. Retries reuse the payment attempt. | Cart tables, `app.orders`, `app.order_payment_attempts` |
+| Payment verification | `POST /orders/:orderId/verify-payment` with Razorpay order/payment IDs and signature | Customer-scoped HMAC and provider-payment verification; repeat callbacks for the same payment are idempotent. Only verified prepaid orders move from `payment_pending` to `placed`. | `app.order_payment_attempts`, `app.orders` |
 
 Order placement checks that every product, shop, and partner is active/approved,
 that all products belong to the cart's one shop, that each variant's stock is
@@ -107,10 +107,11 @@ failures return `503 DISTANCE_UNAVAILABLE` and fail closed. New rules use
 integer paise/metres and are described in the backend README.
 Order items snapshot the schema-supported product name, variant SKU and unit
 price, cart quantity, line total, currency, and variant details (`variantId`,
-label, unit, variant quantity, SKU, and unit price). Delivery
-instructions, payment transactions/state, and cancellation reason are not
-persisted. Migration 012 stores the order payment method (`cod` for current
-order placement).
+label, unit, variant quantity, SKU, and unit price). Migration 019 adds a
+dedicated payment-attempt table and a `payment_pending` order state. Pending
+prepaid orders are hidden from partner order views and rider offers. A verified
+Razorpay signature and captured provider payment are required before the order
+becomes `placed`.
 
 `POST /checkout/quote` and `POST /orders` return `401` unless `createApp` receives a trusted
 `authenticateCustomer` middleware which must set
@@ -146,11 +147,11 @@ geofence coordinates. Customer order cancellation remains unavailable.
 | Meat catalog | `GET /shops/:shopId/categories` and `GET /products?shopId=...` | Products and categories for an identified meat shop. |
 | Vegetables/fruits landing page | `GET /shops?partnerType=grocery` | Produce remains a grocery subtype; product `attributes.produce_type` distinguishes fruit and vegetable. |
 | Produce catalog | `GET /shops?partnerType=grocery`, categories and `GET /products?partnerType=grocery` | Filters `attributes.produce_type` to `fruit` or `vegetable`; products without the attribute are not shown as produce. |
-| Cart and cart access controls | Cart routes | Protected; unavailable until customer cart ownership is supported. |
-| Checkout quote | `POST /checkout/quote` | Protected; authenticated calls fail closed while carts have no customer-owner relation. |
-| Checkout, delivery options, instructions, address entry | `POST /delivery/serviceability`, `POST /orders` | Public serviceability can be checked; order placement is protected and unavailable until cart ownership is supported. No payment is completed. |
+| Cart and cart access controls | Cart routes | Protected by customer authentication and an owner-bound cart token. |
+| Checkout quote | `POST /checkout/quote` | Protected; amount, delivery fee, and distance are computed by the backend. |
+| Checkout, delivery options, address entry | `POST /delivery/serviceability`, `POST /checkout/quote`, `POST /orders` | COD stays on the existing order flow; prepaid checkout returns a server-created Razorpay TEST MODE order. |
 | Coupon picker and coupon validation | No endpoint available | Coupons/validation are demo data; no coupon or promotion table exists. |
-| Payment choice | No payment endpoint available | Options are demo UI; no gateway is configured. Orders store `payment_method` as `cod` until a gateway is added. |
+| Payment choice | `POST /orders` and `POST /orders/:orderId/verify-payment` | Razorpay is TEST MODE only; the secret stays in backend environment variables. Flutter success callbacks do not confirm orders without backend verification. |
 | Failed delivery and dues | Rider delivery-failure endpoint; `GET /me/dues`, `POST /me/dues/:entryId/dispute` | COD customer-fault failures create pending-review dues from the order total. Only admin confirmation makes a due block checkout; payments, waivers, and disputes are append-only ledger events. Prepaid failures create no due. |
 | Order success and receipt | `POST /orders` response and `GET /me/orders/:orderId` | Order creation requires injected trusted auth; detail read is implemented behind the same boundary. Delivery OTP and cancellation reason are not stored. |
 | Orders list | `GET /me/orders` | Implemented with pagination and authenticated customer scoping. |
@@ -175,9 +176,8 @@ geofence coordinates. Customer order cancellation remains unavailable.
    request identity. The running server's OTP authenticator is development-only;
    a production identity provider and JWT validation integration are still
    required.
-2. Coupons, payment verification/transactions, refunds, notifications,
-   reviews, and support requests have no tables or integrations. They are
-   documented but not implemented.
+2. Coupons, refunds, notifications, reviews, and support requests have no
+   tables or integrations. They are documented but not implemented.
 3. Partner types are normalized identifiers and may be added without an app
    release. Admin tooling must store identifiers such as `sweet_shop` and
    approve the partner for its type to appear in the customer category list.

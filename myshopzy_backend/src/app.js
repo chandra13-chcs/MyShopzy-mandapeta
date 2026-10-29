@@ -16,6 +16,9 @@ function createApp({
   authenticateCustomer = null,
   deliveryRoutingClient = null,
   deliveryDistanceClient = null,
+  razorpayClient = null,
+  razorpayKeyId = null,
+  razorpayKeySecret = null,
   authenticateRider = null,
   canAcceptOrders = () => true,
   applyRiderCancelPenalty = async () => {},
@@ -120,6 +123,9 @@ function createApp({
       databasePool,
       authenticateCustomer,
       deliveryDistanceClient: configuredDistanceClient,
+      razorpayClient,
+      razorpayKeyId,
+      razorpayKeySecret,
     }),
   );
   app.use(

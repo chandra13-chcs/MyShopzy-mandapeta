@@ -674,6 +674,10 @@ function createCustomerAccountRouter({
            s.name AS shop_name,
            o.status,
            o.currency,
+           o.payment_method,
+           CASE WHEN payment.status = 'verified' THEN 'paid'
+             ELSE 'pending' END AS payment_status,
+           COALESCE(payment.status = 'verified', false) AS payment_verified,
            o.items_subtotal_minor::text AS items_subtotal_minor,
            o.delivery_fee_minor::text AS delivery_fee_minor,
            o.discount_minor::text AS discount_minor,
@@ -695,6 +699,9 @@ function createCustomerAccountRouter({
          JOIN app.users AS u ON u.id = c.user_id
          JOIN app.shops AS s
            ON s.id = o.shop_id AND s.partner_id = o.partner_id
+         LEFT JOIN app.order_payment_attempts AS payment
+           ON payment.order_id = o.id
+          AND payment.customer_user_id = o.customer_user_id
          WHERE o.customer_user_id = $1
            AND u.system_role = 'customer'
            AND u.status = 'active'
@@ -724,6 +731,10 @@ function createCustomerAccountRouter({
            s.name AS shop_name,
            o.status,
            o.currency,
+           o.payment_method,
+           CASE WHEN payment.status = 'verified' THEN 'paid'
+             ELSE 'pending' END AS payment_status,
+           COALESCE(payment.status = 'verified', false) AS payment_verified,
            o.items_subtotal_minor::text AS items_subtotal_minor,
            o.delivery_fee_minor::text AS delivery_fee_minor,
            o.discount_minor::text AS discount_minor,
@@ -751,6 +762,9 @@ function createCustomerAccountRouter({
          JOIN app.users AS u ON u.id = c.user_id
          JOIN app.shops AS s
            ON s.id = o.shop_id AND s.partner_id = o.partner_id
+         LEFT JOIN app.order_payment_attempts AS payment
+           ON payment.order_id = o.id
+          AND payment.customer_user_id = o.customer_user_id
          LEFT JOIN app.riders AS rider
            ON rider.user_id = o.rider_id AND rider.status = 'active'
          LEFT JOIN app.users AS rider_user

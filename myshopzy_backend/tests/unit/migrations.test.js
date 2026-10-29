@@ -77,6 +77,14 @@ const riderSupportEscalationsSchemaPath = path.resolve(
   __dirname,
   '../../database/migrations/017_rider_support_escalations.sql',
 );
+const customerOwnedCartsSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/018_customer_owned_carts_and_razorpay.sql',
+);
+const razorpayPaymentsSchemaPath = path.resolve(
+  __dirname,
+  '../../database/migrations/019_razorpay_order_payments.sql',
+);
 
 function createMockPool({ applied = new Map(), failure } = {}) {
   const calls = [];
@@ -174,14 +182,22 @@ test('applies an unapplied migration transactionally and records its checksum', 
     riderSupportEscalationsSchemaPath,
     'utf8',
   );
+  const customerOwnedCartsSchema = await readFile(
+    customerOwnedCartsSchemaPath,
+    'utf8',
+  );
+  const razorpayPaymentsSchema = await readFile(
+    razorpayPaymentsSchemaPath,
+    'utf8',
+  );
   const calls = pool.calls.map((call) => call.sql);
 
   assert.equal(appliedCount, migrationFiles.length);
   assert.deepEqual(
     migrationFiles.slice(-2).map(({ version, name }) => ({ version, name })),
     [
-      { version: '016', name: '016_rider_location_freshness.sql' },
-      { version: '017', name: '017_rider_support_escalations.sql' },
+      { version: '018', name: '018_customer_owned_carts_and_razorpay.sql' },
+      { version: '019', name: '019_razorpay_order_payments.sql' },
     ],
   );
   assert.equal(pool.applied.get('001').name, '001_initial_multi_partner_schema.sql');
@@ -243,6 +259,14 @@ test('applies an unapplied migration transactionally and records its checksum', 
     pool.applied.get('017').name,
     '017_rider_support_escalations.sql',
   );
+  assert.equal(
+    pool.applied.get('018').name,
+    '018_customer_owned_carts_and_razorpay.sql',
+  );
+  assert.equal(
+    pool.applied.get('019').name,
+    '019_razorpay_order_payments.sql',
+  );
   assert.ok(calls.includes('BEGIN'));
   assert.ok(calls.includes(schema.trim()));
   assert.ok(calls.includes(cartsSchema.trim()));
@@ -261,6 +285,8 @@ test('applies an unapplied migration transactionally and records its checksum', 
   assert.ok(calls.includes(deliveryPricingSchema.trim()));
   assert.ok(calls.includes(riderLocationFreshnessSchema.trim()));
   assert.ok(calls.includes(riderSupportEscalationsSchema.trim()));
+  assert.ok(calls.includes(customerOwnedCartsSchema.trim()));
+  assert.ok(calls.includes(razorpayPaymentsSchema.trim()));
   assert.match(riderSupportEscalationsSchema, /^BEGIN;[\s\S]*COMMIT;\s*$/);
   assert.match(riderSupportEscalationsSchema, /ADD COLUMN rider_arrived_at timestamptz/);
   assert.match(riderSupportEscalationsSchema, /ADD COLUMN support_escalated_at timestamptz/);
@@ -483,6 +509,21 @@ test('cart migration adds token-protected single-shop cart persistence', async (
   assert.match(schema, /CREATE TABLE app\.customer_cart_items\b/);
   assert.match(schema, /quantity integer NOT NULL CHECK \(quantity BETWEEN 1 AND 99\)/);
   assert.match(schema, /REFERENCES app\.products \(id, shop_id, partner_id\)/);
+});
+
+test('payment migrations add owner-bound carts and idempotent Razorpay records additively', async () => {
+  const cartOwners = await readFile(customerOwnedCartsSchemaPath, 'utf8');
+  const payments = await readFile(razorpayPaymentsSchemaPath, 'utf8');
+
+  assert.match(cartOwners, /ADD COLUMN customer_user_id uuid/);
+  assert.match(cartOwners, /REFERENCES app\.customers\(user_id\) ON DELETE RESTRICT/);
+  assert.doesNotMatch(cartOwners, /\b(DROP TABLE|DELETE FROM)\b/i);
+  assert.match(payments, /'payment_pending'/);
+  assert.match(payments, /CREATE TABLE app\.order_payment_attempts/);
+  assert.match(payments, /UNIQUE \(customer_user_id, checkout_request_id\)/);
+  assert.match(payments, /provider_order_id text UNIQUE/);
+  assert.match(payments, /provider_payment_id text UNIQUE/);
+  assert.match(payments, /CHECK \(status IN \('pending', 'verified'\)\)/);
 });
 
 test('skips matching applied migrations and refuses checksum drift', async () => {
