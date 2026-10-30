@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../app/theme/app_theme.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../bakery/presentation/bakery_page.dart';
-import '../../local_stores/presentation/local_store_catalog_page.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
-import '../../local_stores/data/local_store_session.dart';
+import '../../local_stores/presentation/main_grocery_catalog_page.dart';
 import '../../meat/presentation/meat_page.dart';
 import '../../orders/presentation/orders_page.dart';
 import '../../profile/presentation/profile_page.dart';
@@ -13,6 +12,7 @@ import '../../search/presentation/search_page.dart';
 import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import '../../../shared/presentation/bottom_navigation_bar.dart';
 import '../../../shared/presentation/motion.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 
 class CategoriesPage extends StatelessWidget {
   const CategoriesPage({super.key, this.onMainTabSelected});
@@ -283,14 +283,24 @@ class CategoriesPage extends StatelessWidget {
         context,
         'dairy',
       ),
-      'Fresh Vegetables' ||
-      'Fresh Fruits' => () => _pushPage(context, const VegetablesFruitsPage()),
-      'Meat and Seafood' => () => _pushPage(context, const MeatPage()),
+      'Fresh Vegetables' || 'Fresh Fruits' => () => _pushDeliveryPage(
+        context,
+        DeliveryCategory.vegetablesFruits,
+        const VegetablesFruitsPage(),
+      ),
+      'Meat and Seafood' => () => _pushDeliveryPage(
+        context,
+        DeliveryCategory.meat,
+        const MeatPage(),
+      ),
       'Cold Drinks and Juices' || 'Tea, Coffee and Milk Drinks' =>
         () => _openLocalStoreCategory(context, 'beverages'),
       'Chips and Namkeens' => () => _openLocalStoreCategory(context, 'snacks'),
-      'Chocolates' ||
-      'Sweet Corner' => () => _pushPage(context, const BakeryPage()),
+      'Chocolates' || 'Sweet Corner' => () => _pushDeliveryPage(
+        context,
+        DeliveryCategory.bakery,
+        const BakeryPage(),
+      ),
       'Biscuits and Cakes' => () => _openLocalStoreCategory(
         context,
         'biscuits',
@@ -323,30 +333,19 @@ class CategoriesPage extends StatelessWidget {
   }
 
   void _openLocalStoreCategory(BuildContext context, String categoryId) {
-    final categories = [...commonLocalStoreCategories];
-    final selectedIndex = categories.indexWhere(
-      (category) => category.id == categoryId,
-    );
-
-    if (selectedIndex == -1) {
-      _pushPage(context, const LocalStoresPage());
-      return;
-    }
-
-    final selectedCategory = categories.removeAt(selectedIndex);
-    categories.insert(0, selectedCategory);
-
-    final selectedStore = LocalStoreSession.instance.selectedStore;
-    _pushPage(
+    _pushDeliveryPage(
       context,
-      selectedStore == null
-          ? LocalStoresPage(initialCategoryId: categoryId)
-          : LocalStoreCatalogPage(
-              store: selectedStore,
-              categories: categories,
-              initialCategoryId: categoryId,
-            ),
+      DeliveryCategory.grocery,
+      MainGroceryCatalogPage(initialCategoryId: categoryId),
     );
+  }
+
+  void _pushDeliveryPage(
+    BuildContext context,
+    DeliveryCategory category,
+    Widget page,
+  ) {
+    _pushPage(context, CategoryDeliveryGate(category: category, child: page));
   }
 
   void _pushPage(BuildContext context, Widget page) {

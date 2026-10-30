@@ -12,6 +12,10 @@ const {
   validateCoordinates,
 } = require('../delivery-fee/distance');
 const { computeDeliveryFeeMinor } = require('../delivery-fee/pricing');
+const {
+  MANDAPETA_BUS_STAND,
+  assessCategoryServiceability,
+} = require('../delivery-serviceability/categories');
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1019,6 +1023,37 @@ function createCustomerAccountRouter({
           503,
           'DISTANCE_UNAVAILABLE',
           'Parcel distance could not be verified.',
+        ),
+      );
+    }
+    let parcelServiceability;
+    try {
+      const distanceFromBusStand =
+        await deliveryDistanceClient.getRoadDistanceMetres(
+          MANDAPETA_BUS_STAND,
+          dropCoordinates,
+        );
+      parcelServiceability = assessCategoryServiceability(
+        'parcel',
+        distanceFromBusStand,
+      );
+    } catch {
+      return sendError(
+        res,
+        new ApiError(
+          503,
+          'DISTANCE_UNAVAILABLE',
+          'Parcel delivery distance could not be verified.',
+        ),
+      );
+    }
+    if (!parcelServiceability.isDeliverable) {
+      return sendError(
+        res,
+        new ApiError(
+          422,
+          'OUTSIDE_DELIVERY_RANGE',
+          parcelServiceability.message,
         ),
       );
     }

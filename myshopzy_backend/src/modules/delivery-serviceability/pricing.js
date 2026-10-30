@@ -1,5 +1,4 @@
 const FREE_DELIVERY_THRESHOLD_MINOR = 49900;
-const MAX_DELIVERY_DISTANCE_METERS = 18000;
 const FLAT_DELIVERY_DISTANCE_METERS = 4000;
 const FLAT_DELIVERY_FEE_MINOR = 3000;
 const PER_KILOMETER_FEE_MINOR = 600;
@@ -20,18 +19,6 @@ function calculateDeliveryPricing({
     'merchandiseSubtotalMinor',
   );
   assertSafeNonNegativeInteger(distanceMeters, 'distanceMeters');
-
-  if (distanceMeters > MAX_DELIVERY_DISTANCE_METERS) {
-    return Object.freeze({
-      deliverable: false,
-      reason: 'OUTSIDE_DELIVERY_RANGE',
-      merchandiseSubtotalMinor,
-      distanceMeters,
-      deliveryFeeMinor: null,
-      platformFeeMinor: null,
-      totalMinor: null,
-    });
-  }
 
   let deliveryFeeMinor = 0;
   if (merchandiseSubtotalMinor < FREE_DELIVERY_THRESHOLD_MINOR) {
@@ -63,6 +50,5 @@ function calculateDeliveryPricing({
 module.exports = {
   calculateDeliveryPricing,
   FREE_DELIVERY_THRESHOLD_MINOR,
-  MAX_DELIVERY_DISTANCE_METERS,
   PLATFORM_FEE_MINOR,
 };

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 import '../../cart/presentation/cart_access_button.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../wishlist/presentation/save_list_button.dart';
@@ -151,8 +152,7 @@ class MeatCatalogPage extends StatelessWidget {
                     index++
                   ) ...[
                     fadeSlideItem(
-                      itemKey:
-                          'meat-category-${filteredCategories[index].id}',
+                      itemKey: 'meat-category-${filteredCategories[index].id}',
                       index: index,
                       child: _buildCategorySection(
                         filteredCategories[index],
@@ -167,8 +167,10 @@ class MeatCatalogPage extends StatelessWidget {
                             .where(
                               (product) => filteredCategories
                                   .take(index)
-                                  .any((category) =>
-                                      category.id == product.categoryId),
+                                  .any(
+                                    (category) =>
+                                        category.id == product.categoryId,
+                                  ),
                             )
                             .length,
                       ),
@@ -242,20 +244,10 @@ class MeatCatalogPage extends StatelessWidget {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F3E9),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Text(
-                  '25 km',
-                  style: TextStyle(
-                    color: _green,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              const CategoryDeliveryLimitBadge(
+                category: DeliveryCategory.meat,
+                foregroundColor: _green,
+                backgroundColor: Color(0xFFE8F3E9),
               ),
             ],
           ),
@@ -345,8 +337,7 @@ class MeatCatalogPage extends StatelessWidget {
     MeatCategory category,
     List<MeatProduct> categoryProducts, {
     required int firstProductIndex,
-  }
-  ) {
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

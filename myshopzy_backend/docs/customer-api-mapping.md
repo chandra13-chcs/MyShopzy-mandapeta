@@ -23,6 +23,18 @@ responses have `{ "data": { ... } }`. Errors have
 | `GET /products` | Optional UUID `shopId`, UUID `categoryId`, `partnerType`, `q`, `limit` (1–100), `offset` | Product fields plus nullable `image_url`, `thumb_url`, and `variants[]` (`id`, `label`, `unit`, `quantity`, string `price_minor`, nullable `stock`, `is_available`, `sort_order`) | `app.products`, `app.product_variants`, `app.shops`, `app.partners`; variants are aggregated in the product-list query in `sort_order` order |
 | `GET /products/:productId` | UUID `productId` | Same product fields and variants as `GET /products` | Same tables and public/available visibility rules |
 | `POST /delivery/serviceability` | `{ "latitude": number, "longitude": number, "pincode": "533308" }` | `{ "isDeliverable": boolean, "message": string }` | Validates coordinate ranges and checks `app.serviceable_pincodes`; returns `503 DATABASE_UNAVAILABLE` if PostgreSQL is unavailable |
+| `POST /delivery/category-serviceability` | `{ "category": string, "latitude": number, "longitude": number }` (`category` is grocery, meat, vegetables_fruits, bakery, restaurant, or parcel) | `{ "category": string, "isDeliverable": boolean, "distanceMeters": number, "maximumDistanceMeters": number, "message": string }` | Calculates a Google Routes driving distance from Mandapeta Bus Stand (`16.8675417, 81.9272951`) to the destination and checks the category limit; cached route results expire after three minutes; returns `503 ROUTING_UNAVAILABLE` when the route cannot be verified |
+
+Category route limits are configured centrally in
+`src/modules/delivery-serviceability/categories.js`: grocery, meat,
+vegetables/fruits, and bakery are 10 km; restaurant is 18 km; parcel is 35 km.
+The customer app uses the server-returned limit and fails closed if the route
+cannot be calculated. Parcel booking also checks the fixed-origin route to its
+drop address before booking; the existing pickup-to-drop route remains the
+basis for its delivery fee.
+Checkout quote and order creation map persisted partner types to these
+categories and enforce the fixed-origin road-route limit independently of the
+shop-to-customer route used to calculate the standard delivery fee.
 
 Variant prices are returned in the database's minor currency unit (`price_minor`,
 paise for INR) as strings to preserve bigint precision. The legacy product-level

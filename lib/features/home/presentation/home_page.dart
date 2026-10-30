@@ -26,6 +26,7 @@ import 'delivery_location_bottom_sheet.dart';
 import '../../parcel/data/parcel_location_service.dart';
 import '../../local_stores/presentation/local_stores_page.dart';
 import '../../local_stores/presentation/local_store_catalog_page.dart';
+import '../../local_stores/presentation/main_grocery_catalog_page.dart';
 import '../../local_stores/data/local_store_session.dart';
 import '../../meat/presentation/meat_page.dart';
 import '../../parcel/presentation/parcel_page.dart';
@@ -42,6 +43,7 @@ import '../../recently_viewed/presentation/recently_viewed_product_card.dart';
 import '../../restaurants/presentation/restaurant_menu_page.dart';
 import '../../search/models/search_result.dart';
 import '../../search/presentation/search_page.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({
@@ -363,27 +365,40 @@ class HomePage extends StatelessWidget {
   Widget _buildServiceGrid() {
     return _HomeServiceGrid(
       onServiceTap: (context, service) {
+        final category = switch (service.partnerType ?? service.key) {
+          'restaurants' || 'restaurant' => DeliveryCategory.restaurant,
+          'bakery' => DeliveryCategory.bakery,
+          'meat_only_chicken' || 'meat_shop' => DeliveryCategory.meat,
+          'fruits_vegetables' ||
+          'vegetables_fruits' => DeliveryCategory.vegetablesFruits,
+          'parcel' => DeliveryCategory.parcel,
+          'local_stores' || 'grocery' => DeliveryCategory.grocery,
+          _ => null,
+        };
         final destination = service.partnerType == null
             ? switch (service.key) {
                 'restaurants' => const RestaurantsPage(),
                 'bakery' => const BakeryPage(),
                 'meat_only_chicken' => const MeatPage(),
                 'parcel' => const ParcelPage(),
-                'local_stores' => const LocalStoresPage(),
+                'local_stores' => const MainGroceryCatalogPage(),
                 'fruits_vegetables' => const VegetablesFruitsPage(),
-                _ => const LocalStoresPage(),
+                _ => const MainGroceryCatalogPage(),
               }
             : switch (service.partnerType) {
                 'restaurant' => const RestaurantsPage(),
                 'meat_shop' => const MeatPage(),
+                'grocery' => const MainGroceryCatalogPage(),
                 final partnerType => LocalStoresPage(
                   partnerType: partnerType,
                   categoryName: service.name,
                 ),
               };
-        Navigator.of(
-          context,
-        ).push(AppPageRoute<void>.builder(builder: (context) => destination));
+        final page = category == null
+            ? destination
+            : CategoryDeliveryGate(category: category, child: destination);
+        Navigator.of(context)
+            .push(AppPageRoute<void>.builder(builder: (context) => page));
       },
     );
   }
@@ -551,9 +566,12 @@ class HomePage extends StatelessWidget {
             key: ValueKey('home-restaurant-product-${product.productId}'),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (context) => _restaurantDiscoveryMenu(
-                  product,
-                  initialCategoryId: product.categoryId,
+                builder: (context) => CategoryDeliveryGate(
+                  category: DeliveryCategory.restaurant,
+                  child: _restaurantDiscoveryMenu(
+                    product,
+                    initialCategoryId: product.categoryId,
+                  ),
                 ),
               ),
             ),
@@ -708,9 +726,15 @@ class HomePage extends StatelessWidget {
         final destination = key == 'parcel'
             ? const ParcelPage()
             : const VegetablesFruitsPage();
-        Navigator.of(
-          context,
-        ).push(AppPageRoute<void>.builder(builder: (context) => destination));
+        final category = key == 'parcel'
+            ? DeliveryCategory.parcel
+            : DeliveryCategory.vegetablesFruits;
+        Navigator.of(context).push(
+          AppPageRoute<void>.builder(
+            builder: (context) =>
+                CategoryDeliveryGate(category: category, child: destination),
+          ),
+        );
       },
     );
   }
@@ -763,7 +787,10 @@ class HomePage extends StatelessWidget {
             key: ValueKey('home-grocery-product-${product.productId}'),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (context) => _groceryDiscoveryCatalog(product),
+                builder: (context) => CategoryDeliveryGate(
+                  category: DeliveryCategory.grocery,
+                  child: _groceryDiscoveryCatalog(product),
+                ),
               ),
             ),
             child: Container(
@@ -1586,23 +1613,20 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
       );
     }
     if (shop.partnerType == 'grocery') {
-      return LocalStoreCatalogPage(
-        store: LocalStore(
-          id: shop.id,
-          name: shop.name,
-          rating: 0,
-          deliveryTime: 'Not provided',
-          distance: '—',
-          locality: shop.address ?? 'Address not provided',
-          isOpen: false,
-          isBackendData: true,
-        ),
-        categories: commonLocalStoreCategories,
-        products: const [],
-        initialCategoryId: initialCategoryId,
-      );
+      return MainGroceryCatalogPage(initialCategoryId: initialCategoryId);
     }
     return null;
+  }
+
+  DeliveryCategory? _deliveryCategoryForPartnerType(String partnerType) {
+    return switch (partnerType) {
+      'restaurant' => DeliveryCategory.restaurant,
+      'grocery' => DeliveryCategory.grocery,
+      'meat_shop' => DeliveryCategory.meat,
+      'vegetables_fruits' => DeliveryCategory.vegetablesFruits,
+      'bakery' => DeliveryCategory.bakery,
+      _ => null,
+    };
   }
 
   Future<void> _load() async {
@@ -1730,7 +1754,18 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
                               }
                               Navigator.of(context).push(
                                 AppPageRoute<void>.builder(
-                                  builder: (context) => destination,
+                                  builder: (context) {
+                                    final category =
+                                        _deliveryCategoryForPartnerType(
+                                          shop.partnerType,
+                                        );
+                                    return category == null
+                                        ? destination
+                                        : CategoryDeliveryGate(
+                                            category: category,
+                                            child: destination,
+                                          );
+                                  },
                                 ),
                               );
                             },
@@ -1866,9 +1901,17 @@ class _HomeCatalogFeedState extends State<_HomeCatalogFeed> {
                           _showUnresolvedProductDestination(context);
                           return;
                         }
+                        final category = _deliveryCategoryForPartnerType(
+                          partnerType,
+                        );
                         Navigator.of(context).push(
                           AppPageRoute<void>.builder(
-                            builder: (context) => destination,
+                            builder: (context) => category == null
+                                ? destination
+                                : CategoryDeliveryGate(
+                                    category: category,
+                                    child: destination,
+                                  ),
                           ),
                         );
                       },
@@ -2986,15 +3029,6 @@ class _Service {
     _ => 6,
   };
 
-  Color get tileColor => switch (partnerType ?? key) {
-    'restaurant' || 'restaurants' => const Color(0xFFE1F2E4),
-    'bakery' => const Color(0xFFFFE8D9),
-    'meat_shop' || 'meat_only_chicken' => const Color(0xFFEDE5FA),
-    'vegetables_fruits' || 'fruits_vegetables' => const Color(0xFFFBE4EC),
-    'parcel' => const Color(0xFFFFF1D5),
-    'grocery' || 'other' || 'local_stores' => const Color(0xFFE2EFF9),
-    _ => const Color(0xFFE2EFF9),
-  };
 }
 
 const _demoHomeServices = [
@@ -3225,7 +3259,7 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
             child: Container(
               key: ValueKey('home-category-tile-${widget.service.key}'),
               decoration: BoxDecoration(
-                color: widget.service.tileColor,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
@@ -3255,18 +3289,7 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
                       ),
                     ),
                   ),
-                  if (widget.service.partnerType == null)
-                    Text(
-                      widget.service.tileLabel,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.black87,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                  const SizedBox(height: 14),
                 ],
               ),
             ),

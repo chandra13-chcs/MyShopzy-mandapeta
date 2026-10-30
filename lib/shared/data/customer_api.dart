@@ -648,6 +648,48 @@ class ServiceabilityResponse {
   }
 }
 
+class CategoryServiceabilityResponse {
+  const CategoryServiceabilityResponse({
+    required this.category,
+    required this.isDeliverable,
+    required this.distanceMeters,
+    required this.maximumDistanceMeters,
+    required this.message,
+  });
+
+  final String category;
+  final bool isDeliverable;
+  final int distanceMeters;
+  final int maximumDistanceMeters;
+  final String message;
+
+  factory CategoryServiceabilityResponse.fromJson(Map<String, dynamic> json) {
+    final category = json['category'];
+    final isDeliverable = json['isDeliverable'];
+    final distanceMeters = json['distanceMeters'];
+    final maximumDistanceMeters = json['maximumDistanceMeters'];
+    final message = json['message'];
+    if (category is! String ||
+        category.trim().isEmpty ||
+        isDeliverable is! bool ||
+        distanceMeters is! int ||
+        distanceMeters < 0 ||
+        maximumDistanceMeters is! int ||
+        maximumDistanceMeters <= 0 ||
+        message is! String ||
+        message.trim().isEmpty) {
+      throw const FormatException('Invalid category serviceability response.');
+    }
+    return CategoryServiceabilityResponse(
+      category: category,
+      isDeliverable: isDeliverable,
+      distanceMeters: distanceMeters,
+      maximumDistanceMeters: maximumDistanceMeters,
+      message: message.trim(),
+    );
+  }
+}
+
 class ApiCustomerOrder {
   const ApiCustomerOrder({
     required this.id,
@@ -1568,6 +1610,51 @@ class CustomerApi {
     );
     try {
       return ServiceabilityResponse.fromJson(_dataObject(payload));
+    } on FormatException {
+      throw _invalidResponse();
+    }
+  }
+
+  Future<CategoryServiceabilityResponse> checkCategoryServiceability({
+    required String category,
+    required double latitude,
+    required double longitude,
+  }) async {
+    if (!const {
+          'grocery',
+          'meat',
+          'vegetables_fruits',
+          'bakery',
+          'restaurant',
+          'parcel',
+        }.contains(category) ||
+        !latitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !longitude.isFinite ||
+        longitude < -180 ||
+        longitude > 180) {
+      throw const CustomerApiException(
+        statusCode: null,
+        code: 'INVALID_REQUEST',
+        message: 'Enter a valid delivery category and address.',
+      );
+    }
+    final payload = await _request(
+      'POST',
+      '/delivery/category-serviceability',
+      body: {
+        'category': category,
+        'latitude': latitude,
+        'longitude': longitude,
+      },
+    );
+    try {
+      final response = CategoryServiceabilityResponse.fromJson(
+        _dataObject(payload),
+      );
+      if (response.category != category) throw const FormatException();
+      return response;
     } on FormatException {
       throw _invalidResponse();
     }

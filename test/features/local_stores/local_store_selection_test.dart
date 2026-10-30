@@ -6,6 +6,9 @@ import 'package:myshopzy/features/categories/presentation/categories_page.dart';
 import 'package:myshopzy/features/local_stores/data/local_store_session.dart';
 import 'package:myshopzy/features/local_stores/presentation/local_store_catalog_page.dart';
 import 'package:myshopzy/features/local_stores/presentation/local_stores_page.dart';
+import 'package:myshopzy/features/profile/data/selected_delivery_address_store.dart';
+import 'package:myshopzy/shared/data/customer_api.dart';
+import 'package:myshopzy/shared/delivery/category_delivery_serviceability.dart';
 
 void main() {
   final cart = CartStore.instance;
@@ -14,14 +17,23 @@ void main() {
   setUp(() {
     cart.clear();
     session.clearSelection();
+    CustomerApi.instance.close();
+    CustomerApi.instance = CustomerApi(
+      baseUrl: '',
+      enableDevelopmentGuestCart: true,
+    );
+    SelectedDeliveryAddressStore.instance.select(null);
   });
 
   tearDown(() {
     cart.clear();
     session.clearSelection();
+    CustomerApi.instance.close();
+    CustomerApi.instance = CustomerApi(baseUrl: '');
+    SelectedDeliveryAddressStore.instance.select(null);
   });
 
-  test('sorts stores by distance and excludes stores beyond 18 km', () {
+  test('sorts stores by distance without imposing a common delivery limit', () {
     final stores = [
       _store(id: 'far', name: 'Far Store', distance: '18.1 km'),
       _store(id: 'second', name: 'Second Store', distance: '2.4 km'),
@@ -33,9 +45,10 @@ void main() {
       'second',
       'far',
     ]);
-    expect(eligibleLocalStores(stores).map((store) => store.id), [
+    expect(sortLocalStoresByDistance(stores).map((store) => store.id), [
       'nearest',
       'second',
+      'far',
     ]);
   });
 
@@ -66,107 +79,19 @@ void main() {
     expect(find.byType(LocalStoreCatalogPage), findsOneWidget);
   });
 
-  testWidgets('a category entry asks for a store then opens that category', (
+  testWidgets('Grocery category entry does not show a partner chooser', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
-
-    await tester.tap(find.text('Dairy, Bread & Eggs'));
-    await tester.pumpAndSettle();
-    expect(find.byType(LocalStoresPage), findsOneWidget);
-    expect(find.byType(LocalStoreCatalogPage), findsNothing);
-
-    await tester.tap(find.text('Sri Lakshmi General Store'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(LocalStoreCatalogPage), findsOneWidget);
-    expect(find.text('No Dairy available at this store yet.'), findsOneWidget);
-    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
-  });
-
-  testWidgets('category flow selects store products then allows switching', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
-
-    await tester.ensureVisible(find.text('Breakfast & Instant Food'));
-    await tester.tap(find.text('Breakfast & Instant Food'));
+    final groceryTile = find.text('Dairy, Bread and Eggs');
+    await tester.ensureVisible(groceryTile);
+    await tester.tap(groceryTile);
     await tester.pumpAndSettle();
-    expect(find.byType(LocalStoresPage), findsOneWidget);
-
-    await tester.tap(find.text('Sri Lakshmi General Store'));
-    await tester.pumpAndSettle();
-    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
-    expect(find.text('2-Minute Noodles'), findsOneWidget);
-    expect(find.text('Marie Gold'), findsNothing);
-
-    await tester.tap(find.text('Biscuits'));
-    await tester.pumpAndSettle();
-    expect(find.text('Marie Gold'), findsOneWidget);
-    expect(find.text('2-Minute Noodles'), findsNothing);
-    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
-  });
-
-  testWidgets('biscuits category selects common Local Store category', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
-
-    await tester.ensureVisible(find.text('Bakery & Biscuits'));
-    await tester.tap(find.text('Bakery & Biscuits'));
-    await tester.pumpAndSettle();
-    expect(find.byType(LocalStoresPage), findsOneWidget);
-
-    await tester.tap(find.text('Sri Lakshmi General Store'));
-    await tester.pumpAndSettle();
-    expect(find.text('Marie Gold'), findsOneWidget);
-    expect(find.text('2-Minute Noodles'), findsNothing);
-    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
-  });
-
-  testWidgets('rice category selects its common Local Store category', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
-
-    await tester.scrollUntilVisible(
-      find.text('Atta, Rice & Dal'),
-      260,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Atta, Rice & Dal'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Sri Lakshmi General Store'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Classic Basmati Rice'), findsOneWidget);
-    expect(find.text('2-Minute Noodles'), findsNothing);
-    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
-  });
-
-  testWidgets('cooking oil category context survives store selection', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: CategoriesPage()));
-
-    await tester.scrollUntilVisible(
-      find.text('Masala, Cooking Oil & Ghee'),
-      260,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Masala, Cooking Oil & Ghee'));
-    await tester.pumpAndSettle();
-    expect(find.byType(LocalStoresPage), findsOneWidget);
-
-    await tester.tap(find.text('Sri Lakshmi General Store'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('No Cooking Oil available at this store yet.'),
-      findsOneWidget,
-    );
-    expect(find.text('Marie Gold'), findsNothing);
-    expect(session.selectedStoreId, 'sri-lakshmi-general-store');
+    expect(find.byType(CategoryDeliveryGate), findsOneWidget);
+    expect(find.byType(LocalStoresPage), findsNothing);
+    expect(find.text('Choose a delivery address'), findsOneWidget);
   });
 
   testWidgets('catalogue only shows products belonging to its selected store', (
@@ -229,7 +154,7 @@ void main() {
 
       await tester.tap(find.text('ADD').first);
       await tester.pump();
-      await tester.tap(find.text('ADD'));
+      await tester.tap(find.text('ADD').last);
       await tester.pump();
 
       expect(

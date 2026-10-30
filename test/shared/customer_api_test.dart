@@ -439,6 +439,49 @@ void main() {
       expect(result.message, 'Delivery is available.');
     });
 
+    test(
+      'checks category serviceability with a road distance response',
+      () async {
+        late http.Request request;
+        final api = CustomerApi(
+          baseUrl: 'https://shop.example',
+          httpClient: MockClient((value) async {
+            request = value;
+            return http.Response(
+              jsonEncode({
+                'data': {
+                  'category': 'grocery',
+                  'isDeliverable': true,
+                  'distanceMeters': 10000,
+                  'maximumDistanceMeters': 10000,
+                  'message': 'Delivery is available within 10 km.',
+                },
+              }),
+              200,
+            );
+          }),
+        );
+        addTearDown(api.close);
+
+        final result = await api.checkCategoryServiceability(
+          category: 'grocery',
+          latitude: 16.9,
+          longitude: 81.95,
+        );
+
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/v1/delivery/category-serviceability');
+        expect(jsonDecode(request.body), {
+          'category': 'grocery',
+          'latitude': 16.9,
+          'longitude': 81.95,
+        });
+        expect(result.isDeliverable, isTrue);
+        expect(result.distanceMeters, 10000);
+        expect(result.maximumDistanceMeters, 10000);
+      },
+    );
+
     test('rejects invalid serviceability coordinates and pincodes', () async {
       var requestSent = false;
       final api = CustomerApi(

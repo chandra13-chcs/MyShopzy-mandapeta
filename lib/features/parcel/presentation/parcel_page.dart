@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 import '../../../shared/presentation/promotional_banner.dart';
 import '../data/parcel_location_service.dart';
 import 'parcel_history_page.dart';
@@ -156,7 +157,7 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
                 ),
                 SizedBox(height: 3),
                 Text(
-                  'Bike request • 50 km limit not verified',
+                  'Bike request · Mandapeta delivery coverage',
                   style: TextStyle(
                     color: _muted,
                     fontSize: 11,
@@ -491,7 +492,7 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Maximum route distance: 50 km (not checked)',
+                  'Serviceable delivery area',
                   style: TextStyle(
                     color: _ink,
                     fontSize: 12,
@@ -499,6 +500,22 @@ class _ParcelPageState extends State<ParcelPage> with WidgetsBindingObserver {
                   ),
                 ),
                 SizedBox(height: 3),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 4,
+                  children: [
+                    Text(
+                      'Maximum from Mandapeta Bus Stand:',
+                      style: TextStyle(color: _muted, fontSize: 11),
+                    ),
+                    CategoryDeliveryLimitBadge(
+                      category: DeliveryCategory.parcel,
+                      foregroundColor: _green,
+                      backgroundColor: Color(0xFFE8F3E9),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 4),
                 Text(
                   'Bike requested; no rider is assigned yet.',
                   style: TextStyle(color: _muted, fontSize: 11),

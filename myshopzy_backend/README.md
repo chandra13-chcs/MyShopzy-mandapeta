@@ -70,13 +70,14 @@ existing approval status and permits new normalized partner-type identifiers.
 New types such as `bakery` or `sweet_shop` appear without a Flutter or backend
 code change.
 
-The serviceability endpoint validates coordinates and checks the submitted
-pincode against `app.serviceable_pincodes`. The table is empty until delivery
-areas are configured, so delivery fails closed. Order placement repeats the
-pincode lookup within the order transaction so clients cannot bypass
-checkout's serviceability check. This policy is pincode-only and does not
-verify that coordinates fall inside a delivery polygon.
-Configure an approved delivery pincode with:
+`POST /api/v1/delivery/serviceability` validates coordinates and checks the
+submitted pincode against `app.serviceable_pincodes`; it remains available for
+legacy clients. Customer checkout serviceability for groceries, meat,
+vegetables and fruits, bakery, and restaurants instead uses the fixed-origin
+Google Routes distance and the per-category limit. The checkout quote and
+order-creation endpoints both repeat this route check, so a client cannot
+bypass the category limit. Pincode configuration remains relevant only to
+unmapped legacy partner types. Configure an approved pincode with:
 
 ```sql
 INSERT INTO app.serviceable_pincodes (pincode)
@@ -113,6 +114,14 @@ distance/fee fallback is used.
 Configure routing on the backend only with `ROUTING_PROVIDER=google` and
 `ROUTING_API_KEY=<server-side Google Routes API key>`. The `fake` provider is
 available for tests and local development only; production startup rejects it.
+Customer category serviceability uses the Google Routes driving distance from
+Mandapeta Bus Stand (16.8675417, 81.9272951). Its per-category thresholds are
+maintained in `src/modules/delivery-serviceability/categories.js`; successful
+route distances are cached for three minutes. Checkout enforces the category
+threshold from the Bus Stand; the shop-to-customer route remains in use for
+delivery-fee calculation only. Parcel booking checks the same fixed origin
+against its 35 km limit, while parcel fees continue to use its pickup-to-drop
+route. The Flutter app never receives the routing key.
 For Razorpay testing, set `RAZORPAY_KEY_ID` to a `rzp_test_` key ID and
 `RAZORPAY_KEY_SECRET` to its matching secret in the backend `.env` file. Keep
 both values server-side; only the Key ID is returned to the customer checkout.

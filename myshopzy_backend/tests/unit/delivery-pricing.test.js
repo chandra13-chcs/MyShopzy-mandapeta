@@ -4,7 +4,6 @@ const test = require('node:test');
 const {
   calculateDeliveryPricing,
   FREE_DELIVERY_THRESHOLD_MINOR,
-  MAX_DELIVERY_DISTANCE_METERS,
   PLATFORM_FEE_MINOR,
 } = require('../../src/modules/delivery-serviceability/pricing');
 
@@ -39,7 +38,7 @@ test('uses the flat fee through 4 km and exact metre-based pricing above 4 km', 
   );
 });
 
-test('allows 18 km and rejects any greater distance', () => {
+test('calculates delivery fees beyond the former common 18 km cutoff', () => {
   const atLimit = calculateDeliveryPricing({
     merchandiseSubtotalMinor: 0,
     distanceMeters: 18000,
@@ -48,19 +47,20 @@ test('allows 18 km and rejects any greater distance', () => {
   assert.equal(atLimit.deliveryFeeMinor, 10800);
   assert.equal(atLimit.platformFeeMinor, 1000);
 
-  const outsideLimit = calculateDeliveryPricing({
+  const beyondOldLimit = calculateDeliveryPricing({
     merchandiseSubtotalMinor: 0,
     distanceMeters: 18001,
   });
-  assert.deepEqual(outsideLimit, {
-    deliverable: false,
-    reason: 'OUTSIDE_DELIVERY_RANGE',
+  assert.equal(beyondOldLimit.deliverable, true);
+  assert.equal(beyondOldLimit.deliveryFeeMinor, 10801);
+  assert.equal(beyondOldLimit.distanceMeters, 18001);
+
+  const parcelRange = calculateDeliveryPricing({
     merchandiseSubtotalMinor: 0,
-    distanceMeters: 18001,
-    deliveryFeeMinor: null,
-    platformFeeMinor: null,
-    totalMinor: null,
+    distanceMeters: 35000,
   });
+  assert.equal(parcelRange.deliverable, true);
+  assert.equal(parcelRange.deliveryFeeMinor, 21000);
 });
 
 test('unlocks free delivery at 49900 paise but not 49899 paise', () => {
@@ -111,7 +111,7 @@ test('rejects totals that exceed the safe integer range', () => {
   assert.throws(
     () => calculateDeliveryPricing({
       merchandiseSubtotalMinor: Number.MAX_SAFE_INTEGER,
-      distanceMeters: MAX_DELIVERY_DISTANCE_METERS,
+      distanceMeters: Number.MAX_SAFE_INTEGER,
     }),
     TypeError,
   );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 import 'parcel_history_page.dart';
 
 class ParcelSummaryPage extends StatefulWidget {
@@ -44,6 +45,8 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
   bool _submitting = false;
   bool _outcomeUnknown = false;
   bool _checkingServiceability = false;
+  bool _checkingRouteServiceability = false;
+  CategoryServiceabilityResponse? _routeServiceability;
   String? _error;
   String? _postalCoverageMessage;
   bool get _isDevelopmentPreview =>
@@ -58,6 +61,12 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
         _hasLocationData &&
         CustomerApi.instance.isConfigured) {
       _checkPostalCoverage();
+    }
+    if (!_isDevelopmentPreview &&
+        widget.dropLatitude != null &&
+        widget.dropLongitude != null &&
+        CustomerApi.instance.isConfigured) {
+      _checkParcelRouteDistance();
     }
   }
 
@@ -218,8 +227,8 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
           _SummaryRow(label: 'Requested vehicle', value: 'Bike'),
           SizedBox(height: 11),
           _SummaryRow(
-            label: 'Maximum route distance',
-            value: '50 km (not verified by this API)',
+            label: 'Delivery distance',
+            value: 'Checked before booking',
           ),
           SizedBox(height: 11),
           _SummaryRow(label: 'Maximum weight', value: '20 kg'),
@@ -294,11 +303,17 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
 
   Widget _buildFareAndServiceability() {
     final coverageText = !_hasLocationData
-        ? 'Postal-area coverage was not checked because postal codes are unavailable. The backend still verifies the road route when you submit.'
+        ? 'Postal-area coverage was not checked because postal codes are unavailable.'
         : _checkingServiceability
         ? 'Checking whether both postal areas are listed for delivery...'
         : _postalCoverageMessage ??
               'Postal-area coverage has not been checked.';
+    final routeMessage = _checkingRouteServiceability
+        ? 'Checking the driving route from Mandapeta Bus Stand to the drop address...'
+        : _routeServiceability?.message ??
+              (_error == null
+                  ? 'Route limit is checked before booking.'
+                  : null);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -345,14 +360,15 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
                 style: const TextStyle(color: _ink, fontSize: 12, height: 1.4),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'This checks postal-area coverage only. Submission separately checks the road route for pricing, but the API does not enforce the 50 km limit.',
-                style: TextStyle(
-                  color: Color(0xFF727A74),
-                  fontSize: 11,
-                  height: 1.35,
+              if (routeMessage != null)
+                Text(
+                  routeMessage,
+                  style: const TextStyle(
+                    color: Color(0xFF727A74),
+                    fontSize: 11,
+                    height: 1.35,
+                  ),
                 ),
-              ),
               if (!_hasRouteCoordinates) ...[
                 const SizedBox(height: 10),
                 Container(
@@ -437,6 +453,12 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
       _error = null;
     });
     try {
+      final serviceability = await _checkParcelRouteDistance();
+      if (serviceability == null) return;
+      if (!serviceability.isDeliverable) {
+        setState(() => _error = serviceability.message);
+        return;
+      }
       final booking = await api.createParcelBooking(
         ApiParcelBookingRequest(
           pickupLocation: widget.pickupLocation,
@@ -465,6 +487,47 @@ class _ParcelSummaryPageState extends State<ParcelSummaryPage> {
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<CategoryServiceabilityResponse?> _checkParcelRouteDistance() async {
+    final latitude = widget.dropLatitude;
+    final longitude = widget.dropLongitude;
+    if (latitude == null || longitude == null) return null;
+
+    if (mounted) {
+      setState(() => _checkingRouteServiceability = true);
+    }
+    try {
+      final result = await CategoryDeliveryServiceability.instance.check(
+        category: DeliveryCategory.parcel,
+        latitude: latitude,
+        longitude: longitude,
+      );
+      if (mounted) {
+        setState(() {
+          _routeServiceability = result;
+          _checkingRouteServiceability = false;
+        });
+      }
+      return result;
+    } on CustomerApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error.message;
+          _checkingRouteServiceability = false;
+        });
+      }
+      return null;
+    } on Exception catch (error) {
+      debugPrint('Unable to verify parcel drop route: $error');
+      if (mounted) {
+        setState(() {
+          _error = 'We could not verify the driving route. Check your connection and try again.';
+          _checkingRouteServiceability = false;
+        });
+      }
+      return null;
     }
   }
 

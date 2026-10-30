@@ -1,6 +1,14 @@
 const express = require('express');
+const { validateCoordinates } = require('../delivery-fee/distance');
+const {
+  CATEGORY_DELIVERY_LIMITS_METERS,
+  MANDAPETA_BUS_STAND,
+  assessCategoryServiceability,
+} = require('./categories');
 
 const PINCODE_PATTERN = /^\d{6}$/;
+const ROUTE_CACHE_TTL_MS = 3 * 60 * 1000;
+const MAX_ROUTE_CACHE_ENTRIES = 500;
 
 function validateRequestBody(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -32,8 +40,97 @@ function validateRequestBody(body) {
   return null;
 }
 
-function createDeliveryServiceabilityRouter({ databasePool = null } = {}) {
+function createDeliveryServiceabilityRouter({
+  databasePool = null,
+  deliveryDistanceClient = null,
+  now = Date.now,
+} = {}) {
   const router = express.Router();
+  const routeCache = new Map();
+
+  async function getRoadDistanceMeters(destination) {
+    const cacheKey =
+      `${destination.latitude.toFixed(6)},${destination.longitude.toFixed(6)}`;
+    const cached = routeCache.get(cacheKey);
+    if (cached && cached.expiresAt > now()) return cached.distanceMeters;
+    if (cached) routeCache.delete(cacheKey);
+    if (!deliveryDistanceClient) return null;
+
+    const distanceMeters = await deliveryDistanceClient.getRoadDistanceMetres(
+      MANDAPETA_BUS_STAND,
+      destination,
+    );
+    if (!Number.isSafeInteger(distanceMeters) || distanceMeters < 0) {
+      return null;
+    }
+
+    while (routeCache.size >= MAX_ROUTE_CACHE_ENTRIES) {
+      routeCache.delete(routeCache.keys().next().value);
+    }
+    routeCache.set(cacheKey, {
+      distanceMeters,
+      expiresAt: now() + ROUTE_CACHE_TTL_MS,
+    });
+    return distanceMeters;
+  }
+
+  router.post('/delivery/category-serviceability', async (req, res) => {
+    const body = req.body;
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      Object.keys(body).some(
+        (key) => !['category', 'latitude', 'longitude'].includes(key),
+      ) ||
+      typeof body.category !== 'string' ||
+      !Object.hasOwn(CATEGORY_DELIVERY_LIMITS_METERS, body.category)
+    ) {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'A supported category and valid destination are required.',
+        },
+      });
+    }
+
+    let destination;
+    try {
+      destination = validateCoordinates({
+        latitude: body.latitude,
+        longitude: body.longitude,
+      });
+    } catch {
+      return res.status(400).json({
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'Enter valid destination coordinates within India.',
+        },
+      });
+    }
+
+    try {
+      const distanceMeters = await getRoadDistanceMeters(destination);
+      if (distanceMeters === null) {
+        return res.status(503).json({
+          error: {
+            code: 'ROUTING_UNAVAILABLE',
+            message: 'We could not verify the driving route. Please try again.',
+          },
+        });
+      }
+      return res.status(200).json({
+        data: assessCategoryServiceability(body.category, distanceMeters),
+      });
+    } catch {
+      return res.status(503).json({
+        error: {
+          code: 'ROUTING_UNAVAILABLE',
+          message: 'We could not verify the driving route. Please try again.',
+        },
+      });
+    }
+  });
 
   router.post('/delivery/serviceability', async (req, res, next) => {
     const validationError = validateRequestBody(req.body);

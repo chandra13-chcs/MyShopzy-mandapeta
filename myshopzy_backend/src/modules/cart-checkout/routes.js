@@ -9,6 +9,11 @@ const { getOutstandingMinor, lockCustomer } = require('../dues/ledger');
 const { computeDeliveryFeeMinor } = require('../delivery-fee/pricing');
 const { PLATFORM_FEE_MINOR } = require('../delivery-serviceability/pricing');
 const {
+  MANDAPETA_BUS_STAND,
+  deliveryCategoryForPartnerType,
+  assessCategoryServiceability,
+} = require('../delivery-serviceability/categories');
+const {
   validateCoordinates,
 } = require('../delivery-fee/distance');
 const {
@@ -29,6 +34,32 @@ const CLIENT_PRICING_FIELDS = new Set([
   'distanceM',
   'distance_m',
 ]);
+
+async function checkFixedOriginServiceability(
+  deliveryDistanceClient,
+  category,
+  destination,
+) {
+  if (!deliveryDistanceClient) {
+    throw new ApiError(
+      503,
+      'DISTANCE_UNAVAILABLE',
+      'Delivery distance could not be verified.',
+    );
+  }
+  const distanceMeters = await deliveryDistanceClient.getRoadDistanceMetres(
+    MANDAPETA_BUS_STAND,
+    destination,
+  );
+  if (!Number.isSafeInteger(distanceMeters) || distanceMeters < 0) {
+    throw new ApiError(
+      503,
+      'DISTANCE_UNAVAILABLE',
+      'Delivery distance could not be verified.',
+    );
+  }
+  return assessCategoryServiceability(category, distanceMeters);
+}
 
 function omitClientPricingFields(value) {
   return Object.fromEntries(
@@ -1015,27 +1046,64 @@ function createCartCheckoutRouter({
           discountMinor: '0',
         };
 
-        const pincodeResult = await databasePool.query(
-          `SELECT EXISTS (
-             SELECT 1
-             FROM app.serviceable_pincodes
-             WHERE pincode = $1
-               AND is_active = true
-           ) AS is_deliverable`,
-          [address.pincode],
+        const category = deliveryCategoryForPartnerType(
+          cartSnapshot.items[0].partner_type,
         );
-        if (!pincodeResult.rows[0]?.is_deliverable) {
-          return res.status(200).json({
-            data: {
-              ...quoteBase,
-              isDeliverable: false,
-              message: 'Sorry, we do not deliver to this location.',
-              distanceMeters: null,
-              deliveryFeeMinor: null,
-              platformFeeMinor: null,
-              totalMinor: null,
-            },
-          });
+        if (category) {
+          let serviceability;
+          try {
+            serviceability = await checkFixedOriginServiceability(
+              deliveryDistanceClient,
+              category,
+              address.destination,
+            );
+          } catch (error) {
+            if (error instanceof ApiError) return sendApiError(res, error);
+            return sendApiError(
+              res,
+              new ApiError(
+                503,
+                'DISTANCE_UNAVAILABLE',
+                'Delivery distance could not be verified.',
+              ),
+            );
+          }
+          if (!serviceability.isDeliverable) {
+            return res.status(200).json({
+              data: {
+                ...quoteBase,
+                isDeliverable: false,
+                message: serviceability.message,
+                distanceMeters: serviceability.distanceMeters,
+                deliveryFeeMinor: null,
+                platformFeeMinor: null,
+                totalMinor: null,
+              },
+            });
+          }
+        } else {
+          const pincodeResult = await databasePool.query(
+            `SELECT EXISTS (
+               SELECT 1
+               FROM app.serviceable_pincodes
+               WHERE pincode = $1
+                 AND is_active = true
+             ) AS is_deliverable`,
+            [address.pincode],
+          );
+          if (!pincodeResult.rows[0]?.is_deliverable) {
+            return res.status(200).json({
+              data: {
+                ...quoteBase,
+                isDeliverable: false,
+                message: 'Sorry, we do not deliver to this location.',
+                distanceMeters: null,
+                deliveryFeeMinor: null,
+                platformFeeMinor: null,
+                totalMinor: null,
+              },
+            });
+          }
         }
 
         let origin;
@@ -1274,21 +1342,6 @@ function createCartCheckoutRouter({
               );
             }
           }
-          const deliveryZone = await client.query(
-            `SELECT 1
-             FROM app.serviceable_pincodes
-             WHERE pincode = $1
-               AND is_active = true`,
-            [address.pincode],
-          );
-          if (deliveryZone.rows.length === 0) {
-            throw new ApiError(
-              422,
-              'DELIVERY_UNAVAILABLE',
-              'Sorry, we do not deliver to this location.',
-            );
-          }
-
           if (customerUserId) {
             const customer = await client.query(
               `SELECT c.user_id
@@ -1319,6 +1372,52 @@ function createCartCheckoutRouter({
             throw new ApiError(422, 'EMPTY_CART', 'Add at least one item before checkout.');
           }
           const checkout = await loadCheckoutItems(client, cart, { lock: true });
+          const category = deliveryCategoryForPartnerType(
+            checkout.items[0].partner_type,
+          );
+          if (category) {
+            let serviceability;
+            try {
+              serviceability = await checkFixedOriginServiceability(
+                deliveryDistanceClient,
+                category,
+                address.destination,
+              );
+            } catch {
+              throw new ApiError(
+                503,
+                'DISTANCE_UNAVAILABLE',
+                'Delivery distance could not be verified.',
+              );
+            }
+            if (!serviceability.isDeliverable) {
+              throw new ApiError(
+                422,
+                'OUTSIDE_DELIVERY_RANGE',
+                serviceability.message,
+                {
+                  category: serviceability.category,
+                  distanceMeters: serviceability.distanceMeters,
+                  maximumDistanceMeters: serviceability.maximumDistanceMeters,
+                },
+              );
+            }
+          } else {
+            const deliveryZone = await client.query(
+              `SELECT 1
+               FROM app.serviceable_pincodes
+               WHERE pincode = $1
+                 AND is_active = true`,
+              [address.pincode],
+            );
+            if (deliveryZone.rows.length === 0) {
+              throw new ApiError(
+                422,
+                'DELIVERY_UNAVAILABLE',
+                'Sorry, we do not deliver to this location.',
+              );
+            }
+          }
           const operatingHours = isOpenNow(checkout.items[0]);
           if (!operatingHours.open) {
             throw new ApiError(

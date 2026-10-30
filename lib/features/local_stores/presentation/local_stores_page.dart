@@ -95,7 +95,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
                 body: SafeArea(
                   child: Column(
                     children: [
-                      _buildHeader(context, showRadius: false),
+                      _buildHeader(context),
                       Expanded(
                         child: ListView(
                           padding: const EdgeInsets.all(16),
@@ -155,7 +155,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
         body: SafeArea(
           child: Column(
             children: [
-              _buildHeader(context, showRadius: false),
+              _buildHeader(context),
               Expanded(
                 child: Center(
                   child: OfflineErrorState(onRetry: _refreshStores),
@@ -171,7 +171,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(context, showRadius: false),
+            _buildHeader(context),
             Expanded(
               child: Center(
                 child: Padding(
@@ -219,7 +219,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
   Widget _buildPage(List<LocalStore> stores, {required String sourceLabel}) {
     final nearbyStores = stores.any((store) => store.isBackendData)
         ? stores
-        : eligibleLocalStores(stores);
+        : sortLocalStoresByDistance(stores);
     final storeList = ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 19, 16, 24),
@@ -277,10 +277,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(
-              context,
-              showRadius: !stores.any((store) => store.isBackendData),
-            ),
+            _buildHeader(context),
             Expanded(
               child: _storesFuture == null
                   ? storeList
@@ -321,7 +318,7 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
     );
   }
 
-  Widget _buildHeader(BuildContext context, {required bool showRadius}) {
+  Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 6, 16, 0),
       child: Column(
@@ -366,23 +363,6 @@ class _LocalStoresPageState extends State<LocalStoresPage> {
                       ),
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(width: 7),
-              if (showRadius)
-                Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F3E9),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Text(
-                  '18 km',
-                  style: TextStyle(
-                    color: _green,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
                 ),
               ),
             ],

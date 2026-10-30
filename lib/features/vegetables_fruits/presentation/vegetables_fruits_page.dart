@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 import 'produce_catalog_page.dart';
@@ -57,23 +58,10 @@ class VegetablesFruitsPage extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8F3E9),
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                    child: const Text(
-                      '18 km',
-                      style: TextStyle(
-                        color: _green,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                  const CategoryDeliveryLimitBadge(
+                    category: DeliveryCategory.vegetablesFruits,
+                    foregroundColor: _green,
+                    backgroundColor: Color(0xFFE8F3E9),
                   ),
                 ],
               ),

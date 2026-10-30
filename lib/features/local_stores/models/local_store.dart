@@ -30,8 +30,6 @@ class LocalStore {
       double.infinity;
 }
 
-const localStoreDeliveryRadiusKm = 18.0;
-
 const sampleLocalStores = [
   LocalStore(
     id: 'sri-lakshmi-general-store',
@@ -79,12 +77,4 @@ List<LocalStore> sortLocalStoresByDistance(Iterable<LocalStore> stores) {
     return first.distanceInKm.compareTo(second.distanceInKm);
   });
   return sortedStores;
-}
-
-List<LocalStore> eligibleLocalStores(Iterable<LocalStore> stores) {
-  return sortLocalStoresByDistance(
-    stores.where(
-      (store) => store.distanceInKm <= localStoreDeliveryRadiusKm,
-    ),
-  );
 }

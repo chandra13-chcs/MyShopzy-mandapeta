@@ -231,6 +231,9 @@ void main() {
           },
         });
       }
+      if (request.url.path == '/api/v1/delivery/category-serviceability') {
+        return _parcelServiceabilityResponse();
+      }
       if (request.method == 'POST') return postResponse.future;
       return _jsonResponse({'data': _bookingJson(appendUpdatedAt: true)});
     });
@@ -266,6 +269,18 @@ void main() {
         .where((request) => request.url.path == '/api/v1/me/parcels')
         .toList();
     expect(parcelRequests.map((request) => request.method), ['POST']);
+    final routeChecks = requests
+        .where(
+          (request) =>
+              request.url.path == '/api/v1/delivery/category-serviceability',
+        )
+        .toList();
+    expect(routeChecks, isNotEmpty);
+    expect(jsonDecode(routeChecks.first.body), {
+      'category': 'parcel',
+      'latitude': 16.87,
+      'longitude': 81.93,
+    });
     expect(
       jsonDecode(parcelRequests.first.body),
       containsPair('pickupLatitude', 16.87),
@@ -347,6 +362,9 @@ void main() {
           },
         });
       }
+      if (request.url.path == '/api/v1/delivery/category-serviceability') {
+        return _parcelServiceabilityResponse();
+      }
       return _jsonResponse({'data': _bookingJson()});
     });
     await _authenticate();
@@ -374,7 +392,7 @@ void main() {
       'pincode': '533308',
     });
     expect(
-      find.textContaining('Submission separately checks the road route'),
+      find.textContaining('available within 35 km'),
       findsOneWidget,
     );
   });
@@ -636,6 +654,16 @@ Future<void> _authenticate() =>
 http.Response _jsonResponse(Object body, {int statusCode = 200}) {
   return http.Response(jsonEncode(body), statusCode);
 }
+
+http.Response _parcelServiceabilityResponse() => _jsonResponse({
+  'data': {
+    'category': 'parcel',
+    'isDeliverable': true,
+    'distanceMeters': 25000,
+    'maximumDistanceMeters': 35000,
+    'message': 'Delivery is available within 35 km of Mandapeta Bus Stand.',
+  },
+});
 
 Map<String, Object?> _bookingJson({bool appendUpdatedAt = false}) => {
   'id': _bookingId,

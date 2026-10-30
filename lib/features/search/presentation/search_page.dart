@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
-import '../../local_stores/models/local_store.dart';
-import '../../local_stores/presentation/local_store_catalog_page.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
+import '../../local_stores/presentation/main_grocery_catalog_page.dart';
 import '../../product_details/data/product_availability_store.dart';
 import '../../product_details/presentation/product_details_page.dart';
 import '../../restaurants/presentation/restaurant_menu_page.dart';
@@ -107,7 +107,8 @@ class _SearchPageState extends State<SearchPage> {
     partnerType: shop.partnerType,
     isBackendData: true,
     storeOpen: shop.storeOpen,
-    searchableText: '${shop.name} ${shop.partnerName ?? ''} ${shop.address ?? ''}',
+    searchableText:
+        '${shop.name} ${shop.partnerName ?? ''} ${shop.address ?? ''}',
   );
 
   SearchResult _productResult(ApiProduct product) => SearchResult(
@@ -125,7 +126,8 @@ class _SearchPageState extends State<SearchPage> {
     isBackendData: true,
     storeOpen: product.storeOpen,
     variants: product.variants,
-    searchableText: '${product.name} ${product.description} ${product.shopName ?? ''}',
+    searchableText:
+        '${product.name} ${product.description} ${product.shopName ?? ''}',
   );
 
   Widget? _backendDestination(SearchResult result) {
@@ -148,21 +150,7 @@ class _SearchPageState extends State<SearchPage> {
         );
       }
       if (result.partnerType == 'grocery') {
-        final store = LocalStore(
-          id: result.id,
-          name: result.displayName,
-          rating: 0,
-          deliveryTime: 'Not provided',
-          distance: '—',
-          locality: result.subtitle ?? 'Address not provided',
-          isOpen: result.storeOpen,
-          isBackendData: true,
-        );
-        return LocalStoreCatalogPage(
-          store: store,
-          categories: commonLocalStoreCategories,
-          products: const [],
-        );
+        return const MainGroceryCatalogPage();
       }
       return null;
     }
@@ -184,7 +172,9 @@ class _SearchPageState extends State<SearchPage> {
         name: result.displayName,
         description: '',
         imageUrl: result.imageUrl,
-        priceInPaise: result.price == null ? null : (result.price! * 100).round(),
+        priceInPaise: result.price == null
+            ? null
+            : (result.price! * 100).round(),
         available: result.available,
         icon: switch (type) {
           'restaurant' => Icons.restaurant_menu_rounded,
@@ -207,7 +197,10 @@ class _SearchPageState extends State<SearchPage> {
   Widget build(BuildContext context) {
     final results = _backendMode
         ? _backendResults
-        : SearchIndex.search(_query, additionalResults: widget.additionalResults);
+        : SearchIndex.search(
+            _query,
+            additionalResults: widget.additionalResults,
+          );
 
     return Scaffold(
       backgroundColor: _page,
@@ -355,9 +348,18 @@ class _SearchPageState extends State<SearchPage> {
                           }
                           Navigator.of(context).push(
                             MaterialPageRoute<void>(
-                              builder: (context) =>
-                                  destination ??
-                                  SearchIndex.destinationFor(result),
+                              builder: (context) {
+                                final page =
+                                    destination ??
+                                    SearchIndex.destinationFor(result);
+                                final category = _deliveryCategoryFor(result);
+                                return category == null
+                                    ? page
+                                    : CategoryDeliveryGate(
+                                        category: category,
+                                        child: page,
+                                      );
+                              },
                             ),
                           );
                         },
@@ -368,6 +370,37 @@ class _SearchPageState extends State<SearchPage> {
         ),
       ),
     );
+  }
+
+  DeliveryCategory? _deliveryCategoryFor(SearchResult result) {
+    final partnerType = result.partnerType;
+    if (partnerType != null) {
+      return switch (partnerType) {
+        'restaurant' => DeliveryCategory.restaurant,
+        'grocery' => DeliveryCategory.grocery,
+        'meat_shop' => DeliveryCategory.meat,
+        'vegetables_fruits' => DeliveryCategory.vegetablesFruits,
+        'bakery' => DeliveryCategory.bakery,
+        _ => null,
+      };
+    }
+    return switch (result.type) {
+      SearchResultType.restaurant ||
+      SearchResultType.restaurantProduct ||
+      SearchResultType.homeRestaurant ||
+      SearchResultType.homeRestaurantProduct => DeliveryCategory.restaurant,
+      SearchResultType.bakery ||
+      SearchResultType.bakeryProduct => DeliveryCategory.bakery,
+      SearchResultType.localStore ||
+      SearchResultType.storeProduct ||
+      SearchResultType.homeStore ||
+      SearchResultType.homeStoreProduct => DeliveryCategory.grocery,
+      SearchResultType.meatCategory ||
+      SearchResultType.meatProduct => DeliveryCategory.meat,
+      SearchResultType.produceCategory ||
+      SearchResultType.produceProduct => DeliveryCategory.vegetablesFruits,
+      SearchResultType.backendShop || SearchResultType.backendProduct => null,
+    };
   }
 }
 
@@ -447,10 +480,7 @@ class _SearchRetry extends StatelessWidget {
             const Text(
               'Check your connection and try again.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _SearchPageState._muted,
-                fontSize: 13,
-              ),
+              style: TextStyle(color: _SearchPageState._muted, fontSize: 13),
             ),
             const SizedBox(height: 14),
             OutlinedButton.icon(

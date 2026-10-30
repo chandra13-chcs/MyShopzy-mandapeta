@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
@@ -373,22 +374,22 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
             padding: EdgeInsets.symmetric(vertical: 48),
             child: Center(child: Text('No restaurants available.')),
           ),
-          for (var index = 0; index < visibleRestaurants.length; index++) ...[
-            fadeSlideItem(
-              itemKey: 'restaurant-${visibleRestaurants[index].id}',
-              index: index,
-              child: PressScaleFeedback(
-                child: _buildRestaurantCard(context, visibleRestaurants, index),
-              ),
+        for (var index = 0; index < visibleRestaurants.length; index++) ...[
+          fadeSlideItem(
+            itemKey: 'restaurant-${visibleRestaurants[index].id}',
+            index: index,
+            child: PressScaleFeedback(
+              child: _buildRestaurantCard(context, visibleRestaurants, index),
             ),
-            if (index < visibleRestaurants.length - 1) const SizedBox(height: 14),
-          ],
+          ),
+          if (index < visibleRestaurants.length - 1) const SizedBox(height: 14),
+        ],
       ],
     );
 
     return AnimatedContentSwitcher(
       child: KeyedSubtree(
-      key: ValueKey('restaurants-loaded-${_searchQuery.toLowerCase()}'),
+        key: ValueKey('restaurants-loaded-${_searchQuery.toLowerCase()}'),
         child: Scaffold(
           backgroundColor: RestaurantsPage._page,
           body: SafeArea(
@@ -488,20 +489,10 @@ class _RestaurantsPageState extends State<RestaurantsPage> {
                 ),
               ),
               const SizedBox(width: 7),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F3E9),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Text(
-                  '25 km',
-                  style: TextStyle(
-                    color: _green,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              const CategoryDeliveryLimitBadge(
+                category: DeliveryCategory.restaurant,
+                foregroundColor: _green,
+                backgroundColor: Color(0xFFE8F3E9),
               ),
             ],
           ),

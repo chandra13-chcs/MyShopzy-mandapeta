@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 import 'bakery_menu_page.dart';
@@ -79,10 +80,7 @@ const sampleBakeries = [
 ];
 
 class BakeryPage extends StatelessWidget {
-  const BakeryPage({
-    super.key,
-    this.bakeries = sampleBakeries,
-  });
+  const BakeryPage({super.key, this.bakeries = sampleBakeries});
 
   final List<BakeryShop> bakeries;
 
@@ -159,8 +157,7 @@ class BakeryPage extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (index < bakeries.length - 1)
-                      const SizedBox(height: 14),
+                    if (index < bakeries.length - 1) const SizedBox(height: 14),
                   ],
                 ],
               ),
@@ -219,20 +216,10 @@ class BakeryPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 7),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F3E9),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Text(
-                  '18 km',
-                  style: TextStyle(
-                    color: _green,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              const CategoryDeliveryLimitBadge(
+                category: DeliveryCategory.bakery,
+                foregroundColor: _green,
+                backgroundColor: Color(0xFFE8F3E9),
               ),
             ],
           ),
@@ -460,9 +447,7 @@ class _BakeryCard extends StatelessWidget {
                       const SizedBox(width: 5),
                       Icon(
                         Icons.circle,
-                        color: isOpen
-                            ? _green
-                            : const Color(0xFF929892),
+                        color: isOpen ? _green : const Color(0xFF929892),
                         size: 7,
                       ),
                       const SizedBox(width: 4),

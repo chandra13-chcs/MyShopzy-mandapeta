@@ -5,21 +5,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:myshopzy/app/theme/app_theme.dart';
-import 'package:myshopzy/features/bakery/presentation/bakery_page.dart';
 import 'package:myshopzy/features/home/presentation/home_page.dart';
+import 'package:myshopzy/features/local_stores/presentation/main_grocery_catalog_page.dart';
 import 'package:myshopzy/features/local_stores/presentation/local_stores_page.dart';
 import 'package:myshopzy/features/local_stores/presentation/local_store_catalog_page.dart';
-import 'package:myshopzy/features/meat/presentation/meat_page.dart';
-import 'package:myshopzy/features/parcel/presentation/parcel_page.dart';
 import 'package:myshopzy/features/restaurants/presentation/restaurant_menu_page.dart';
-import 'package:myshopzy/features/restaurants/presentation/restaurants_page.dart';
-import 'package:myshopzy/features/vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import 'package:myshopzy/shared/data/customer_api.dart';
+import 'package:myshopzy/shared/delivery/category_delivery_serviceability.dart';
+import 'package:myshopzy/features/profile/data/selected_delivery_address_store.dart';
+import 'package:myshopzy/features/profile/models/saved_address.dart';
 
 void main() {
   tearDown(() {
     CustomerApi.instance.close();
     CustomerApi.instance = CustomerApi(baseUrl: '');
+    SelectedDeliveryAddressStore.instance.select(null);
   });
 
   testWidgets('Home category tiles show their images and open existing pages', (
@@ -32,16 +32,7 @@ void main() {
     );
     await pumpHomeTransitions(tester);
 
-    const destinations = {
-      'restaurants': RestaurantsPage,
-      'bakery': BakeryPage,
-      'meat_only_chicken': MeatPage,
-      'fruits_vegetables': VegetablesFruitsPage,
-      'parcel': ParcelPage,
-      'local_stores': LocalStoresPage,
-    };
-
-    const labelOrder = [
+    const tileLabels = [
       'Restaurants',
       'Bakery',
       'Meat',
@@ -49,10 +40,6 @@ void main() {
       'Parcel',
       'Groceries',
     ];
-
-    for (final label in labelOrder) {
-      expect(find.text(label), findsOneWidget);
-    }
 
     expect(find.byType(GridView), findsOneWidget);
     expect(
@@ -94,14 +81,6 @@ void main() {
       'Parcel': 'parcel',
       'Groceries': 'local_stores',
     };
-    const categoryColors = {
-      'Restaurants': Color(0xFFE1F2E4),
-      'Bakery': Color(0xFFFFE8D9),
-      'Meat': Color(0xFFEDE5FA),
-      'Fruits': Color(0xFFFBE4EC),
-      'Parcel': Color(0xFFFFF1D5),
-      'Groceries': Color(0xFFE2EFF9),
-    };
     for (final entry in categoryAssets.entries) {
       final imageFinder = find.byWidgetPredicate(
         (widget) => widget is Image && widget.semanticLabel == entry.key,
@@ -130,6 +109,7 @@ void main() {
       expect(tileBounds.left <= imageBounds.left, isTrue);
       expect(tileBounds.right >= imageBounds.right, isTrue);
       expect(tileBounds.bottom >= imageBounds.bottom, isTrue);
+      expect(tileBounds.width / tileBounds.height, closeTo(0.85, 0.02));
       final imageContainer = tester.widget<Image>(
         find.byKey(ValueKey('home-category-image-${categoryKeys[entry.key]}')),
       );
@@ -138,7 +118,7 @@ void main() {
         find.byKey(ValueKey('home-category-tile-${categoryKeys[entry.key]}')),
       );
       final tileDecoration = tileContainer.decoration! as BoxDecoration;
-      expect(tileDecoration.color, categoryColors[entry.key]);
+      expect(tileDecoration.color, Colors.white);
       expect(tileDecoration.borderRadius, BorderRadius.circular(20));
       expect(tileDecoration.border, isNull);
       expect(tileDecoration.boxShadow, hasLength(1));
@@ -148,12 +128,16 @@ void main() {
         tileDecoration.boxShadow!.single.color,
         Colors.black.withValues(alpha: 0.04),
       );
-      expect(find.text(entry.key), findsOneWidget);
-      final label = tester.widget<Text>(find.text(entry.key));
-      expect(label.style!.fontSize, 12);
-      expect(label.style!.fontWeight, FontWeight.w600);
-      expect(label.style!.color, Colors.black87);
-      expect(tileBounds.width / tileBounds.height, closeTo(0.85, 0.02));
+      expect(
+        find.descendant(
+          of: tile,
+          matching: find.text(entry.key),
+        ),
+        findsNothing,
+      );
+    }
+    for (final label in tileLabels) {
+      expect(find.text(label), findsNothing);
     }
     for (final subtitle in [
       'Hot & tasty',
@@ -221,8 +205,15 @@ void main() {
     await pumpHomeTransitions(tester);
     expect(tester.widget<AnimatedScale>(pressScale).scale, 1);
 
-    for (final entry in destinations.entries) {
-      final tile = find.byKey(ValueKey('home-category-${entry.key}'));
+    for (final tileKey in [
+      'restaurants',
+      'bakery',
+      'meat_only_chicken',
+      'fruits_vegetables',
+      'parcel',
+      'local_stores',
+    ]) {
+      final tile = find.byKey(ValueKey('home-category-$tileKey'));
       await tester.scrollUntilVisible(
         tile,
         300,
@@ -232,18 +223,19 @@ void main() {
       expect(tile, findsOneWidget);
       await tester.tap(tile);
       await pumpHomeTransitions(tester);
-      expect(find.byType(entry.value), findsOneWidget);
+      expect(find.byType(CategoryDeliveryGate), findsOneWidget);
+      expect(find.byType(LocalStoresPage), findsNothing);
       expect(
         tester.takeException(),
         isNull,
-        reason: 'Opening ${entry.value} should not produce layout errors.',
+        reason: 'Opening $tileKey should not produce layout errors.',
       );
-      await tester.pageBack();
+      Navigator.of(tester.element(find.byType(CategoryDeliveryGate))).pop();
       await pumpHomeTransitions(tester);
     }
   });
 
-  testWidgets('Home category tiles use pastel fills and press feedback', (
+  testWidgets('Home category tiles use white fills and press feedback', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -252,6 +244,14 @@ void main() {
       const MaterialApp(home: HomePage(clock: _middayClock)),
     );
     await pumpHomeTransitions(tester);
+
+    final tileContainer = tester.widget<Container>(
+      find.byKey(const ValueKey('home-category-tile-restaurants')),
+    );
+    expect(
+      (tileContainer.decoration! as BoxDecoration).color,
+      Colors.white,
+    );
 
     final gestureFinder = find.byKey(
       const ValueKey('home-category-restaurants'),
@@ -361,19 +361,13 @@ void main() {
     await tester.tap(biryaniTile);
     await tester.pumpAndSettle();
 
-    expect(find.byType(RestaurantMenuPage), findsOneWidget);
-    expect(find.text('Demo Biryani Kitchen'), findsOneWidget);
-    expect(find.text('Chicken Biryani'), findsOneWidget);
-    expect(
-      tester
-          .widget<RestaurantMenuPage>(find.byType(RestaurantMenuPage))
-          .initialCategoryId,
-      'biryani',
-    );
+    expect(find.byType(CategoryDeliveryGate), findsOneWidget);
+    expect(find.byType(RestaurantMenuPage), findsNothing);
+    expect(find.text('Choose a delivery address'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Home grocery product opens its mapped store category', (
+  testWidgets('Home Groceries routes directly to the single catalogue', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -381,29 +375,37 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: HomePage(clock: _middayClock)),
     );
-
+    await pumpHomeTransitions(tester);
     final groceryTile = find.byKey(
-      const ValueKey('home-grocery-product-home-dairy-milk'),
-    );
-    await tester.scrollUntilVisible(
-      groceryTile,
-      350,
-      scrollable: find.byType(Scrollable).first,
+      const ValueKey('home-category-local_stores'),
     );
     await tester.ensureVisible(groceryTile);
-    await tester.drag(
-      find.byType(CustomScrollView).first,
-      const Offset(0, -180),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
     await tester.tap(groceryTile);
     await pumpHomeTransitions(tester);
 
-    expect(find.byType(LocalStoreCatalogPage), findsOneWidget);
-    expect(find.text('Sri Lakshmi General Store'), findsOneWidget);
-    expect(find.text('Toned Milk'), findsOneWidget);
+    final gate = tester.widget<CategoryDeliveryGate>(
+      find.byType(CategoryDeliveryGate),
+    );
+    expect(gate.child, isA<MainGroceryCatalogPage>());
+    expect(find.byType(LocalStoresPage), findsNothing);
+    expect(find.text('Choose a delivery address'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('main Grocery catalogue opens products without store selection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MainGroceryCatalogPage(initialCategoryId: 'noodles'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LocalStoreCatalogPage), findsOneWidget);
+    expect(find.text('Groceries'), findsOneWidget);
+    expect(find.text('2-Minute Noodles'), findsOneWidget);
+    expect(find.byType(LocalStoresPage), findsNothing);
   });
 
   testWidgets('Home category grid reflects active backend partners', (
@@ -411,7 +413,29 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
+    SelectedDeliveryAddressStore.instance.select(
+      SavedAddress(
+        id: 'backend-grid-address',
+        label: 'Home',
+        address: 'Mandapeta',
+        icon: Icons.home_outlined,
+        latitude: 16.91,
+        longitude: 81.91,
+        pincode: '533308',
+      ),
+    );
     final requests = <http.Request>[];
+    SelectedDeliveryAddressStore.instance.select(
+      SavedAddress(
+        id: 'active-partners-address',
+        label: 'Home',
+        address: 'Mandapeta',
+        icon: Icons.home_outlined,
+        latitude: 16.91,
+        longitude: 81.91,
+        pincode: '533308',
+      ),
+    );
     CustomerApi.instance = CustomerApi(
       baseUrl: 'https://shop.example',
       httpClient: MockClient((request) async {
@@ -436,6 +460,22 @@ void main() {
                     'partner_count': category.$3,
                   },
               ],
+            }),
+            200,
+          );
+        }
+        if (request.url.path ==
+            '/api/v1/delivery/category-serviceability') {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'data': {
+                'category': body['category'],
+                'isDeliverable': true,
+                'distanceMeters': 5000,
+                'maximumDistanceMeters': 10000,
+                'message': 'Delivery is available within 10 km.',
+              },
             }),
             200,
           );
@@ -523,6 +563,7 @@ void main() {
       find.byKey(const ValueKey('home-category-partner-bakery')),
     );
     await pumpHomeTransitions(tester);
+    await tester.pumpAndSettle();
     expect(
       tester.takeException(),
       isNull,

@@ -10,6 +10,9 @@ const {
 } = require('./modules/delivery-serviceability/routes');
 const { createRiderRouter } = require('./modules/riders/routes');
 const { mockRiderAuth } = require('./middleware/mock-rider-auth');
+const {
+  createCachedDistanceClient,
+} = require('./modules/delivery-fee/cached-distance');
 
 function createApp({
   databasePool = null,
@@ -34,7 +37,7 @@ function createApp({
   logger = console,
 } = {}) {
   const app = express();
-  const configuredDistanceClient =
+  const routeDistanceClient =
     deliveryDistanceClient ??
     (deliveryRoutingClient
       ? {
@@ -46,6 +49,8 @@ function createApp({
           },
         }
       : null);
+  const configuredDistanceClient =
+    createCachedDistanceClient(routeDistanceClient);
 
   app.use(express.json({ limit: '16kb' }));
 
@@ -100,7 +105,10 @@ function createApp({
 
   app.use(
     '/api/v1',
-    createDeliveryServiceabilityRouter({ databasePool }),
+    createDeliveryServiceabilityRouter({
+      databasePool,
+      deliveryDistanceClient: configuredDistanceClient,
+    }),
   );
   app.use(
     '/api/v1',

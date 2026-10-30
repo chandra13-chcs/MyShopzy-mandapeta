@@ -3,6 +3,9 @@ const http = require('node:http');
 const test = require('node:test');
 
 const { createApp } = require('../../src/app');
+const {
+  MANDAPETA_BUS_STAND,
+} = require('../../src/modules/delivery-serviceability/categories');
 
 async function startServer(t, options = {}) {
   const server = http.createServer(
@@ -163,12 +166,20 @@ test('returns a bounded request error for oversized JSON bodies', async (t) => {
   });
 });
 
-test('fails closed for order placement outside database delivery pincodes', async (t) => {
+test('blocks grocery order placement outside its fixed-origin category limit', async (t) => {
   const queries = [];
+  const destination = { latitude: 16.87, longitude: 81.93 };
   const baseUrl = await startServer(t, {
     authenticateCustomer(req, res, next) {
       req.auth = { customerUserId: '27dcad4a-f166-4fc8-a224-3d1c099dd459' };
       next();
+    },
+    deliveryDistanceClient: {
+      async getRoadDistanceMetres(origin, routedDestination) {
+        assert.deepEqual(origin, MANDAPETA_BUS_STAND);
+        assert.deepEqual(routedDestination, destination);
+        return 10001;
+      },
     },
     databasePool: {
       async query(sql, params) {
@@ -185,6 +196,52 @@ test('fails closed for order placement outside database delivery pincodes', asyn
             if (sql.includes('outstanding_minor')) {
               return {
                 rows: [{ outstanding_minor: '0' }],
+                rowCount: 1,
+              };
+            }
+            if (sql.includes('FROM app.customers AS c')) {
+              return { rows: [{ user_id: params[0] }], rowCount: 1 };
+            }
+            if (sql.includes('FROM app.customer_carts')) {
+              return {
+                rows: [{
+                  id: 'cart-id',
+                  shop_id: 'shop-id',
+                  partner_id: 'partner-id',
+                }],
+                rowCount: 1,
+              };
+            }
+            if (sql.includes('FROM app.customer_cart_items')) {
+              return {
+                rows: [{
+                  product_id: 'product-id',
+                  variant_id: 'variant-id',
+                  quantity: 1,
+                  shop_id: 'shop-id',
+                  partner_id: 'partner-id',
+                  name: 'Test grocery',
+                  currency: 'INR',
+                  product_is_available: true,
+                  product_status: 'active',
+                  variant_label: 'One',
+                  variant_unit: 'each',
+                  variant_quantity: '1',
+                  variant_sku: 'TEST-1',
+                  price_minor: '1000',
+                  variant_stock: 10,
+                  variant_is_available: true,
+                  shop_status: 'active',
+                  shop_latitude: 16.87,
+                  shop_longitude: 81.93,
+                  operating_details: null,
+                  timezone: 'Asia/Kolkata',
+                  partner_status: 'approved',
+                  partner_type: 'local_store',
+                  partner_commission_bps_override: null,
+                  category_code: null,
+                  category_commission_bps_override: null,
+                }],
                 rowCount: 1,
               };
             }
@@ -205,20 +262,22 @@ test('fails closed for order placement outside database delivery pincodes', asyn
       deliveryAddress: {
         formattedAddress: 'An unserviceable location',
         pincode: '533309',
-        latitude: 16.87,
-        longitude: 81.93,
+        ...destination,
       },
     }),
   });
   assert.equal(response.status, 422);
   assert.deepEqual(await response.json(), {
     error: {
-      code: 'DELIVERY_UNAVAILABLE',
-      message: 'Sorry, we do not deliver to this location.',
+      code: 'OUTSIDE_DELIVERY_RANGE',
+      message: 'Sorry, this service is available only within 10 km of Mandapeta Bus Stand.',
+      details: {
+        category: 'grocery',
+        distanceMeters: 10001,
+        maximumDistanceMeters: 10000,
+      },
     },
   });
-  assert.equal(queries.length, 5);
-  assert.match(queries[3].sql, /app\.serviceable_pincodes/);
-  assert.deepEqual(queries[3].params, ['533309']);
+  assert.equal(queries.some((query) => query.sql.includes('app.serviceable_pincodes')), false);
   assert.equal(queries.some((query) => query.sql.startsWith('INSERT INTO app.orders')), false);
 });

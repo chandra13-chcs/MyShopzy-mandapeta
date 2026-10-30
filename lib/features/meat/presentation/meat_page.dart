@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/delivery/category_delivery_serviceability.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
@@ -165,20 +166,10 @@ class _MeatPageState extends State<MeatPage> {
                 ),
               ),
               const SizedBox(width: 7),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F3E9),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Text(
-                  '25 km',
-                  style: TextStyle(
-                    color: _green,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              const CategoryDeliveryLimitBadge(
+                category: DeliveryCategory.meat,
+                foregroundColor: _green,
+                backgroundColor: Color(0xFFE8F3E9),
               ),
             ],
           ),
@@ -400,19 +391,22 @@ class _BackendMeatCatalogState extends State<_BackendMeatCatalog> {
           child: _offlineError
               ? OfflineErrorState(onRetry: _load, compact: true)
               : Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                _error!,
-                style: const TextStyle(color: Color(0xFFA85B5B), fontSize: 12),
-              ),
-              TextButton.icon(
-                onPressed: _loading ? null : _load,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Retry meat catalog'),
-              ),
-            ],
-          ),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Color(0xFFA85B5B),
+                        fontSize: 12,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: _loading ? null : _load,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry meat catalog'),
+                    ),
+                  ],
+                ),
         ),
       );
     }

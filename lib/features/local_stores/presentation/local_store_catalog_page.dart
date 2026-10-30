@@ -444,12 +444,14 @@ class LocalStoreCatalogPage extends StatefulWidget {
     this.categories = commonLocalStoreCategories,
     this.products = sampleLocalStoreProducts,
     this.initialCategoryId,
+    this.displayTitle,
   });
 
   final LocalStore store;
   final List<CommonCategory> categories;
   final List<StoreProduct> products;
   final String? initialCategoryId;
+  final String? displayTitle;
 
   @override
   State<LocalStoreCatalogPage> createState() => _LocalStoreCatalogPageState();
@@ -677,9 +679,9 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
                 product.categoryId != null &&
                     categoryIds.contains(product.categoryId)
                 ? product.categoryId!
-                    : 'other',
-                name: product.name,
-                description: product.description,
+                : 'other',
+            name: product.name,
+            description: product.description,
             packSize: product.packSize ?? '',
             price: product.priceMinor / 100,
             mrp: (product.mrpMinor ?? product.priceMinor) / 100,
@@ -777,32 +779,29 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(10, 8, 14, 18),
           sliver: SliverGrid(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final product = visibleProducts[index];
-                final card = PressScaleFeedback(
-                  child: StoreProductCard(
-                    product: product,
-                    placeholderIndex: index,
-                    storeName: widget.store.name,
-                    relatedProducts: visibleProducts
-                        .where(
-                          (related) =>
-                              related.storeId == product.storeId &&
-                              related.categoryId == product.categoryId &&
-                              related.id != product.id,
-                        )
-                        .toList(),
-                  ),
-                );
-                return fadeSlideItem(
-                  itemKey: 'store-product-${product.id}',
-                  index: index,
-                  child: card,
-                );
-              },
-              childCount: visibleProducts.length,
-            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final product = visibleProducts[index];
+              final card = PressScaleFeedback(
+                child: StoreProductCard(
+                  product: product,
+                  placeholderIndex: index,
+                  storeName: widget.store.name,
+                  relatedProducts: visibleProducts
+                      .where(
+                        (related) =>
+                            related.storeId == product.storeId &&
+                            related.categoryId == product.categoryId &&
+                            related.id != product.id,
+                      )
+                      .toList(),
+                ),
+              );
+              return fadeSlideItem(
+                itemKey: 'store-product-${product.id}',
+                index: index,
+                child: card,
+              );
+            }, childCount: visibleProducts.length),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 10,
@@ -854,7 +853,7 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
           const SizedBox(width: 5),
           Expanded(
             child: Text(
-              widget.store.name,
+              widget.displayTitle ?? widget.store.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -933,51 +932,51 @@ class _LocalStoreCatalogPageState extends State<LocalStoreCatalogPage> {
             index: index,
             child: PressScaleFeedback(
               child: InkWell(
-              onTap: () => setState(() => _selectedCategoryId = category.id),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(7, 5, 7, 10),
-                child: Column(
-                  children: [
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      width: 62,
-                      height: 65,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? const Color(0xFFE9F1E7)
-                            : Colors.white,
-                        borderRadius: BorderRadius.circular(13),
-                        border: Border.all(
+                onTap: () => setState(() => _selectedCategoryId = category.id),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(7, 5, 7, 10),
+                  child: Column(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        width: 62,
+                        height: 65,
+                        decoration: BoxDecoration(
                           color: selected
-                              ? const Color(0xFFBBD4B7)
-                              : const Color(0xFFE9ECE7),
+                              ? const Color(0xFFE9F1E7)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(13),
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFFBBD4B7)
+                                : const Color(0xFFE9ECE7),
+                          ),
+                        ),
+                        child: Icon(
+                          category.icon,
+                          color: selected ? _green : const Color(0xFF8B948C),
+                          size: 27,
                         ),
                       ),
-                      child: Icon(
-                        category.icon,
-                        color: selected ? _green : const Color(0xFF8B948C),
-                        size: 27,
+                      const SizedBox(height: 5),
+                      Text(
+                        category.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: selected ? _ink : _muted,
+                          fontSize: 10,
+                          fontWeight: selected
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          height: 1.2,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      category.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: selected ? _ink : _muted,
-                        fontSize: 10,
-                        fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             ),
           );
         },
@@ -1088,7 +1087,10 @@ class _StoreProductCardState extends State<StoreProductCard> {
     return item.variants.first.id;
   }
 
-  bool _sameVariantIds(List<ProductVariant> first, List<ProductVariant> second) {
+  bool _sameVariantIds(
+    List<ProductVariant> first,
+    List<ProductVariant> second,
+  ) {
     if (first.length != second.length) return false;
     for (var index = 0; index < first.length; index++) {
       if (first[index].id != second[index].id) return false;
@@ -1199,23 +1201,23 @@ class _StoreProductCardState extends State<StoreProductCard> {
                     bottom: 6,
                     right: 6,
                     child: CartProductControl(
-                          available: product.available,
-                          productId: product.id,
-                          serviceType: product.serviceType,
-                          merchantId: product.storeId,
-                          categoryId: product.categoryId,
-                          name: product.name,
-                          description: product.isBackendData
-                              ? product.description
-                              : '${product.brand} · ${product.packSize} · '
-                                    '${product.description}',
-                          priceInPaise: (product.price * 100).round(),
-                          imageUrl: product.imageUrl,
-                          icon: Icons.inventory_2_rounded,
-                          backendCatalogItem: product.isBackendData,
-                          width: 96,
-                          height: 31,
-                          unavailableLabel: 'OUT OF STOCK',
+                      available: product.available,
+                      productId: product.id,
+                      serviceType: product.serviceType,
+                      merchantId: product.storeId,
+                      categoryId: product.categoryId,
+                      name: product.name,
+                      description: product.isBackendData
+                          ? product.description
+                          : '${product.brand} · ${product.packSize} · '
+                                '${product.description}',
+                      priceInPaise: (product.price * 100).round(),
+                      imageUrl: product.imageUrl,
+                      icon: Icons.inventory_2_rounded,
+                      backendCatalogItem: product.isBackendData,
+                      width: 96,
+                      height: 31,
+                      unavailableLabel: 'OUT OF STOCK',
                     ),
                   ),
               ],
@@ -1374,7 +1376,8 @@ class _StoreProductCardState extends State<StoreProductCard> {
       variantLabel: variant.label,
       categoryId: product.categoryId,
       name: product.name,
-      description: '${product.brand} · ${variant.label} · ${product.description}',
+      description:
+          '${product.brand} · ${variant.label} · ${product.description}',
       priceInPaise: variant.priceInPaise,
       imageUrl: variant.imageUrl ?? product.imageUrl,
       icon: Icons.inventory_2_rounded,
