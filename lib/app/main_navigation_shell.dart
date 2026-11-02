@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../features/cart/presentation/cart_page.dart';
 import '../features/categories/presentation/categories_page.dart';
@@ -50,6 +51,7 @@ class _MainNavigationShellState extends State<MainNavigationShell> {
 
   void _selectTab(int index) {
     if (index == _currentIndex) return;
+    HapticFeedback.selectionClick();
     setState(() => _currentIndex = index);
   }
 }

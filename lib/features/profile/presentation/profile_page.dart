@@ -118,7 +118,7 @@ class _ProfilePageState extends State<ProfilePage> {
               )
             : SafeArea(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -127,11 +127,19 @@ class _ProfilePageState extends State<ProfilePage> {
                         style: TextStyle(
                           color: _mainText,
                           fontSize: 25,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                           letterSpacing: -0.5,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Manage orders, addresses and preferences.',
+                        style: TextStyle(
+                          color: _secondaryText,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
                       _buildProfileCard(context),
                       const SizedBox(height: 25),
                       _buildSectionTitle('QUICK ORDERS'),
@@ -167,12 +175,16 @@ class _ProfilePageState extends State<ProfilePage> {
             width: 82,
             height: 82,
             decoration: BoxDecoration(
-              color: _lightGreen,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFFEAF6EC), Color(0xFFF8F3D8)],
+              ),
               shape: BoxShape.circle,
-              border: Border.all(color: _green, width: 1.5),
+              border: Border.all(color: _green, width: 1.6),
             ),
             child: const Icon(
-              Icons.person_outline_rounded,
+              Icons.person_rounded,
               color: _green,
               size: 43,
             ),
@@ -686,6 +698,7 @@ class _ProfilePageState extends State<ProfilePage> {
       color: Colors.white,
       borderRadius: BorderRadius.circular(radius),
       border: Border.all(color: _border),
+      boxShadow: AppTheme.softShadow,
     );
   }
 }

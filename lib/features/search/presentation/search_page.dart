@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_theme.dart';
 import '../../../shared/data/customer_api.dart';
+import '../../../shared/presentation/shopzy_ui.dart';
 import '../../../shared/delivery/category_delivery_serviceability.dart';
 import '../../local_stores/presentation/main_grocery_catalog_page.dart';
 import '../../product_details/data/product_availability_store.dart';
@@ -228,8 +229,9 @@ class _SearchPageState extends State<SearchPage> {
                       padding: const EdgeInsets.symmetric(horizontal: 13),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: const Color(0xFFE5E9E3)),
+                        boxShadow: AppTheme.softShadow,
                       ),
                       child: Row(
                         children: [
@@ -417,35 +419,7 @@ class _SearchMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: const Color(0xFF9AA29C), size: 42),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: const TextStyle(
-                color: _SearchPageState._ink,
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: _SearchPageState._muted,
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return ShopzyEmptyHero(icon: icon, title: title, message: message);
   }
 }
 
@@ -579,9 +553,10 @@ class _SearchResultTile extends StatelessWidget {
 
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),

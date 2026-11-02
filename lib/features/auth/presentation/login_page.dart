@@ -138,6 +138,13 @@ class _LoginPageState extends State<LoginPage> {
             decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 24,
+                  offset: Offset(0, -8),
+                ),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

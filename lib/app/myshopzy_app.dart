@@ -15,6 +15,7 @@ class MyShopzyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'MyShopzy',
       theme: AppTheme.light,
+      scrollBehavior: const ShopzyScrollBehavior(),
       home: MainNavigationShell(clock: clock),
       routes: AppRouter.routes,
     );

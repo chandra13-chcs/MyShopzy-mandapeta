@@ -10,6 +10,7 @@ import '../../../shared/data/money_formatter.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
+import '../../../shared/presentation/shopzy_ui.dart';
 import '../../checkout/presentation/checkout_page.dart';
 import '../../home/presentation/free_delivery_progress_strip.dart';
 import '../../profile/presentation/dues_page.dart';
@@ -204,7 +205,12 @@ class _CartPageState extends State<CartPage> {
                 if (_cartLoadError != null) {
                   return _buildCartLoadError();
                 }
-                return _buildEmptyState(context);
+                return AnimatedContentSwitcher(
+              child: KeyedSubtree(
+                key: const ValueKey('cart-empty'),
+                child: _buildEmptyState(context),
+              ),
+            );
               },
             ),
       bottomNavigationBar: !CustomerApi.instance.canAccessCustomerFeatures
@@ -598,6 +604,7 @@ class _CartPageState extends State<CartPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _border),
+        boxShadow: AppTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -607,7 +614,8 @@ class _CartPageState extends State<CartPage> {
             style: TextStyle(
               color: _mainText,
               fontSize: 16,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.2,
             ),
           ),
           const SizedBox(height: 12),
@@ -666,8 +674,19 @@ class _CartPageState extends State<CartPage> {
   Widget _buildCheckoutAction(BuildContext context) {
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: _border)),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x14001810),
+              blurRadius: 18,
+              offset: Offset(0, -6),
+            ),
+          ],
+        ),
         child: SizedBox(
           height: 52,
           width: double.infinity,
@@ -677,17 +696,7 @@ class _CartPageState extends State<CartPage> {
                 builder: (context) => const CheckoutPage(),
               ),
             ),
-            style: FilledButton.styleFrom(
-              backgroundColor: _green,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-            ),
-            child: const Text(
-              'Proceed to Checkout',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
+            child: const Text('Proceed to Checkout'),
           ),
         ),
       ),
@@ -702,49 +711,11 @@ class _CartPageState extends State<CartPage> {
           child: FreeDeliveryProgressStrip(),
         ),
         Expanded(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(30),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 82,
-                    height: 82,
-                    decoration: const BoxDecoration(
-                      color: _lightGreen,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.shopping_cart_outlined,
-                      color: _green,
-                      size: 38,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  const Text(
-                    'Your cart is empty',
-                    style: TextStyle(
-                      color: _mainText,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  const Text(
-                    'Add something you love and it will show up here.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: _secondaryText,
-                      fontSize: 14,
-                      height: 1.4,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  _buildContinueShoppingButton(context),
-                ],
-              ),
-            ),
+          child: ShopzyEmptyHero(
+            icon: Icons.shopping_cart_outlined,
+            title: 'Your cart is empty',
+            message: 'Add something you love and it will show up here.',
+            action: _buildContinueShoppingButton(context),
           ),
         ),
       ],

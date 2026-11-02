@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/main_navigation_shell.dart';
+import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/shopzy_ui.dart';
 
 class _C {
   static const green = Color(0xFF016034);
@@ -98,34 +100,58 @@ class _LandingPageState extends State<LandingPage>
                 position: _entryOffset,
                 child: Container(
                   width: double.infinity,
-                  padding: EdgeInsets.fromLTRB(20, 22, 20, 12 + bottom),
+                  padding: EdgeInsets.fromLTRB(22, 12, 22, 14 + bottom),
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.vertical(
                       top: Radius.circular(32),
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 24,
+                        offset: Offset(0, -8),
+                      ),
+                    ],
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      const ShopzySheetHandle(),
+                      const Text(
+                        'Everything you need, delivered.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          color: _C.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Restaurants, groceries, meat and parcels in one place.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13.5, color: _C.muted),
+                      ),
+                      const SizedBox(height: 18),
                       SizedBox(
                         width: double.infinity,
                         height: 56,
                         child: ElevatedButton(
                           onPressed: () => Navigator.of(context)
                               .pushReplacement(
-                                MaterialPageRoute<void>(
-                                  builder: (context) =>
-                                      const MainNavigationShell(),
+                                AppPageRoute<void>(
+                                  page: const MainNavigationShell(),
                                 ),
                               ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _C.green,
                             foregroundColor: Colors.white,
-                            elevation: 3,
+                            elevation: 0,
                             shape: const StadiumBorder(),
                             textStyle: const TextStyle(
-                              fontSize: 20,
+                              fontSize: 18,
                               fontWeight: FontWeight.w700,
                             ),
                           ),

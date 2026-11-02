@@ -220,8 +220,8 @@ class AppPageRoute<T> extends PageRouteBuilder<T> {
         settings: settings,
         pageBuilder: (context, animation, secondaryAnimation) =>
             builder(context),
-        transitionDuration: const Duration(milliseconds: 300),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
+        transitionDuration: const Duration(milliseconds: 280),
+        reverseTransitionDuration: const Duration(milliseconds: 240),
         transitionsBuilder: _buildTransition,
       );
 

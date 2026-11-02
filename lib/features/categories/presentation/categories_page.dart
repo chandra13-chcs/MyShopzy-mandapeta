@@ -12,6 +12,7 @@ import '../../search/presentation/search_page.dart';
 import '../../vegetables_fruits/presentation/vegetables_fruits_page.dart';
 import '../../../shared/presentation/bottom_navigation_bar.dart';
 import '../../../shared/presentation/motion.dart';
+import '../../../shared/presentation/shopzy_ui.dart';
 import '../../../shared/delivery/category_delivery_serviceability.dart';
 
 class CategoriesPage extends StatelessWidget {
@@ -196,22 +197,32 @@ class CategoriesPage extends StatelessWidget {
   Widget _buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Material(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const ShopzySectionHeader(
+            title: 'Categories',
+            padding: EdgeInsets.only(bottom: 12),
+          ),
+          Material(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
+        elevation: 0,
+        shadowColor: Colors.transparent,
         child: Tooltip(
           message: 'Search categories',
           child: InkWell(
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (context) => const SearchPage()),
+              AppPageRoute<void>(page: const SearchPage()),
             ),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             child: Container(
               height: 48,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFE8EBE6)),
+                boxShadow: AppTheme.softShadow,
               ),
               child: const Row(
                 children: [
@@ -236,6 +247,8 @@ class CategoriesPage extends StatelessWidget {
             ),
           ),
         ),
+          ),
+        ],
       ),
     );
   }
@@ -369,17 +382,9 @@ class _SectionHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return ShopzySectionHeader(
+      title: title,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 7),
-      child: Text(
-        title,
-        style: const TextStyle(
-          color: CategoriesPage._ink,
-          fontSize: 17,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.25,
-        ),
-      ),
     );
   }
 }

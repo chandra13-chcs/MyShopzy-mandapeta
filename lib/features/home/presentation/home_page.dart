@@ -14,6 +14,7 @@ import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
 import '../../../shared/presentation/promotional_banner.dart';
+import '../../../shared/presentation/shopzy_ui.dart';
 import '../../bakery/presentation/bakery_page.dart';
 import '../../cart/presentation/cart_page.dart';
 import '../../checkout/presentation/checkout_page.dart';
@@ -173,10 +174,13 @@ class HomePage extends StatelessWidget {
   Widget _buildHeaderArea(BuildContext context) {
     return Container(
       key: const ValueKey('home-black-header'),
-      color: Colors.black,
+      decoration: const BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+      ),
       padding: EdgeInsets.only(
         top: MediaQuery.viewPaddingOf(context).top + 14,
-        bottom: 10,
+        bottom: 14,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -202,7 +206,7 @@ class HomePage extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
+        AppPageRoute<void>.builder(
           builder: (context) => SearchPage(
             additionalResults: _discoverySearchResults,
             destinationBuilder: _searchDestinationFor,
@@ -215,18 +219,19 @@ class HomePage extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 15),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: const Color(0xFFDBE1D9)),
+          boxShadow: AppTheme.softShadow,
         ),
-        child: Row(
+        child: const Row(
           children: [
-            const Icon(
+            Icon(
               Icons.search_rounded,
               color: Color(0xFF1B211D),
               size: 23,
             ),
-            const SizedBox(width: 10),
-            const Expanded(
+            SizedBox(width: 10),
+            Expanded(
               child: Text(
                 'Search restaurants, groceries, products...',
                 maxLines: 1,
@@ -461,18 +466,7 @@ class HomePage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Text(
-            section.title,
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.3,
-            ),
-          ),
-        ),
+        ShopzySectionHeader(title: section.title),
         SizedBox(
           height: 130,
           child: ListView.separated(
@@ -500,36 +494,20 @@ class HomePage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  'Recently Viewed',
-                  style: TextStyle(
-                    color: _ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-              ),
-              if (products.length >= _recentlyViewedViewAllThreshold)
-                TextButton(
+        ShopzySectionHeader(
+          title: 'Recently Viewed',
+          action: products.length >= _recentlyViewedViewAllThreshold
+              ? TextButton(
                   onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (context) => const RecentlyViewedPage(),
-                    ),
+                    AppPageRoute<void>(page: const RecentlyViewedPage()),
                   ),
                   style: TextButton.styleFrom(
                     foregroundColor: _green,
                     visualDensity: VisualDensity.compact,
                   ),
                   child: const Text('View All'),
-                ),
-            ],
-          ),
+                )
+              : null,
         ),
         SizedBox(
           height: 170,
@@ -558,11 +536,13 @@ class HomePage extends StatelessWidget {
     return SizedBox(
       width: 96,
       child: PressScaleFeedback(
-        child: Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(13),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(13),
+          child: Material(
+            color: Colors.white,
+            elevation: 0,
+            shadowColor: const Color(0x14001810),
+            borderRadius: BorderRadius.circular(16),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
             key: ValueKey('home-restaurant-product-${product.productId}'),
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
@@ -577,8 +557,9 @@ class HomePage extends StatelessWidget {
             ),
             child: Container(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(13),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: const Color(0xFFEBEEE9)),
+                boxShadow: AppTheme.softShadow,
               ),
               clipBehavior: Clip.antiAlias,
               child: Column(
@@ -746,17 +727,9 @@ class HomePage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
+        ShopzySectionHeader(
+          title: section.title,
           padding: const EdgeInsets.only(bottom: 9),
-          child: Text(
-            section.title,
-            style: const TextStyle(
-              color: _ink,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.3,
-            ),
-          ),
         ),
         SizedBox(
           height: 124,
@@ -1120,8 +1093,9 @@ class _HomeLiveProductCard extends StatelessWidget {
           onTap: onTap,
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: const Color(0xFFE5E9E3)),
+              boxShadow: AppTheme.softShadow,
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
@@ -1482,9 +1456,7 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
           shape: const CircleBorder(),
           child: InkWell(
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (context) => const ProfilePage(),
-              ),
+              AppPageRoute<void>(page: const ProfilePage()),
             ),
             customBorder: const CircleBorder(),
             child: Container(
@@ -1492,7 +1464,7 @@ class _HomeLocationHeaderState extends State<_HomeLocationHeader>
               height: 42,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFE8EBE6)),
+                border: Border.all(color: AppTheme.brandYellow, width: 1.4),
               ),
               child: const Icon(
                 Icons.person_outline_rounded,
@@ -3261,13 +3233,8 @@ class _HomeCategoryTileState extends State<_HomeCategoryTile> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: Border.all(color: const Color(0xFFF0F3EE)),
+                boxShadow: AppTheme.softShadow,
               ),
               clipBehavior: Clip.antiAlias,
               padding: const EdgeInsets.all(10),

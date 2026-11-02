@@ -448,13 +448,39 @@ class _CheckoutPageState extends State<CheckoutPage> {
     return Scaffold(
       backgroundColor: _background,
       appBar: AppBar(
-        backgroundColor: AppTheme.primaryGreen,
-        foregroundColor: AppTheme.white,
+        backgroundColor: _background,
+        foregroundColor: _mainText,
         surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Checkout',
-          style: TextStyle(fontWeight: FontWeight.w600),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Checkout',
+              style: TextStyle(
+                color: _mainText,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
+            ),
+            SizedBox(height: 1),
+            Text(
+              'Securely place your order',
+              style: TextStyle(
+                color: _secondaryText,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
+        actions: const [
+          Padding(
+            padding: EdgeInsets.only(right: 18),
+            child: Icon(Icons.lock_outline_rounded, color: _green, size: 20),
+          ),
+        ],
       ),
       body: !CustomerApi.instance.canAccessCustomerFeatures
           ? const Center(
@@ -508,10 +534,16 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 animation: _cartStore,
                 builder: (context, child) {
                   return SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        fadeSlideItem(
+                          itemKey: 'checkout-progress',
+                          index: 0,
+                          child: _buildCheckoutProgress(),
+                        ),
+                        const SizedBox(height: 4),
                         if (_isDevelopmentDemoCart) ...[
                           Container(
                             key: const ValueKey('checkout-demo-mode-banner'),
@@ -596,7 +628,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           _buildEmptyCartState(context),
                           const SizedBox(height: 16),
                         ],
-                        _buildDeliverySection(),
+                        fadeSlideItem(
+                          itemKey: 'checkout-delivery',
+                          index: 1,
+                          child: _buildDeliverySection(),
+                        ),
                         if (_isBackendCart &&
                             _backendQuote?.isDeliverable == false) ...[
                           Container(
@@ -633,15 +669,35 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           const SizedBox(height: 12),
                         ],
                         const SizedBox(height: 16),
-                        _buildDeliveryInstructionsSection(),
+                        fadeSlideItem(
+                          itemKey: 'checkout-instructions',
+                          index: 2,
+                          child: _buildDeliveryInstructionsSection(),
+                        ),
                         const SizedBox(height: 16),
-                        _buildOrderSummary(),
+                        fadeSlideItem(
+                          itemKey: 'checkout-order-summary',
+                          index: 3,
+                          child: _buildOrderSummary(),
+                        ),
                         const SizedBox(height: 16),
-                        _buildCouponSection(),
+                        fadeSlideItem(
+                          itemKey: 'checkout-coupon',
+                          index: 4,
+                          child: _buildCouponSection(),
+                        ),
                         const SizedBox(height: 16),
-                        _buildPaymentSection(),
+                        fadeSlideItem(
+                          itemKey: 'checkout-payment',
+                          index: 5,
+                          child: _buildPaymentSection(),
+                        ),
                         const SizedBox(height: 16),
-                        _buildPriceDetails(),
+                        fadeSlideItem(
+                          itemKey: 'checkout-price-details',
+                          index: 6,
+                          child: _buildPriceDetails(),
+                        ),
                         const SizedBox(height: 12),
                         Text(
                           _isBackendCart
@@ -713,14 +769,63 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 return SafeArea(
                   top: false,
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
                     decoration: const BoxDecoration(
                       color: Colors.white,
                       border: Border(top: BorderSide(color: _border)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x14001810),
+                          blurRadius: 18,
+                          offset: Offset(0, -6),
+                        ),
+                      ],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'TOTAL TO PAY',
+                                style: TextStyle(
+                                  color: _secondaryText,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
+                            AnimatedSwitcher(
+                              duration: reduceMotion(context)
+                                  ? Duration.zero
+                                  : kMotionMed,
+                              transitionBuilder: (child, animation) =>
+                                  FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: Tween<Offset>(
+                                        begin: const Offset(0, 0.15),
+                                        end: Offset.zero,
+                                      ).animate(animation),
+                                      child: child,
+                                    ),
+                                  ),
+                              child: Text(
+                                _displayPrice(_totalInPaise),
+                                key: ValueKey<int>(_totalInPaise),
+                                style: const TextStyle(
+                                  color: _mainText,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
                         if (isDemoCart)
                           const Padding(
                             padding: EdgeInsets.only(bottom: 8),
@@ -791,7 +896,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
                                   : orderOutcomeUnknown
                                   ? 'Order Status Unknown'
                                   : 'Place Order',
-                              style: TextStyle(fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
                             ),
                           ),
                         ),
@@ -801,6 +909,70 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 );
               },
             ),
+    );
+  }
+
+  Widget _buildCheckoutProgress() {
+    final hasAddress = _hasPlaceableAddress;
+    final activeStep = hasAddress ? 2 : 1;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
+        boxShadow: AppTheme.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: List<Widget>.generate(3, (index) {
+              const labels = ['Basket', 'Address', 'Payment'];
+              return Expanded(
+                child: Text(
+                  labels[index],
+                  textAlign: index == 1
+                      ? TextAlign.center
+                      : index == 2
+                      ? TextAlign.end
+                      : TextAlign.start,
+                  style: TextStyle(
+                    color: index <= activeStep ? _mainText : _secondaryText,
+                    fontSize: 10,
+                    fontWeight: index == activeStep
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: List<Widget>.generate(3, (index) {
+              return Expanded(
+                child: AnimatedContainer(
+                  duration: reduceMotion(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  height: 4,
+                  margin: EdgeInsets.only(right: index == 2 ? 0 : 6),
+                  decoration: BoxDecoration(
+                    color: index <= activeStep
+                        ? _green
+                        : const Color(0xFFE7EAE8),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1541,6 +1713,14 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   Widget _buildOrderSummary() {
     final items = _cartStore.items;
+    final quoteItemsByProduct = <String, Map<String?, ApiCartQuoteItem>>{};
+    if (_isBackendCart && _backendQuote != null) {
+      for (final quoteItem in _backendQuote!.items) {
+        quoteItemsByProduct
+            .putIfAbsent(quoteItem.productId, () => {})
+            .putIfAbsent(quoteItem.variantId, () => quoteItem);
+      }
+    }
     return _sectionCard(
       title: 'Order Summary',
       icon: Icons.shopping_bag_outlined,
@@ -1559,7 +1739,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
           : Column(
               children: [
                 for (var index = 0; index < items.length; index++) ...[
-                  _buildCartItem(items[index]),
+                  _buildCartItem(
+                    items[index],
+                    quoteItem:
+                        quoteItemsByProduct[items[index]
+                            .productId]?[items[index].productVariantId],
+                  ),
                   if (index < items.length - 1)
                     const Divider(height: 20, color: _border),
                 ],
@@ -1577,17 +1762,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
     );
   }
 
-  Widget _buildCartItem(CartItem item) {
-    ApiCartQuoteItem? quoteItem;
-    if (_isBackendCart && _backendQuote != null) {
-      for (final quoted in _backendQuote!.items) {
-        if (quoted.productId == item.productId &&
-            quoted.variantId == item.productVariantId) {
-          quoteItem = quoted;
-          break;
-        }
-      }
-    }
+  Widget _buildCartItem(CartItem item, {ApiCartQuoteItem? quoteItem}) {
     final quantity = quoteItem?.quantity ?? item.quantity;
     final priceMinor = quoteItem?.priceMinor ?? item.priceInPaise;
     final lineTotalMinor =
@@ -2020,33 +2195,43 @@ class _CheckoutPageState extends State<CheckoutPage> {
   }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _border),
+        boxShadow: AppTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: _green, size: 21),
-              const SizedBox(width: 9),
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF4EC),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: _green, size: 19),
+              ),
+              const SizedBox(width: 11),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
                     color: _mainText,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
                   ),
                 ),
               ),
               ?trailing,
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           child,
         ],
       ),

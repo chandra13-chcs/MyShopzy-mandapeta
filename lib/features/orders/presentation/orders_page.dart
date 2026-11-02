@@ -7,6 +7,7 @@ import '../../../shared/data/customer_api.dart';
 import '../../../shared/presentation/motion.dart';
 import '../../../shared/presentation/offline_error_state.dart';
 import '../../../shared/presentation/press_scale_feedback.dart';
+import '../../../shared/presentation/shopzy_ui.dart';
 import '../models/order_record.dart';
 import 'order_details_page.dart';
 import 'order_tracking_page.dart';
@@ -237,38 +238,14 @@ class _OrdersPageState extends State<OrdersPage> {
     Future<void> Function()? onRefresh,
   }) {
     if (orders.isEmpty) {
-      final emptyState = Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.receipt_long_outlined,
-                color: _secondaryText,
-                size: 48,
-              ),
-              SizedBox(height: 14),
-              Text(
-                'No orders yet',
-                style: TextStyle(
-                  color: _mainText,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              SizedBox(height: 6),
-              Text(
-                CustomerApi.instance.canAccessCustomerFeatures &&
-                        !CustomerApi.instance.hasCustomerSession
-                    ? 'Orders are not created in preview mode.'
-                    : 'Your orders will appear here.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: _secondaryText, fontSize: 14),
-              ),
-            ],
-          ),
-        ),
+      final emptyState = ShopzyEmptyHero(
+        icon: Icons.receipt_long_outlined,
+        title: 'No orders yet',
+        message:
+            CustomerApi.instance.canAccessCustomerFeatures &&
+                !CustomerApi.instance.hasCustomerSession
+            ? 'Orders are not created in preview mode.'
+            : 'Your orders will appear here.',
       );
       if (onRefresh == null) return emptyState;
       return RefreshIndicator(
@@ -321,6 +298,7 @@ class _OrdersPageState extends State<OrdersPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _border),
+        boxShadow: AppTheme.softShadow,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
